@@ -1,0 +1,194 @@
+# Intégration continue WisperPlatform.
+#
+# Un seul job, ordonné du moins cher au plus cher : chaque étape n'est atteinte que si les
+# précédentes passent. Aucune étape n'est « autorisée à échouer » : tout ce qui est présenté
+# comme une barrière bloque réellement la fusion.
+#
+# Les images sont construites UNE seule fois (`docker compose build`) puis réutilisées telles
+# quelles par le scan et par les vérifications de démarrage : on scanne ce qu'on livre.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Une exécution obsolète de la même référence est annulée : on ne paie pas deux fois le même
+# commit intermédiaire. Exception sur la branche par défaut : deux fusions rapprochées y
+# partagent la référence, et annuler la première laisserait un commit livrable non vérifié.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+# Droits minimaux : rien n'est publié, rien n'est écrit côté dépôt.
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Vérifier le commit
+    # Image de runner épinglée : le pipeline dépend de `docker`, `git` et `python3` fournis par
+    # le socle, qui dériveraient silencieusement derrière `ubuntu-latest`.
+    runs-on: ubuntu-24.04
+    # Le build de l'image worker télécharge torch (plusieurs Gio) : c'est le poste le plus long
+    # du pipeline, et la raison pour laquelle ce délai est large.
+    timeout-minutes: 60
+
+    env:
+      # Tag immuable dérivé du commit : l'image scannée est traçable jusqu'à sa source.
+      IMAGE_TAG: ${{ github.sha }}
+      VCS_REF: ${{ github.sha }}
+
+    steps:
+      # L'historique complet est requis par le scan de secrets ; aucun identifiant n'est
+      # laissé dans le checkout, aucune étape ne pousse quoi que ce soit.
+      - name: Récupérer les sources
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # Barrière la moins chère du pipeline : elle n'a besoin que du dépôt. `.env` n'est jamais
+      # commité, la CI en fabrique un à partir de l'exemple avec des valeurs de remplacement
+      # non secrètes, uniquement pour résoudre puis valider le modèle compose.
+      - name: Vérifier la configuration du compose
+        run: |
+          cp .env.example .env
+          printf 'WISPER_WORKER_TOKEN=ci-placeholder\n' >> .env
+          docker compose config --quiet
+
+      - name: Installer pnpm
+        # Version de pnpm lue dans le champ `packageManager` de la racine.
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+
+      - name: Installer Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          # Clé de cache dérivée du lockfile, jamais de la branche : le cache accélère, il ne
+          # corrige rien — un pipeline à cache vide doit passer à l'identique.
+          cache: pnpm
+
+      - name: Installer les dépendances
+        run: pnpm install --frozen-lockfile
+
+      - name: Typage
+        run: pnpm typecheck
+
+      - name: Règle de dépendance (dependency-cruiser)
+        run: pnpm lint:arch
+
+      - name: Tests unitaires et d'acceptation
+        # Doubles en mémoire uniquement : aucune I/O, aucun conteneur.
+        run: pnpm --filter @wisper/api exec vitest run --exclude 'test/integration/**'
+
+      - name: Tests du worker
+        # Bibliothèque standard uniquement : quelques secondes, aucune I/O.
+        run: python3 -m unittest discover -s worker/tests -t .
+
+      - name: Tests d'intégration
+        # Postgres jetable monté par testcontainers : état initial connu, détruit à la fin,
+        # jamais de base partagée entre exécutions.
+        run: pnpm --filter @wisper/api exec vitest run test/integration
+
+      - name: Construire les images (une seule fois)
+        run: docker compose build
+
+      # Démarrage réellement exercé : identité non root effective, artefact présent à l'endroit
+      # attendu par la commande de l'image, et dépendances de production résolvables.
+      - name: Vérifier le démarrage des images
+        run: |
+          set -euo pipefail
+
+          test "$(docker run --rm --entrypoint id "wisper/api:${IMAGE_TAG}" -u)" = '1000'
+          test "$(docker run --rm --entrypoint id "wisper/web:${IMAGE_TAG}" -u)" = '101'
+          test "$(docker run --rm --entrypoint id "wisper/worker:${IMAGE_TAG}" -u)" = '10001'
+
+          # L'API trouve son point d'entrée compilé et ses dépendances de production.
+          docker run --rm "wisper/api:${IMAGE_TAG}" \
+            node -e "require('node:fs').accessSync('dist/main.js'); require('@nestjs/core'); require('drizzle-orm'); require('pg');"
+
+          # Le migrateur est bien dans l'image, à l'endroit qu'appelle le service `migrate`.
+          docker run --rm "wisper/api:${IMAGE_TAG}" \
+            node --check dist/shared/infrastructure/persistence/migrate.js
+
+          # Le worker dispose d'un whisper fonctionnel (torch importé) et de ffmpeg.
+          docker run --rm "wisper/worker:${IMAGE_TAG}" whisper --help > /dev/null
+          docker run --rm "wisper/worker:${IMAGE_TAG}" ffmpeg -version > /dev/null
+
+          # nginx valide sa configuration, proxy et repli SPA compris.
+          docker run --rm "wisper/web:${IMAGE_TAG}" nginx -t -c /etc/nginx/nginx.conf
+
+      # Chaque image est exportée en archive : Trivy la scanne sans qu'on lui monte le socket
+      # Docker, qui lui donnerait un accès root à l'hôte. Les archives sont produites une à une
+      # et supprimées après leur scan : celle du worker pèse à elle seule ~3 Gio, et le disque
+      # du runner héberge déjà les étages de build, le magasin pnpm et la base Trivy.
+      #
+      # Seuil décidé à l'avance : HIGH et CRITICAL corrigeables en amont font échouer le
+      # pipeline. Les vulnérabilités sans correctif disponible ne sont pas bloquantes — sinon la
+      # barrière serait rouge en permanence et donc désactivée ; elles se traitent par le
+      # rebuild périodique des images sur une base à jour.
+      - name: Exporter l'image API
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/images"
+          docker save "wisper/api:${IMAGE_TAG}" -o "${RUNNER_TEMP}/images/api.tar"
+
+      - name: Scan Trivy — image API
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          input: ${{ runner.temp }}/images/api.tar
+          # Hors de l'arbre de travail : la base de vulnérabilités ne pollue pas le dépôt
+          # inspecté par le scan de secrets qui suit.
+          cache-dir: ${{ runner.temp }}/trivy-cache
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          vuln-type: os,library
+          exit-code: '1'
+          format: table
+
+      - name: Exporter l'image web
+        run: |
+          set -euo pipefail
+          rm -f "${RUNNER_TEMP}/images/api.tar"
+          docker save "wisper/web:${IMAGE_TAG}" -o "${RUNNER_TEMP}/images/web.tar"
+
+      - name: Scan Trivy — image web
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          input: ${{ runner.temp }}/images/web.tar
+          cache-dir: ${{ runner.temp }}/trivy-cache
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          vuln-type: os,library
+          exit-code: '1'
+          format: table
+
+      - name: Exporter l'image worker
+        run: |
+          set -euo pipefail
+          rm -f "${RUNNER_TEMP}/images/web.tar"
+          docker save "wisper/worker:${IMAGE_TAG}" -o "${RUNNER_TEMP}/images/worker.tar"
+
+      - name: Scan Trivy — image worker
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          input: ${{ runner.temp }}/images/worker.tar
+          cache-dir: ${{ runner.temp }}/trivy-cache
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          vuln-type: os,library
+          exit-code: '1'
+          format: table
+
+      # Scan de secrets sur tout l'historique, pas seulement sur le diff : un secret retiré au
+      # commit suivant reste lisible dans les objets git. Image épinglée par digest, exécutée
+      # sous l'identité du runner, dépôt monté en lecture seule, valeurs masquées en sortie.
+      - name: Scan de secrets (Gitleaks)
+        run: |
+          docker run --rm \
+            --user "$(id -u):$(id -g)" \
+            --volume "${GITHUB_WORKSPACE}:/repo:ro" \
+            zricethezav/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f \
+            git /repo --redact --no-banner --exit-code 1
