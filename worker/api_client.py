@@ -90,6 +90,15 @@ class ApiClient:
             },
         )
 
+    def post_speakers(self, run_id, transcription_id, turns):
+        """Publie les tours de parole du run. Rejouable : l'API recalcule l'attribution."""
+        self._send(
+            "speakers",
+            "POST",
+            self._job_path(run_id, "speakers"),
+            {"transcriptionId": transcription_id, "turns": turns},
+        )
+
     def heartbeat(self, run_id, transcription_id):
         return self._send(
             "heartbeat",

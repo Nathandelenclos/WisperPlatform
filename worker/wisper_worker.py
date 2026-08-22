@@ -31,6 +31,7 @@ import threading
 import time
 from datetime import datetime, timezone
 
+import diarization
 from api_client import ApiClient, ApiError
 from whisper_output import SegmentBatcher, parse_segment_line
 
@@ -255,7 +256,7 @@ def log(level, message, **fields):
     LOGGER.log(level, message, extra={"fields": fields})
 
 
-def run_loop(config, client, stop):
+def run_loop(config, client, stop, diarizer=None):
     """Réclame et traite des jobs jusqu'à ce que `stop` soit armé.
 
     Le disjoncteur vit ici : `failures` compte les `claim` consécutivement perdus et
@@ -312,7 +313,7 @@ def run_loop(config, client, stop):
             stop.wait(delay)
             continue
         failures = 0
-        process_job(config, client, job, stop)
+        process_job(config, client, job, stop, diarizer)
     log(logging.INFO, "worker stopped", workerId=config.worker_id)
 
 
@@ -340,7 +341,7 @@ def _is_usable_job(job):
     )
 
 
-def process_job(config, client, job, stop):
+def process_job(config, client, job, stop, diarizer=None):
     run_id = job["runId"]
     transcription_id = job["transcriptionId"]
     fields = {
@@ -360,6 +361,10 @@ def process_job(config, client, job, stop):
             media_path = os.path.join(workdir, MEDIA_FILENAME)
             client.download_media(job["mediaToken"], media_path)
             reason = _run_whisper(config, client, job, media_path, workdir, stop, fields)
+            if reason is None:
+                # Le média est encore là et le bail bat toujours : c'est le seul moment
+                # où la diarisation coûte moins qu'un second téléchargement.
+                _diarize(client, diarizer, job, media_path, workdir, stop, fields)
         if reason is None:
             client.complete(run_id, transcription_id)
             log(logging.INFO, "job completed", **fields)
@@ -382,6 +387,35 @@ def process_job(config, client, job, stop):
     finally:
         heartbeat.stop()
         shutil.rmtree(workdir, ignore_errors=True)
+
+
+def _diarize(client, diarizer, job, media_path, workdir, stop, fields):
+    """Attribue les tours de parole. Une passe ratée ne coûte jamais le transcript.
+
+    Facultative de bout en bout : un worker sans la capacité n'en dit rien, et toute erreur
+    — décodage, moteur, API — se résume à un avertissement. Le job se conclut normalement,
+    transcript compris ; l'utilisateur perd les locuteurs, pas sa transcription.
+
+    Une liste vide est publiée comme les autres : au rejeu, elle efface l'attribution d'une
+    tentative précédente, que l'API recalcule à partir de ce qu'on lui envoie.
+    """
+    if diarizer is None or stop.is_set():
+        return
+    try:
+        turns = diarizer.run(media_path, workdir)
+        client.post_speakers(job["runId"], job["transcriptionId"], turns)
+    except Exception as error:
+        # Le type suffit : le message d'une bibliothèque tierce peut porter un chemin de
+        # média, qui n'a pas sa place dans le journal.
+        log(logging.WARNING, "diarization failed", detail=type(error).__name__, **fields)
+        return
+    log(
+        logging.INFO,
+        "speakers posted",
+        turnCount=len(turns),
+        speakerCount=len({turn["speaker"] for turn in turns}),
+        **fields,
+    )
 
 
 def _reject_unsupported(job):
@@ -630,7 +664,9 @@ def main():
     for received in (signal.SIGTERM, signal.SIGINT):
         signal.signal(received, lambda *_: stop.set())
     client = ApiClient(config.api_url, config.worker_token)
-    run_loop(config, client, stop)
+    # Une fois pour toutes : la capacité ne change pas d'un job à l'autre, et un worker qui
+    # ne diarise pas ne doit rien payer pour cette passe.
+    run_loop(config, client, stop, diarization.load(os.environ))
     return 0
 
 

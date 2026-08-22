@@ -53,12 +53,18 @@ class StubApi:
         self.pending_jobs = list(jobs)
         self.lease_seconds = lease_seconds
         self.batches = []
+        self.speakers = []
+        # Statut servi par la route des locuteurs : 422 rejoue un run périmé.
+        self.speakers_status = 204
         self.completed = []
         self.failed = []
         self.released = []
         self.heartbeats = 0
         self.media_tokens = []
         self.unauthorized = 0
+        # Ordre d'arrivée des appels : c'est ce qui prouve que la diarisation précède
+        # la conclusion du job.
+        self.order = []
         self.settled = threading.Event()
         self._server = None
         self._lock = threading.Lock()
@@ -85,8 +91,11 @@ class StubApi:
 
     def record(self, name, value=None):
         with self._lock:
+            self.order.append(name)
             if name == "batch":
                 self.batches.append(value)
+            elif name == "speakers":
+                self.speakers.append(value)
             elif name == "heartbeat":
                 self.heartbeats += 1
             elif name == "media":
@@ -155,6 +164,9 @@ def _handler_for(stub):
             if self.path.endswith("/segments"):
                 stub.record("batch", (payload["batchSequence"], payload["segments"]))
                 return self._reply(204)
+            if self.path.endswith("/speakers"):
+                stub.record("speakers", payload["turns"])
+                return self._reply(stub.speakers_status)
             if self.path.endswith("/heartbeat"):
                 stub.record("heartbeat")
                 return self._reply(200, {"leaseExpiresAt": stub.lease()})
@@ -471,7 +483,7 @@ class WorkerLoopTest(unittest.TestCase):
         self.stub.stop()
         shutil.rmtree(self.tmp_root, ignore_errors=True)
 
-    def run_worker(self, environment=None, timeout=30):
+    def run_worker(self, environment=None, timeout=30, diarizer=None):
         for name, value in (environment or {}).items():
             os.environ[name] = value
             self.addCleanup(os.environ.pop, name, None)
@@ -486,7 +498,9 @@ class WorkerLoopTest(unittest.TestCase):
         )
         stop = threading.Event()
         client = ApiClient(config.api_url, config.worker_token)
-        loop = threading.Thread(target=run_loop, args=(config, client, stop), daemon=True)
+        loop = threading.Thread(
+            target=run_loop, args=(config, client, stop, diarizer), daemon=True
+        )
         loop.start()
         self.assertTrue(self.stub.settled.wait(timeout), "le job ne s'est jamais conclu")
         stop.set()
@@ -553,6 +567,138 @@ class WorkerLoopTest(unittest.TestCase):
 
         self.assertEqual([JOB["transcriptionId"]], self.stub.completed)
         self.assertIn("claim response rejected", [event["message"] for event in self.log_lines()])
+
+    def test_posts_the_speaker_turns_before_completing_the_job(self):
+        self.run_worker(diarizer=FakeDiarizer(TURNS))
+
+        self.assertEqual([TURNS], self.stub.speakers)
+        self.assertEqual([JOB["transcriptionId"]], self.stub.completed)
+        self.assertLess(self.stub.order.index("speakers"), self.stub.order.index("completed"))
+        self.assertEqual(2, self._event("speakers posted")["turnCount"])
+
+    def test_a_broken_diarization_never_costs_the_transcript(self):
+        self.run_worker(diarizer=FakeDiarizer(error=RuntimeError("le moteur a fondu")))
+
+        self.assertEqual([], self.stub.speakers)
+        self.assertEqual([JOB["transcriptionId"]], self.stub.completed)
+        self.assertEqual([], self.stub.failed)
+        self.assertEqual(12, len(self.stub.segments))
+        self.assertEqual("warning", self._event("diarization failed")["level"])
+        # Le détail se réduit au type : le message d'une bibliothèque tierce peut porter
+        # un chemin de média, qui n'a rien à faire dans le journal.
+        self.assertNotIn("fondu", self.logs.getvalue())
+
+    def test_a_rejected_speakers_call_never_costs_the_transcript(self):
+        self.stub.speakers_status = 422  # run périmé côté API
+
+        self.run_worker(diarizer=FakeDiarizer(TURNS))
+
+        self.assertEqual([JOB["transcriptionId"]], self.stub.completed)
+        self.assertEqual([], self.stub.failed)
+        self.assertEqual("warning", self._event("diarization failed")["level"])
+
+    def test_the_lease_keeps_beating_during_the_diarization_pass(self):
+        # Un battement par seconde : la passe attend d'en voir un pour rendre la main.
+        self.stub.lease_seconds = 3
+        beaten = threading.Event()
+
+        def wait_for_a_beat():
+            already = self.stub.heartbeats
+            deadline = time.monotonic() + 15
+            while time.monotonic() < deadline and self.stub.heartbeats == already:
+                time.sleep(0.05)
+            if self.stub.heartbeats > already:
+                beaten.set()
+
+        self.run_worker(diarizer=FakeDiarizer(TURNS, before=wait_for_a_beat))
+
+        self.assertTrue(beaten.is_set(), "le bail a cessé de battre pendant la diarisation")
+        self.assertEqual([JOB["transcriptionId"]], self.stub.completed)
+
+    def _event(self, message):
+        for event in self.log_lines():
+            if event["message"] == message:
+                return event
+        self.fail("événement absent du journal : " + message)
+
+
+TURNS = [
+    {"startMs": 0, "endMs": 2000, "speaker": 0},
+    {"startMs": 2000, "endMs": 4000, "speaker": 1},
+]
+
+
+class FakeDiarizer:
+    """Diariseur piloté par le test : rend des tours, ou casse, sans modèle ni audio."""
+
+    def __init__(self, turns=(), error=None, before=None):
+        self.turns = list(turns)
+        self.error = error
+        self.before = before
+        self.calls = []
+
+    def run(self, media_path, workdir):
+        self.calls.append((media_path, workdir))
+        if self.before is not None:
+            self.before()
+        if self.error is not None:
+            raise self.error
+        return self.turns
+
+
+class RecordingSpeakers:
+    """Client réduit à la publication des tours."""
+
+    def __init__(self, error=None):
+        self.posted = []
+        self.error = error
+
+    def post_speakers(self, run_id, transcription_id, turns):
+        self.posted.append((run_id, transcription_id, turns))
+        if self.error is not None:
+            raise self.error
+
+
+class DiarizationPassTest(unittest.TestCase):
+    """La passe est facultative : ce qui compte, c'est quand elle est sautée et à quel prix."""
+
+    def setUp(self):
+        self.logs = io.StringIO()
+        wisper_worker.configure_logging(self.logs)
+        self.client = RecordingSpeakers()
+        self.stop = threading.Event()
+
+    def _diarize(self, diarizer):
+        wisper_worker._diarize(self.client, diarizer, JOB, "media", "workdir", self.stop, {})
+
+    def test_un_worker_sans_capacite_ne_fait_rien_et_ne_dit_rien(self):
+        self._diarize(None)
+
+        self.assertEqual([], self.client.posted)
+        self.assertEqual("", self.logs.getvalue())
+
+    def test_l_arret_demande_saute_la_passe(self):
+        self.stop.set()
+        diarizer = FakeDiarizer(TURNS)
+
+        self._diarize(diarizer)
+
+        self.assertEqual([], diarizer.calls)
+        self.assertEqual([], self.client.posted)
+
+    def test_une_passe_sans_tour_est_publiee_quand_meme(self):
+        # Rejeu : une attribution posée par une tentative précédente doit disparaître si
+        # cette passe-ci ne trouve plus personne. L'API recalcule sur ce qu'on lui envoie.
+        self._diarize(FakeDiarizer([]))
+
+        self.assertEqual([(JOB["runId"], JOB["transcriptionId"], [])], self.client.posted)
+
+    def test_un_echec_de_publication_ne_remonte_pas(self):
+        self.client.error = ApiError("speakers rejected with HTTP 422", status=422)
+
+        self._diarize(FakeDiarizer(TURNS))
+
+        self.assertIn("diarization failed", self.logs.getvalue())
 
 
 class SigtermTest(unittest.TestCase):

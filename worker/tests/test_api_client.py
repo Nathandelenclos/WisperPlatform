@@ -115,6 +115,17 @@ class RequestShapeTest(ClientFixture):
             {"transcriptionId": "t-1", "batchSequence": 4, "segments": batch}, self.last_body()
         )
 
+    def test_post_speakers_carries_the_turns(self):
+        client = self.build(FakeResponse(204))
+        turns = [{"startMs": 0, "endMs": 900, "speaker": 0}]
+
+        client.post_speakers("run-1", "t-1", turns)
+
+        request = self.opener.calls[0]["request"]
+        self.assertEqual("POST", request.get_method())
+        self.assertEqual("http://api.test/api/worker/jobs/run-1/speakers", request.full_url)
+        self.assertEqual({"transcriptionId": "t-1", "turns": turns}, self.last_body())
+
     def test_fail_carries_the_reason(self):
         client = self.build(FakeResponse(204))
 
