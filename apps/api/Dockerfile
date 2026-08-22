@@ -55,6 +55,13 @@ FROM workspace-base AS production-deps
 # optionnels de `better-auth` dans `apps/api/package.json`, ou un pnpm qui ignore les pairs
 # optionnels sous `--prod` ; les deux sont hors de ce correctif.
 
+# Le manifeste est amputé de ses devDependencies avant toute résolution, puis `pnpm deploy`
+# produit `/deploy` : un projet autonome portant son `package.json` et son `node_modules`.
+RUN node -e "const fs=require('node:fs');const p='./apps/api/package.json';const m=JSON.parse(fs.readFileSync(p,'utf8'));delete m.devDependencies;fs.writeFileSync(p, JSON.stringify(m,null,2)+'\n');" \
+ && pnpm install --no-frozen-lockfile --prod --ignore-scripts --filter @wisper/api \
+ && pnpm --filter @wisper/api deploy --legacy --prod --ignore-scripts /deploy \
+ && test -f /deploy/package.json && test -d /deploy/node_modules
+
 
 # --- Runtime ----------------------------------------------------------------------------------
 FROM node:24-bookworm-slim@sha256:3638d9a6fe4030bd716be989438248074489337ba3275657f93595428be4fc03 AS runtime
