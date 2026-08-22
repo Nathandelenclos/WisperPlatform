@@ -53,6 +53,14 @@ services:
       PGDATA: /var/lib/postgresql/data/pgdata
     volumes:
       - postgres-data:/var/lib/postgresql/data
+    # Alias propre à cette pile. Sur un hôte partagé (Dokploy, Portainer, une machine qui
+    # héberge plusieurs compose), le nom court `postgres` existe dans plusieurs projets et le
+    # DNS de Docker peut rendre celui du voisin : l'API se connecterait alors à une base
+    # étrangère. Un préfixe suffit à rendre la collision impossible.
+    networks:
+      default:
+        aliases:
+          - wisper-postgres
     # Aucun port publié : la base n'est joignable que depuis le réseau du projet.
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
@@ -77,7 +85,7 @@ services:
       # Portée réduite au strict nécessaire : pas de `env_file`, donc aucun des trois secrets
       # applicatifs. Une migration SQL n'a besoin que de ces deux variables.
       NODE_ENV: production
-      DATABASE_URL: postgres://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:?}
+      DATABASE_URL: postgres://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@wisper-postgres:5432/${POSTGRES_DB:?}
     user: "1000:1000"
     depends_on:
       postgres:
@@ -107,11 +115,17 @@ services:
       # héritée de `.env` désynchroniserait les trois.
       PORT: "3000"
       # L'API joint Postgres par le nom du service, pas par le `localhost` du `.env` de dev.
-      DATABASE_URL: postgres://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:?}
+      DATABASE_URL: postgres://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@wisper-postgres:5432/${POSTGRES_DB:?}
       # Les envois multipart atterrissent dans `<MEDIA_STORE_DIR>/incoming` avant adoption : le
       # volume doit donc absorber transitoirement deux fois la taille d'un média.
       MEDIA_STORE_DIR: /app/media-store
     user: "1000:1000"
+    # Même raison que pour la base : `api` est le nom le plus courant qui existe, et c'est le
+    # front qui le résout pour proxyfier /api. L'alias porte le nom de la pile.
+    networks:
+      default:
+        aliases:
+          - wisper-api
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -179,7 +193,7 @@ services:
     # Portée minimale : le worker ne reçoit que son jeton porteur et l'URL de l'API. Il ne monte
     # jamais le magasin de médias — il télécharge chaque média par jeton HTTP à courte durée.
     environment:
-      WISPER_API_URL: http://api:3000
+      WISPER_API_URL: http://wisper-api:3000
       # Le secret partagé n'existe que sous un nom, `WORKER_SHARED_TOKEN` : le worker le lit
       # sous le sien, mais `.env` n'en porte qu'une valeur, donc aucune rotation ne peut n'en
       # mettre qu'une moitié à jour et laisser le worker boucler sur des 401.

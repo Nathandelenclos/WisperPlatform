@@ -40,8 +40,16 @@ ENV PATH=/opt/whisper/bin:$PATH \
 # L'utilisateur d'exécution a son UID ET son GID épinglés : le compose impose
 # `user: "10001:10001"`, un GID auto-attribué dans la plage système rendrait la moitié de cette
 # déclaration fantôme, et les répertoires attribués ci-dessous ne correspondraient plus.
+# `apt-get upgrade` avant l'installation : l'image amont est épinglée par digest, mais Debian
+# publie ses correctifs plus vite qu'elle n'est reconstruite (au 2026-08-22, util-linux y porte
+# CVE-2026-53612, déjà corrigée en amont). Le scan de la CI est bloquant et une gate ne se
+# contourne pas.
+# ponytail: cette couche résout ses versions au moment du build, donc elle n'est pas
+# reproductible à l'octet. Sortie : revenir au seul digest amont dès qu'il repasse à zéro HIGH.
 RUN apt-get update \
+    && apt-get upgrade -y --no-install-recommends \
     && apt-get install -y --no-install-recommends ffmpeg \
+    && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
     && rm -rf /usr/local/lib/python3.12/site-packages/pip \
               /usr/local/lib/python3.12/site-packages/pip-* \
