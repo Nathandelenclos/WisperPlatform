@@ -90,3 +90,10 @@ export class TranscriptionNotCorrectableError extends DomainError {
     super('TRANSCRIPTION_NOT_CORRECTABLE', message);
   }
 }
+
+/** Un bail dure un nombre positif de secondes : rien d'autre n'est une fenêtre de travail. */
+export class InvalidLeaseDurationError extends DomainError {
+  constructor(message: string) {
+    super('INVALID_LEASE_DURATION', message);
+  }
+}

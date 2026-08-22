@@ -4,6 +4,7 @@ import type { TranscriptionCatalog } from '../../src/transcription/application/p
 import type { TranscriptionQueue } from '../../src/transcription/application/ports/transcription-queue';
 import type { TranscriptionRepository } from '../../src/transcription/application/ports/transcription-repository';
 import { MediaAsset } from '../../src/transcription/domain/media-asset';
+import { ConcurrentTranscriptionWriteError } from '../../src/transcription/application/errors';
 import { TimeRange } from '../../src/transcription/domain/time-range';
 import { Transcription } from '../../src/transcription/domain/transcription';
 import {
@@ -15,6 +16,8 @@ import {
  * Propriétaires utilisés par la suite. Un adaptateur réel doit garantir leur existence avant de
  * rejouer la suite (contrainte de clé étrangère vers la table des comptes).
  */
+// Instant d'arrivée d'un lot de segments, fourni par l'horloge applicative.
+const APPENDED_AT = new Date('2026-03-01T10:00:30.000Z');
 export const CONTRACT_OWNER_A = '4a1b7d64-0000-4000-8000-0000000000aa';
 export const CONTRACT_OWNER_B = '4a1b7d64-0000-4000-8000-0000000000bb';
 
@@ -27,6 +30,8 @@ export type TranscriptionRepositoryHarness = {
 
 const REQUESTED_AT = new Date('2026-04-02T08:00:00.000Z');
 const LEASE_UNTIL = new Date('2026-04-02T08:05:00.000Z');
+// LEASE_UNTIL = REQUESTED_AT + LEASE_SECONDS : la durée est ce que l'aggregate accepte.
+const LEASE_SECONDS = 300;
 
 function uuid(suffix: string): string {
   return `7c9e6679-0000-4000-8000-${suffix.padStart(12, '0')}`;
@@ -82,10 +87,11 @@ export function describeTranscriptionRepositoryContract(
         transcription.startTranscribing({
           runId: uuid('a1'),
           workerId: 'worker-1',
-          leaseExpiresAt: LEASE_UNTIL,
+          leaseSeconds: LEASE_SECONDS,
           at: REQUESTED_AT,
         });
         transcription.appendTranscribedSegments({
+          at: APPENDED_AT,
           runId: uuid('a1'),
           batchSequence: 1,
           segments: [
@@ -94,6 +100,7 @@ export function describeTranscriptionRepositoryContract(
           ],
         });
         transcription.appendTranscribedSegments({
+          at: APPENDED_AT,
           runId: uuid('a1'),
           batchSequence: 2,
           segments: [{ range: TimeRange.fromMilliseconds(3_000, 4_200), text: 'et bienvenue' }],
@@ -135,10 +142,11 @@ export function describeTranscriptionRepositoryContract(
         transcription.startTranscribing({
           runId: uuid('a3'),
           workerId: 'worker-1',
-          leaseExpiresAt: LEASE_UNTIL,
+          leaseSeconds: LEASE_SECONDS,
           at: REQUESTED_AT,
         });
         transcription.appendTranscribedSegments({
+          at: APPENDED_AT,
           runId: uuid('a3'),
           batchSequence: 1,
           segments: [{ range: TimeRange.fromMilliseconds(0, 1_000), text: 'un' }],
@@ -146,6 +154,7 @@ export function describeTranscriptionRepositoryContract(
         await harness.repository.save(transcription);
 
         transcription.appendTranscribedSegments({
+          at: APPENDED_AT,
           runId: uuid('a3'),
           batchSequence: 2,
           segments: [{ range: TimeRange.fromMilliseconds(1_000, 2_000), text: 'deux' }],
@@ -160,6 +169,57 @@ export function describeTranscriptionRepositoryContract(
 
       it('rend null pour un aggregate inconnu', async () => {
         expect(await harness.repository.findById(uuid('ff'))).toBeNull();
+      });
+
+      it('refuse la seconde de deux écritures parties du même état', async () => {
+        // Cas nominal de la plateforme : l'utilisateur corrige un segment pendant que le
+        // worker publie un lot. Sans refus, la dernière écriture efface l'autre en silence.
+        await harness.repository.save(aRequest({ id: uuid('2a') }));
+        const first = await harness.repository.findById(uuid('2a'));
+        const second = await harness.repository.findById(uuid('2a'));
+        if (first === null || second === null) throw new Error('aggregate introuvable');
+
+        first.startTranscribing({
+          runId: uuid('a2a'),
+          workerId: 'worker-1',
+          leaseSeconds: LEASE_SECONDS,
+          at: REQUESTED_AT,
+        });
+        await harness.repository.save(first);
+
+        second.startTranscribing({
+          runId: uuid('b2a'),
+          workerId: 'worker-2',
+          leaseSeconds: LEASE_SECONDS,
+          at: REQUESTED_AT,
+        });
+
+        await expect(harness.repository.save(second)).rejects.toThrow(
+          ConcurrentTranscriptionWriteError,
+        );
+        // L'état gagnant est bien celui du premier écrivain, intact.
+        expect((await harness.repository.findById(uuid('2a')))?.state().claimedBy).toBe('worker-1');
+      });
+
+      it('laisse un même aggregate rechargé écrire plusieurs fois de suite', async () => {
+        await harness.repository.save(aRequest({ id: uuid('2b') }));
+        const transcription = await harness.repository.findById(uuid('2b'));
+        if (transcription === null) throw new Error('aggregate introuvable');
+
+        transcription.startTranscribing({
+          runId: uuid('a2b'),
+          workerId: 'worker-1',
+          leaseSeconds: LEASE_SECONDS,
+          at: REQUESTED_AT,
+        });
+        await harness.repository.save(transcription);
+        transcription.renewLease({
+          runId: uuid('a2b'),
+          leaseSeconds: LEASE_SECONDS,
+          at: REQUESTED_AT,
+        });
+
+        await expect(harness.repository.save(transcription)).resolves.toBeUndefined();
       });
     });
 
@@ -245,7 +305,7 @@ export function describeTranscriptionRepositoryContract(
         transcription.startTranscribing({
           runId: uuid('a15'),
           workerId: 'worker-1',
-          leaseExpiresAt: LEASE_UNTIL,
+          leaseSeconds: LEASE_SECONDS,
           at: REQUESTED_AT,
         });
         await harness.repository.save(transcription);
@@ -265,21 +325,21 @@ export function describeTranscriptionRepositoryContract(
         abandoned.startTranscribing({
           runId: uuid('a16'),
           workerId: 'worker-1',
-          leaseExpiresAt: new Date('2026-04-02T08:01:00.000Z'),
+          leaseSeconds: 60,
           at: REQUESTED_AT,
         });
         const alsoAbandoned = aRequest({ id: uuid('17') });
         alsoAbandoned.startTranscribing({
           runId: uuid('a17'),
           workerId: 'worker-2',
-          leaseExpiresAt: new Date('2026-04-02T08:00:30.000Z'),
+          leaseSeconds: 30,
           at: REQUESTED_AT,
         });
         const alive = aRequest({ id: uuid('18') });
         alive.startTranscribing({
           runId: uuid('a18'),
           workerId: 'worker-3',
-          leaseExpiresAt: new Date('2026-04-02T09:00:00.000Z'),
+          leaseSeconds: 3_600,
           at: REQUESTED_AT,
         });
         await harness.repository.save(abandoned);
@@ -301,7 +361,7 @@ export function describeTranscriptionRepositoryContract(
           transcription.startTranscribing({
             runId: uuid(`a${suffix}`),
             workerId: 'worker-1',
-            leaseExpiresAt: new Date('2026-04-02T08:01:00.000Z'),
+            leaseSeconds: 60,
             at: REQUESTED_AT,
           });
           await harness.repository.save(transcription);
@@ -327,10 +387,11 @@ export function describeTranscriptionRepositoryContract(
         older.startTranscribing({
           runId: uuid('a30'),
           workerId: 'worker-1',
-          leaseExpiresAt: LEASE_UNTIL,
+          leaseSeconds: LEASE_SECONDS,
           at: REQUESTED_AT,
         });
         older.appendTranscribedSegments({
+          at: APPENDED_AT,
           runId: uuid('a30'),
           batchSequence: 1,
           segments: [
@@ -373,7 +434,7 @@ export function describeTranscriptionRepositoryContract(
         transcription.startTranscribing({
           runId: uuid('a33'),
           workerId: 'worker-1',
-          leaseExpiresAt: LEASE_UNTIL,
+          leaseSeconds: LEASE_SECONDS,
           at: REQUESTED_AT,
         });
         transcription.fail({ runId: uuid('a33'), reason: 'whisper introuvable', at: LEASE_UNTIL });

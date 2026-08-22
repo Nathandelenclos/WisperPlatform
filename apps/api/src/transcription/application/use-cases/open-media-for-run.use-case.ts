@@ -30,15 +30,9 @@ export class OpenMediaForRunUseCase {
     }
 
     const transcription = await this.repository.findById(granted.transcriptionId);
-    // Un laissez-passer ne vaut que pour la tentative en cours : dès qu'elle est remplacée,
-    // achevée ou échouée, il ne donne plus rien.
-    const state = transcription === null ? null : transcription.state();
-    if (
-      transcription === null ||
-      state === null ||
-      state.status !== 'transcribing' ||
-      state.currentRunId !== granted.runId
-    ) {
+    // Un laissez-passer ne vaut que pour la tentative en cours : c'est l'aggregate qui le dit,
+    // pour que le contrôle d'accès suive l'invariant s'il se durcit.
+    if (transcription === null || !transcription.grantsMediaAccessTo(granted.runId)) {
       this.logger.warn('media access refused', {
         reason: 'stale-run',
         transcriptionId: granted.transcriptionId,

@@ -1,5 +1,6 @@
 import {
   IllegalTranscriptionStateError,
+  InvalidLeaseDurationError,
   OutOfOrderBatchError,
   OverlappingSegmentsError,
   SegmentNotFoundError,
@@ -55,6 +56,8 @@ export class Transcription {
   private failureReason: string | null;
   private completedAt: Date | null;
   private segmentList: Segment[];
+  /** Copie interne : l'instant de la demande n'est jamais la `Date` de l'appelant. */
+  private readonly requestedAtInstant: Date;
   private readonly events: TranscriptionEvent[] = [];
 
   private constructor(
@@ -62,7 +65,7 @@ export class Transcription {
     readonly ownerId: string,
     readonly media: MediaAsset,
     readonly settings: TranscriptionSettings,
-    readonly requestedAt: Date,
+    requestedAt: Date,
     state: {
       status: TranscriptionStatus;
       attempts: number;
@@ -75,14 +78,17 @@ export class Transcription {
       segments: Segment[];
     },
   ) {
+    // Instants recopiés à l'entrée comme ils le sont à la sortie : l'appelant qui garde la
+    // `Date` qu'il a passée ne doit pas garder une prise sur l'état de l'aggregate.
+    this.requestedAtInstant = new Date(requestedAt);
     this.status = state.status;
     this.attempts = state.attempts;
     this.currentRunId = state.currentRunId;
     this.claimedBy = state.claimedBy;
-    this.leaseExpiresAt = state.leaseExpiresAt;
+    this.leaseExpiresAt = state.leaseExpiresAt === null ? null : new Date(state.leaseExpiresAt);
     this.lastAppliedBatchSequence = state.lastAppliedBatchSequence;
     this.failureReason = state.failureReason;
-    this.completedAt = state.completedAt;
+    this.completedAt = state.completedAt === null ? null : new Date(state.completedAt);
     this.segmentList = state.segments;
   }
 
@@ -150,8 +156,17 @@ export class Transcription {
     return this.segmentList;
   }
 
-  /** Une nouvelle tentative démarre : les segments de la tentative précédente sont abandonnés. */
-  startTranscribing(p: { runId: string; workerId: string; leaseExpiresAt: Date; at: Date }): void {
+  /** Échéance du bail en cours, copiée : `null` hors d'une tentative en cours. */
+  get leaseExpiry(): Date | null {
+    return this.leaseExpiresAt === null ? null : new Date(this.leaseExpiresAt);
+  }
+
+  /**
+   * Une nouvelle tentative démarre : les segments de la tentative précédente sont abandonnés.
+   * L'aggregate dérive lui-même l'échéance du bail — « un bail est une fenêtre bornée qui
+   * commence maintenant » est une règle du contexte, pas un calcul d'appelant.
+   */
+  startTranscribing(p: { runId: string; workerId: string; leaseSeconds: number; at: Date }): void {
     if (this.status !== 'pending') {
       throw new IllegalTranscriptionStateError(
         `une transcription au statut ${this.status} ne peut pas démarrer`,
@@ -161,7 +176,7 @@ export class Transcription {
     this.attempts += 1;
     this.currentRunId = p.runId;
     this.claimedBy = p.workerId;
-    this.leaseExpiresAt = p.leaseExpiresAt;
+    this.leaseExpiresAt = Transcription.leaseWindow(p.at, p.leaseSeconds);
     this.lastAppliedBatchSequence = 0;
     this.failureReason = null;
     this.completedAt = null;
@@ -183,6 +198,7 @@ export class Transcription {
     runId: string;
     batchSequence: number;
     segments: { range: TimeRange; text: string }[];
+    at: Date;
   }): void {
     this.assertRunIsInProgress(p.runId, 'ajouter des segments');
     if (p.batchSequence <= this.lastAppliedBatchSequence) {
@@ -223,14 +239,14 @@ export class Transcription {
       transcriptionId: this.id,
       ownerId: this.ownerId,
       segments: appended.map((segment) => segment.state()),
-      occurredAt: new Date(),
+      occurredAt: p.at,
     });
   }
 
   /** Le worker donne signe de vie : le bail est repoussé, sans événement métier. */
-  renewLease(p: { runId: string; leaseExpiresAt: Date }): void {
+  renewLease(p: { runId: string; leaseSeconds: number; at: Date }): void {
     this.assertRunIsInProgress(p.runId, 'renouveler le bail');
-    this.leaseExpiresAt = p.leaseExpiresAt;
+    this.leaseExpiresAt = Transcription.leaseWindow(p.at, p.leaseSeconds);
   }
 
   /** Une transcription sans aucun segment est légale : le média peut ne contenir aucune parole. */
@@ -303,6 +319,15 @@ export class Transcription {
     });
   }
 
+  /**
+   * Ce laissez-passer ouvre-t-il encore le média ? La question appartient au domaine : la
+   * réponse est le même invariant que celui qui autorise un run à écrire, et le contrôle
+   * d'accès au média doit suivre l'aggregate quand cet invariant se durcit.
+   */
+  grantsMediaAccessTo(runId: string): boolean {
+    return this.status === 'transcribing' && this.currentRunId === runId;
+  }
+
   render(format: SubtitleFormat): string {
     return renderSubtitles(this.segmentList, format);
   }
@@ -326,11 +351,13 @@ export class Transcription {
       attempts: this.attempts,
       currentRunId: this.currentRunId,
       claimedBy: this.claimedBy,
-      leaseExpiresAt: this.leaseExpiresAt,
+      // `Date` est mutable : sans copie, un appelant refermerait un bail sans passer par
+      // une méthode métier. Le constructeur et `restore` copient symétriquement à l'entrée.
+      leaseExpiresAt: this.leaseExpiresAt === null ? null : new Date(this.leaseExpiresAt),
       lastAppliedBatchSequence: this.lastAppliedBatchSequence,
       failureReason: this.failureReason,
-      requestedAt: this.requestedAt,
-      completedAt: this.completedAt,
+      requestedAt: new Date(this.requestedAtInstant),
+      completedAt: this.completedAt === null ? null : new Date(this.completedAt),
       segments: this.segmentList.map((segment) => segment.state()),
     };
   }
@@ -359,8 +386,22 @@ export class Transcription {
         `impossible de ${intent} : la transcription est au statut ${this.status}`,
       );
     }
-    if (this.currentRunId !== runId) {
+    if (!this.grantsMediaAccessTo(runId)) {
       throw new StaleRunError(`impossible de ${intent} : cette tentative a été remplacée`);
     }
+  }
+
+  /**
+   * Politique du contexte : un bail est une fenêtre bornée qui commence à l'instant donné.
+   * Une durée nulle ou négative n'est pas un bail — la refuser ici évite qu'un appelant pose
+   * une échéance dans le passé, ou dans dix ans.
+   */
+  private static leaseWindow(at: Date, leaseSeconds: number): Date {
+    if (!Number.isFinite(leaseSeconds) || leaseSeconds <= 0) {
+      throw new InvalidLeaseDurationError(
+        `un bail dure un nombre positif de secondes, reçu ${leaseSeconds}`,
+      );
+    }
+    return new Date(at.getTime() + leaseSeconds * 1_000);
   }
 }

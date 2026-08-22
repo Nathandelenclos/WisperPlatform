@@ -46,13 +46,17 @@ export class ClaimNextTranscriptionUseCase {
     }
 
     const runId = this.idGenerator.next();
-    const leaseExpiresAt = new Date(now.getTime() + this.options.leaseSeconds * 1_000);
     transcription.startTranscribing({
       runId,
       workerId: command.workerId,
-      leaseExpiresAt,
+      leaseSeconds: this.options.leaseSeconds,
       at: now,
     });
+    // L'échéance est celle que l'aggregate a posée, pas une seconde copie du même calcul.
+    const leaseExpiresAt = transcription.leaseExpiry;
+    if (leaseExpiresAt === null) {
+      throw new Error('une tentative qui démarre porte toujours un bail');
+    }
     await this.repository.save(transcription);
     await this.publisher.publish(transcription.pullEvents());
 

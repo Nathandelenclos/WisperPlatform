@@ -190,8 +190,9 @@ const MULTIPART_MAX_FIELDS = 8;
       useFactory: (
         repository: TranscriptionRepository,
         publisher: TranscriptionEventPublisher,
-      ) => new AppendTranscribedSegmentsUseCase(repository, publisher),
-      inject: [TRANSCRIPTION_REPOSITORY, TRANSCRIPTION_EVENT_PUBLISHER],
+        clock: Clock,
+      ) => new AppendTranscribedSegmentsUseCase(repository, publisher, clock),
+      inject: [TRANSCRIPTION_REPOSITORY, TRANSCRIPTION_EVENT_PUBLISHER, CLOCK],
     },
     {
       provide: RenewTranscriptionLeaseUseCase,

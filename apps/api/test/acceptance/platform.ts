@@ -102,7 +102,7 @@ export function aPlatform(startedAt: Date = NOW): TranscriptionPlatform {
       idGenerator,
       { leaseSeconds: LEASE_SECONDS, reservationSeconds: RESERVATION_SECONDS },
     ),
-    appendTranscribedSegments: new AppendTranscribedSegmentsUseCase(repository, publisher),
+    appendTranscribedSegments: new AppendTranscribedSegmentsUseCase(repository, publisher, clock),
     renewTranscriptionLease: new RenewTranscriptionLeaseUseCase(repository, clock, {
       leaseSeconds: LEASE_SECONDS,
     }),

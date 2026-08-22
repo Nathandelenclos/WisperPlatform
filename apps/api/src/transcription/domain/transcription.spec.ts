@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import {
   IllegalTranscriptionStateError,
+  InvalidLeaseDurationError,
   OutOfOrderBatchError,
   OverlappingSegmentsError,
   SegmentNotFoundError,
@@ -15,6 +16,10 @@ import { TranscriptionSettings } from './transcription-settings';
 
 const REQUESTED_AT = new Date('2026-03-01T10:00:00.000Z');
 const LEASE_UNTIL = new Date('2026-03-01T10:01:00.000Z');
+// Instant fourni par l'horloge applicative quand un lot de segments arrive.
+const SEGMENTS_AT = new Date('2026-03-01T10:00:30.000Z');
+// Durée d'un bail dans les tests : LEASE_UNTIL = REQUESTED_AT + LEASE_SECONDS.
+const LEASE_SECONDS = 60;
 
 function aPendingTranscription(): Transcription {
   const transcription = Transcription.request({
@@ -38,7 +43,7 @@ function aStartedTranscription(runId = 'run-1'): Transcription {
   transcription.startTranscribing({
     runId,
     workerId: 'worker-1',
-    leaseExpiresAt: LEASE_UNTIL,
+    leaseSeconds: LEASE_SECONDS,
     at: REQUESTED_AT,
   });
   transcription.pullEvents();
@@ -98,7 +103,7 @@ describe('Transcription — démarrage d\'une tentative', () => {
     transcription.startTranscribing({
       runId: 'run-1',
       workerId: 'worker-1',
-      leaseExpiresAt: LEASE_UNTIL,
+      leaseSeconds: LEASE_SECONDS,
       at: REQUESTED_AT,
     });
 
@@ -123,6 +128,7 @@ describe('Transcription — démarrage d\'une tentative', () => {
   it('abandonne les segments de la tentative précédente', () => {
     const transcription = aStartedTranscription();
     transcription.appendTranscribedSegments({
+      at: SEGMENTS_AT,
       runId: 'run-1',
       batchSequence: 1,
       segments: batch([0, 1_000, 'perdu']),
@@ -133,7 +139,7 @@ describe('Transcription — démarrage d\'une tentative', () => {
     transcription.startTranscribing({
       runId: 'run-2',
       workerId: 'worker-2',
-      leaseExpiresAt: LEASE_UNTIL,
+      leaseSeconds: LEASE_SECONDS,
       at: REQUESTED_AT,
     });
 
@@ -150,7 +156,7 @@ describe('Transcription — démarrage d\'une tentative', () => {
       transcription.startTranscribing({
         runId: 'run-2',
         workerId: 'worker-2',
-        leaseExpiresAt: LEASE_UNTIL,
+        leaseSeconds: LEASE_SECONDS,
         at: REQUESTED_AT,
       }),
     ).toThrow(IllegalTranscriptionStateError);
@@ -167,11 +173,13 @@ describe('Transcription — flux de segments', () => {
 
   it('numérote les segments dans l\'ordre d\'arrivée, lot après lot', () => {
     transcription.appendTranscribedSegments({
+      at: SEGMENTS_AT,
       runId: 'run-1',
       batchSequence: 1,
       segments: batch([0, 1_000, 'un'], [1_000, 2_000, 'deux']),
     });
     transcription.appendTranscribedSegments({
+      at: SEGMENTS_AT,
       runId: 'run-1',
       batchSequence: 2,
       segments: batch([2_500, 3_000, 'trois']),
@@ -187,6 +195,7 @@ describe('Transcription — flux de segments', () => {
 
   it('annonce uniquement les segments du lot qui vient d\'arriver', () => {
     transcription.appendTranscribedSegments({
+      at: SEGMENTS_AT,
       runId: 'run-1',
       batchSequence: 1,
       segments: batch([0, 1_000, 'un']),
@@ -194,6 +203,7 @@ describe('Transcription — flux de segments', () => {
     transcription.pullEvents();
 
     transcription.appendTranscribedSegments({
+      at: SEGMENTS_AT,
       runId: 'run-1',
       batchSequence: 2,
       segments: batch([1_000, 2_000, 'deux']),
@@ -201,16 +211,20 @@ describe('Transcription — flux de segments', () => {
 
     const events = transcription.pullEvents();
     expect(events).toHaveLength(1);
-    expect(events[0]).toMatchObject({
+    // `toEqual` et non `toMatchObject` : c'est l'omission d'`occurredAt` qui avait laissé une
+    // horloge murale s'installer dans l'aggregate.
+    expect(events[0]).toEqual({
       name: 'transcription.segments-appended',
       transcriptionId: transcription.id,
       ownerId: 'owner-a',
       segments: [{ ordinal: 2, startMs: 1_000, endMs: 2_000, text: 'deux', corrected: false }],
+      occurredAt: SEGMENTS_AT,
     });
   });
 
   it('ignore en silence le rejeu d\'un lot déjà appliqué', () => {
     const applied = {
+      at: SEGMENTS_AT,
       runId: 'run-1',
       batchSequence: 1,
       segments: batch([0, 1_000, 'un']),
@@ -227,6 +241,7 @@ describe('Transcription — flux de segments', () => {
   it('refuse un lot qui saute une place dans la séquence', () => {
     expect(() =>
       transcription.appendTranscribedSegments({
+        at: SEGMENTS_AT,
         runId: 'run-1',
         batchSequence: 2,
         segments: batch([0, 1_000, 'un']),
@@ -237,6 +252,7 @@ describe('Transcription — flux de segments', () => {
   it('refuse des segments qui se chevauchent dans le lot', () => {
     expect(() =>
       transcription.appendTranscribedSegments({
+        at: SEGMENTS_AT,
         runId: 'run-1',
         batchSequence: 1,
         segments: batch([0, 1_500, 'un'], [1_000, 2_000, 'deux']),
@@ -246,6 +262,7 @@ describe('Transcription — flux de segments', () => {
 
   it('refuse un lot qui revient avant le dernier segment déjà reçu', () => {
     transcription.appendTranscribedSegments({
+      at: SEGMENTS_AT,
       runId: 'run-1',
       batchSequence: 1,
       segments: batch([0, 2_000, 'un']),
@@ -253,6 +270,7 @@ describe('Transcription — flux de segments', () => {
 
     expect(() =>
       transcription.appendTranscribedSegments({
+        at: SEGMENTS_AT,
         runId: 'run-1',
         batchSequence: 2,
         segments: batch([1_999, 3_000, 'deux']),
@@ -263,6 +281,7 @@ describe('Transcription — flux de segments', () => {
   it('refuse un lot venu d\'une tentative remplacée', () => {
     expect(() =>
       transcription.appendTranscribedSegments({
+        at: SEGMENTS_AT,
         runId: 'run-perime',
         batchSequence: 1,
         segments: batch([0, 1_000, 'un']),
@@ -275,6 +294,7 @@ describe('Transcription — flux de segments', () => {
 
     expect(() =>
       transcription.appendTranscribedSegments({
+        at: SEGMENTS_AT,
         runId: 'run-1',
         batchSequence: 1,
         segments: batch([0, 1_000, 'un']),
@@ -283,8 +303,9 @@ describe('Transcription — flux de segments', () => {
   });
 
   it('fait avancer la séquence même quand le lot est vide de parole', () => {
-    transcription.appendTranscribedSegments({ runId: 'run-1', batchSequence: 1, segments: [] });
+    transcription.appendTranscribedSegments({ at: SEGMENTS_AT, runId: 'run-1', batchSequence: 1, segments: [] });
     transcription.appendTranscribedSegments({
+      at: SEGMENTS_AT,
       runId: 'run-1',
       batchSequence: 2,
       segments: batch([0, 1_000, 'un']),
@@ -298,11 +319,14 @@ describe('Transcription — flux de segments', () => {
 describe('Transcription — bail', () => {
   it('repousse le bail du run courant sans produire d\'événement', () => {
     const transcription = aStartedTranscription();
+    // Le bail court LEASE_SECONDS à partir de l'instant du signe de vie, dérivé par l'aggregate.
+    const renewedAt = new Date('2026-03-01T10:01:00.000Z');
     const renewed = new Date('2026-03-01T10:02:00.000Z');
 
-    transcription.renewLease({ runId: 'run-1', leaseExpiresAt: renewed });
+    transcription.renewLease({ runId: 'run-1', leaseSeconds: LEASE_SECONDS, at: renewedAt });
 
     expect(transcription.state().leaseExpiresAt).toEqual(renewed);
+    expect(transcription.leaseExpiry).toEqual(renewed);
     expect(transcription.pullEvents()).toEqual([]);
   });
 
@@ -310,8 +334,18 @@ describe('Transcription — bail', () => {
     const transcription = aStartedTranscription();
 
     expect(() =>
-      transcription.renewLease({ runId: 'autre-run', leaseExpiresAt: LEASE_UNTIL }),
+      transcription.renewLease({ runId: 'autre-run', leaseSeconds: LEASE_SECONDS, at: REQUESTED_AT }),
     ).toThrow(StaleRunError);
+  });
+
+  it('refuse une durée de bail qui n\'en est pas une', () => {
+    const transcription = aStartedTranscription();
+
+    for (const leaseSeconds of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(() =>
+        transcription.renewLease({ runId: 'run-1', leaseSeconds, at: REQUESTED_AT }),
+      ).toThrow(InvalidLeaseDurationError);
+    }
   });
 });
 
@@ -320,6 +354,7 @@ describe('Transcription — complétion', () => {
   it('achève la transcription et libère le bail', () => {
     const transcription = aStartedTranscription();
     transcription.appendTranscribedSegments({
+      at: SEGMENTS_AT,
       runId: 'run-1',
       batchSequence: 1,
       segments: batch([0, 1_000, 'un']),
@@ -461,6 +496,7 @@ describe('Transcription — correction', () => {
   function aCompletedTranscription(): Transcription {
     const transcription = aStartedTranscription();
     transcription.appendTranscribedSegments({
+      at: SEGMENTS_AT,
       runId: 'run-1',
       batchSequence: 1,
       segments: batch([0, 1_000, 'bonjur'], [1_000, 2_000, 'a tous']),
@@ -560,6 +596,7 @@ describe('Transcription — aller-retour de persistance', () => {
   it('reprend le fil du flux de segments après une relecture', () => {
     const original = aStartedTranscription();
     original.appendTranscribedSegments({
+      at: SEGMENTS_AT,
       runId: 'run-1',
       batchSequence: 1,
       segments: batch([0, 1_000, 'un']),
@@ -567,6 +604,7 @@ describe('Transcription — aller-retour de persistance', () => {
 
     const reloaded = Transcription.restore(original.state());
     reloaded.appendTranscribedSegments({
+      at: SEGMENTS_AT,
       runId: 'run-1',
       batchSequence: 2,
       segments: batch([1_000, 2_000, 'deux']),

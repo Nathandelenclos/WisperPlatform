@@ -50,7 +50,12 @@ describe('Scénario : le worker envoie ses segments au fil de l\'eau', () => {
       'transcription.segments-appended',
     ]);
     const [firstBatch, secondBatch] = platform.publisher.published;
-    expect(firstBatch).toMatchObject({ transcriptionId, ownerId: OWNER });
+    // L'instant diffusé au navigateur doit venir de l'horloge applicative, jamais de l'horloge murale.
+    expect(firstBatch).toMatchObject({
+      transcriptionId,
+      ownerId: OWNER,
+      occurredAt: platform.clock.now(),
+    });
     expect(firstBatch.name === 'transcription.segments-appended' ? firstBatch.segments : []).toEqual(
       view.segments.slice(0, 2),
     );
