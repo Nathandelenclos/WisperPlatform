@@ -25,7 +25,11 @@ x-hardened: &hardened
   restart: unless-stopped
 
 services:
-  postgres:
+  # Nom préfixé, et non `postgres` : sur un hôte qui héberge plusieurs piles, le nom court
+  # existe chez les voisins et le DNS de Docker peut rendre le leur — une application qui se
+  # connecterait à la base d'à côté est un incident silencieux. Le nom du service EST le nom
+  # DNS : le préfixer suffit, là où un alias peut être réécrit par l'orchestrateur.
+  wisper-postgres:
     image: postgres:17-alpine@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73
     # Seul service hors de l'ancre `x-hardened`, et c'est un plafond assumé. L'entrypoint
     # officiel démarre en root pour initialiser PGDATA dans un volume neuf appartenant à root,
@@ -53,14 +57,6 @@ services:
       PGDATA: /var/lib/postgresql/data/pgdata
     volumes:
       - postgres-data:/var/lib/postgresql/data
-    # Alias propre à cette pile. Sur un hôte partagé (Dokploy, Portainer, une machine qui
-    # héberge plusieurs compose), le nom court `postgres` existe dans plusieurs projets et le
-    # DNS de Docker peut rendre celui du voisin : l'API se connecterait alors à une base
-    # étrangère. Un préfixe suffit à rendre la collision impossible.
-    networks:
-      default:
-        aliases:
-          - wisper-postgres
     # Aucun port publié : la base n'est joignable que depuis le réseau du projet.
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
@@ -88,7 +84,7 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@wisper-postgres:5432/${POSTGRES_DB:?}
     user: "1000:1000"
     depends_on:
-      postgres:
+      wisper-postgres:
         condition: service_healthy
     tmpfs:
       - /tmp:size=16m,mode=1777
@@ -96,7 +92,9 @@ services:
     mem_limit: 512m
     pids_limit: 128
 
-  api:
+  # Même raison : `api` est le nom le plus courant qui existe, et c'est celui que le front
+  # résout pour relayer /api. Un 502 vers le conteneur d'un voisin est le symptôme observé.
+  wisper-api:
     <<: *hardened
     image: wisper/api:${IMAGE_TAG:-dev}
     build:
@@ -120,12 +118,6 @@ services:
       # volume doit donc absorber transitoirement deux fois la taille d'un média.
       MEDIA_STORE_DIR: /app/media-store
     user: "1000:1000"
-    # Même raison que pour la base : `api` est le nom le plus courant qui existe, et c'est le
-    # front qui le résout pour proxyfier /api. L'alias porte le nom de la pile.
-    networks:
-      default:
-        aliases:
-          - wisper-api
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -164,7 +156,7 @@ services:
     # nginx résout l'amont `api` à l'exécution : il n'a pas besoin que l'API soit saine pour
     # démarrer, seulement que le service existe dans le projet.
     depends_on:
-      api:
+      wisper-api:
         condition: service_started
     ports:
       - "${WEB_PORT:-8080}:8080"
@@ -209,7 +201,7 @@ services:
       TMPDIR: /var/tmp/wisper
     user: "10001:10001"
     depends_on:
-      api:
+      wisper-api:
         condition: service_healthy
     # Le worker traite SIGTERM comme un arrêt propre : on lui laisse le temps de signaler
     # l'échec du job en cours plutôt que de laisser un bail expirer tout seul.
