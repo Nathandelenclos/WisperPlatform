@@ -39,12 +39,6 @@ x-worker-env: &worker-env
 
 x-worker-base: &worker-base
   <<: *hardened
-  image: wisper/worker:${IMAGE_TAG:-dev}
-  build:
-    context: ./worker
-    dockerfile: Dockerfile
-    args:
-      VCS_REF: ${VCS_REF:-unknown}
   # Portée minimale : le worker ne reçoit que son jeton porteur et l'URL de l'API. Il ne monte
   # jamais le magasin de médias — il télécharge chaque média par jeton HTTP à courte durée.
   user: "10001:10001"
@@ -219,6 +213,14 @@ services:
   # machine qui a une carte, pour ne pas se disputer la RAM avec le worker GPU.
   worker:
     <<: *worker-base
+    image: wisper/worker:${IMAGE_TAG:-dev}
+    build:
+      context: ./worker
+      dockerfile: Dockerfile
+      args:
+        VCS_REF: ${VCS_REF:-unknown}
+        # Image sans les bibliothèques CUDA : trois fois plus légère, et suffisante ici.
+        TORCH_VARIANT: cpu
     deploy:
       replicas: ${WORKER_CPU_REPLICAS:-1}
     environment:
@@ -242,6 +244,16 @@ services:
   worker-gpu:
     <<: *worker-base
     profiles: [gpu]
+    # Image distincte : elle embarque le torch CUDA, l'autre non.
+    image: wisper/worker-gpu:${IMAGE_TAG:-dev}
+    build:
+      context: ./worker
+      dockerfile: Dockerfile
+      args:
+        VCS_REF: ${VCS_REF:-unknown}
+        # CUDA 12.4 : couvre les cartes Pascal (compute 6.1) et le pilote 550 de la machine.
+        # La roue par défaut de PyPI est en CUDA 13, qui ne prend ni l'un ni l'autre.
+        TORCH_VARIANT: ${TORCH_VARIANT:-cu124}
     environment:
       <<: *worker-env
       WISPER_DEVICE: cuda

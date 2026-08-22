@@ -9,11 +9,26 @@ FROM python:3.12-slim@sha256:2c941e860699f878900b0edc2403613c234d4b32eda3cc9fa70
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PIP_ROOT_USER_ACTION=ignore
 
-# `openai-whisper` tire torch, numba, tiktoken et triton : environ 2,5 à 3 Gio de wheels une
-# fois installés — c'est le poids réel de cette étape, et la raison du multi-étapes. Version
-# épinglée pour que deux builds du même commit installent le même modèle de code.
+# Variante de torch installée. `cpu` produit une image sans les bibliothèques CUDA — trois fois
+# plus légère — et `cu124` produit celle qui tourne sur la carte.
+#
+# Le choix ne peut pas être laissé au hasard : la roue par défaut de PyPI est compilée pour
+# CUDA 13, qui exige un pilote >= 580 ET a laissé tomber les cartes Pascal. Sur un hôte au
+# pilote 550 avec une GTX 1050 Ti (compute 6.1), elle s'installe très bien puis annonce
+# `cuda.is_available() = False` : on croit avoir un GPU, on transcrit sur le processeur.
+# CUDA 12.4 couvre sm_50 à sm_90, donc Pascal inclus.
+ARG TORCH_VARIANT=cpu
+ARG TORCH_VERSION=2.6.0
+
+# torch d'abord, depuis l'index de la variante choisie : `openai-whisper` trouve sa dépendance
+# déjà satisfaite et n'ira pas chercher la roue par défaut. Le reste vient de PyPI.
+# Version épinglée pour que deux builds du même commit installent le même modèle de code.
 RUN python -m venv /opt/whisper \
+    && /opt/whisper/bin/pip install --no-cache-dir \
+         --index-url "https://download.pytorch.org/whl/${TORCH_VARIANT}" \
+         "torch==${TORCH_VERSION}" \
     && /opt/whisper/bin/pip install --no-cache-dir openai-whisper==20250625 \
+    && /opt/whisper/bin/python -c "import torch, whisper; print('torch', torch.__version__)" \
     && /opt/whisper/bin/pip uninstall -y pip setuptools wheel
 
 
