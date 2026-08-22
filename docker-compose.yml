@@ -186,6 +186,10 @@ services:
       WISPER_WORKER_TOKEN: ${WORKER_SHARED_TOKEN:?WORKER_SHARED_TOKEN manquant dans .env}
       WISPER_WORKER_ID: ${WISPER_WORKER_ID:-compose-worker}
       WHISPER_BIN: ${WHISPER_BIN:-whisper}
+      # Modèles servis par ce worker. Le défaut couvre tout ce qu'une machine de 4 Gio tient :
+      # `large` demande ~6 Gio de poids et serait tué par la borne mémoire, sans SIGTERM donc
+      # sans échec signalé à l'API. Élargir la liste et la borne ensemble, jamais l'une seule.
+      WISPER_WORKER_MODELS: ${WISPER_WORKER_MODELS:-tiny,base,small,medium}
       WHISPER_MODEL_DIR: /home/wisper/.cache/whisper
       POLL_INTERVAL_SECONDS: ${POLL_INTERVAL_SECONDS:-3}
       TMPDIR: /var/tmp/wisper
