@@ -37,6 +37,15 @@ LABEL org.opencontainers.image.title="wisper-web" \
       org.opencontainers.image.source="https://github.com/wisper-platform/wisper-platform" \
       org.opencontainers.image.revision="${VCS_REF}"
 
+
+# L'image amont est épinglée par digest, mais Alpine publie des correctifs plus vite qu'elle
+# n'est reconstruite : au 2026-08-22 son jeu de paquets porte dix vulnérabilités HIGH déjà
+# corrigées en amont (c-ares, curl/libcurl, libcrypto3/libssl3). Le scan de la CI est bloquant,
+# et une gate ne se contourne pas : on applique les correctifs de paquets ici.
+# ponytail: `apk upgrade` résout au moment du build, donc cette couche n'est pas reproductible
+# à l'octet. Sortie : revenir au seul digest amont dès qu'il repasse à zéro HIGH.
+USER root
+RUN apk --no-cache upgrade
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=builder /app/apps/web/dist /usr/share/nginx/html
 
