@@ -67,26 +67,40 @@ describe('Scénario : un worker réclame du travail', () => {
     expect(await readAll(media.stream)).toBe('octets audio');
     expect(media.contentType).toBe('audio/mpeg');
     expect(media.byteSize).toBe('octets audio'.length);
-    expect(Object.keys(media)).toEqual(['stream', 'contentType', 'byteSize']);
+    // Ce que le worker ne doit pas apprendre : le nom du fichier déposé et le propriétaire.
+    expect(JSON.stringify(media)).not.toContain('secret.mp3');
+    expect(JSON.stringify(media)).not.toContain(OWNER);
   });
 
-  it('refuse le média à un laissez-passer inventé, expiré, ou d\'une tentative achevée', async () => {
+  it('refuse le média à un laissez-passer que nous n\'avons pas émis', async () => {
+    const platform = aPlatform();
+    await platform.upload();
+    const job = await platform.claimNextTranscription.execute({
+      workerId: 'worker-1',
+      models: ['small'],
+    });
+    // Même forme qu'un vrai laissez-passer, mais sans signature : tout ce qu'un attaquant
+    // peut fabriquer en connaissant deux identifiants.
+    const forged = (job?.mediaToken ?? '').split('::').slice(0, 3).join('::');
+
+    await expect(platform.openMediaForRun.execute({ token: forged })).rejects.toThrow(
+      MediaAccessDeniedError,
+    );
+  });
+
+  it('refuse le média au laissez-passer d\'une tentative achevée', async () => {
     const platform = aPlatform();
     const transcriptionId = await platform.upload();
     const job = await platform.claimNextTranscription.execute({
       workerId: 'worker-1',
       models: ['small'],
     });
-    const token = job?.mediaToken ?? '';
-
-    await expect(platform.openMediaForRun.execute({ token: 'inventé' })).rejects.toThrow(
-      MediaAccessDeniedError,
-    );
 
     await platform.completeTranscription.execute({ transcriptionId, runId: job?.runId ?? '' });
-    await expect(platform.openMediaForRun.execute({ token })).rejects.toThrow(
-      MediaAccessDeniedError,
-    );
+
+    await expect(
+      platform.openMediaForRun.execute({ token: job?.mediaToken ?? '' }),
+    ).rejects.toThrow(MediaAccessDeniedError);
   });
 
   it('refuse le média une fois le bail éteint', async () => {
