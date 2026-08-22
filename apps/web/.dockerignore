@@ -1,0 +1,12 @@
+# Contexte de build de l'image web (`apps/web`).
+
+node_modules
+dist
+*.tsbuildinfo
+
+# Fichiers d'environnement : jamais dans une couche, et Vite les inlinerait dans le bundle.
+.env
+.env.*
+
+Dockerfile
+.dockerignore
