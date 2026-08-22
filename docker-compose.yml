@@ -1,0 +1,225 @@
+# Pile WisperPlatform auto-hébergée.
+#
+# Toutes les valeurs viennent de `.env` (copié depuis `.env.example`, jamais commité) : aucun
+# secret n'est écrit ici.
+#
+# Portée des secrets : `web` n'en reçoit aucun, `worker` reçoit son seul jeton porteur — c'est
+# tout le point du jeton média HMAC, un worker qui détiendrait `MEDIA_TOKEN_SECRET` pourrait
+# forger l'accès au média de n'importe quel utilisateur. `api` et `migrate` partagent en
+# revanche tout le fichier : `migrate` valide le schéma d'environnement complet au démarrage,
+# donc il exige aujourd'hui des secrets dont une migration SQL n'a aucun usage. Plafond assumé,
+# à lever en restreignant la validation de `migrate.ts` à `DATABASE_URL`.
+#
+# Démarrage : `docker compose build && docker compose up -d`.
+# L'image de l'API est construite une seule fois et réutilisée par le service `migrate`.
+
+name: wisper
+
+# Durcissement commun aux services applicatifs : racine en lecture seule, aucune capacité,
+# aucune escalade de privilège. Ce qui écrit passe par un tmpfs ou un volume nommé explicite.
+x-hardened: &hardened
+  read_only: true
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+  restart: unless-stopped
+
+services:
+  postgres:
+    image: postgres:17-alpine@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73
+    # Seul service hors de l'ancre `x-hardened`, et c'est un plafond assumé. L'entrypoint
+    # officiel démarre en root pour initialiser PGDATA dans un volume neuf appartenant à root,
+    # puis abandonne ses privilèges vers l'utilisateur `postgres` (uid 70) : ni `user:` non
+    # root, ni racine en lecture seule ne tiennent au premier démarrage. Les capacités sont
+    # réduites aux cinq que cette initialisation exige — `DAC_OVERRIDE` comprise, sans quoi un
+    # root sans capacité ne peut pas écrire dans le répertoire du volume.
+    # Une fois le volume initialisé, `user: "70:70"` + `read_only` + tmpfs sur /tmp et
+    # /var/run/postgresql sont la marche suivante.
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER manquant dans .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD manquant dans .env}
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB manquant dans .env}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    # Aucun port publié : la base n'est joignable que depuis le réseau du projet.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    cpus: 2.0
+    mem_limit: 1g
+    pids_limit: 256
+
+  # Migrations versionnées jouées en étape distincte et observable, avant tout démarrage de
+  # l'API : jamais au boot de l'application, sinon N instances migrent en concurrence.
+  migrate:
+    <<: *hardened
+    restart: "no"
+    image: wisper/api:${IMAGE_TAG:-dev}
+    # Image produite par le service `api` : elle n'est ni reconstruite ni tirée d'un registre.
+    pull_policy: never
+    command: ["node", "dist/shared/infrastructure/persistence/migrate.js"]
+    env_file:
+      - .env
+    environment:
+      # `.env` porte NODE_ENV=development pour le poste de développement ; ici la précédence de
+      # Compose (environment > env_file) le remet à production, sinon l'image tournerait en
+      # mode dev alors que son `ENV` disait le contraire.
+      NODE_ENV: production
+      DATABASE_URL: postgres://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:?}
+    user: "1000:1000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    cpus: 1.0
+    mem_limit: 512m
+    pids_limit: 128
+
+  api:
+    <<: *hardened
+    image: wisper/api:${IMAGE_TAG:-dev}
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+      additional_contexts:
+        workspace: .
+      args:
+        VCS_REF: ${VCS_REF:-unknown}
+    env_file:
+      - .env
+    environment:
+      # Même renversement que pour `migrate` : `env_file` écraserait le NODE_ENV de l'image.
+      NODE_ENV: production
+      # Port d'écoute figé : le mapping de ports et la sonde ci-dessous visent 3000, une valeur
+      # héritée de `.env` désynchroniserait les trois.
+      PORT: "3000"
+      # L'API joint Postgres par le nom du service, pas par le `localhost` du `.env` de dev.
+      DATABASE_URL: postgres://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:?}
+      # Les envois multipart atterrissent dans `<MEDIA_STORE_DIR>/incoming` avant adoption : le
+      # volume doit donc absorber transitoirement deux fois la taille d'un média.
+      MEDIA_STORE_DIR: /app/media-store
+    user: "1000:1000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    # Publié sur la boucle locale seulement : le front joint l'API par le réseau du projet
+    # (proxy nginx, même origine). Cette publication ne sert qu'au serveur de développement
+    # Vite, dont l'origine est la seule autorisée par le CORS de l'API.
+    ports:
+      - "127.0.0.1:${API_PORT:-3000}:3000"
+    volumes:
+      - media-store:/app/media-store
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('node:net').connect(3000, '127.0.0.1').on('connect', () => process.exit(0)).on('error', () => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    cpus: 2.0
+    mem_limit: 1g
+    pids_limit: 256
+
+  web:
+    <<: *hardened
+    image: wisper/web:${IMAGE_TAG:-dev}
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+      additional_contexts:
+        workspace: .
+      args:
+        VCS_REF: ${VCS_REF:-unknown}
+    # Aucune variable : l'image ne contient que des fichiers statiques et nginx, et le front
+    # appelle l'API en chemin relatif sur la même origine.
+    user: "101:101"
+    # nginx résout l'amont `api` à l'exécution : il n'a pas besoin que l'API soit saine pour
+    # démarrer, seulement que le service existe dans le projet.
+    depends_on:
+      api:
+        condition: service_started
+    ports:
+      - "${WEB_PORT:-8080}:8080"
+    # Seul point d'écriture de l'image non privilégiée : le fichier de pid et tous les
+    # `*_temp_path` de sa configuration de base pointent vers /tmp.
+    tmpfs:
+      - /tmp:size=64m,mode=1777,uid=101,gid=101
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --spider http://127.0.0.1:8080/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    cpus: 0.5
+    mem_limit: 128m
+    pids_limit: 64
+
+  worker:
+    <<: *hardened
+    image: wisper/worker:${IMAGE_TAG:-dev}
+    build:
+      context: ./worker
+      dockerfile: Dockerfile
+      args:
+        VCS_REF: ${VCS_REF:-unknown}
+    # Portée minimale : le worker ne reçoit que son jeton porteur et l'URL de l'API. Il ne monte
+    # jamais le magasin de médias — il télécharge chaque média par jeton HTTP à courte durée.
+    environment:
+      WISPER_API_URL: http://api:3000
+      WISPER_WORKER_TOKEN: ${WISPER_WORKER_TOKEN:?WISPER_WORKER_TOKEN manquant dans .env}
+      WISPER_WORKER_ID: ${WISPER_WORKER_ID:-compose-worker}
+      WHISPER_BIN: ${WHISPER_BIN:-whisper}
+      WHISPER_MODEL_DIR: /home/wisper/.cache/whisper
+      POLL_INTERVAL_SECONDS: ${POLL_INTERVAL_SECONDS:-3}
+      TMPDIR: /var/tmp/wisper
+    user: "10001:10001"
+    depends_on:
+      api:
+        condition: service_healthy
+    # Le worker traite SIGTERM comme un arrêt propre : on lui laisse le temps de signaler
+    # l'échec du job en cours plutôt que de laisser un bail expirer tout seul.
+    stop_grace_period: 30s
+    volumes:
+      # Tout `XDG_CACHE_HOME` est monté, pas seulement `whisper/` : la racine est en lecture
+      # seule, et une bibliothèque qui résoudrait son cache par XDG échouerait sinon.
+      # Les poids de modèle sont ainsi téléchargés une fois et conservés entre redémarrages.
+      - whisper-models:/home/wisper/.cache
+      # Média téléchargé et sorties temporaires de whisper : plusieurs Gio, donc sur disque.
+      - worker-scratch:/var/tmp/wisper
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    # Un modèle `large` charge environ 6 Gio de poids en CPU : 8 Gio est le plancher praticable
+    # sur un poste de développement, et le plafond assumé de cette configuration. Au-delà de la
+    # borne le noyau tue le processus sans SIGTERM, donc sans échec signalé à l'API : relever
+    # `WORKER_MEM_LIMIT`, ou restreindre `WISPER_WORKER_MODELS` aux modèles que la borne tient.
+    cpus: ${WORKER_CPUS:-4.0}
+    mem_limit: ${WORKER_MEM_LIMIT:-8g}
+    pids_limit: 512
+
+volumes:
+  postgres-data:
+  # Médias d'origine, y compris le répertoire `incoming/` où atterrissent les envois multipart :
+  # monté en écriture sur l'API uniquement, jamais sur le worker.
+  media-store:
+  # Média téléchargé et répertoire de travail de whisper, côté worker.
+  worker-scratch:
+  # Cache du worker, dont les poids de modèle whisper.
+  whisper-models:

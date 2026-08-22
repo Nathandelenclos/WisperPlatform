@@ -1,0 +1,25 @@
+# Contexte de build de l'image API (`apps/api`).
+# Tout ce qui ne sert ni à compiler ni à exécuter reste hors du contexte : moins de couches
+# invalidées, aucune source de test ni de configuration d'outillage dans l'image.
+
+node_modules
+dist
+*.tsbuildinfo
+
+# Tests et outillage de qualité : la CI les exécute, l'image ne les embarque pas.
+test
+**/*.spec.ts
+**/*.contract.ts
+coverage
+vitest.config.ts
+.dependency-cruiser.cjs
+
+# La configuration drizzle-kit ne sert qu'à générer les migrations, hors image.
+drizzle.config.ts
+
+# Fichiers d'environnement : jamais dans une couche.
+.env
+.env.*
+
+Dockerfile
+.dockerignore

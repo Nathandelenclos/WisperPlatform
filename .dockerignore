@@ -1,0 +1,25 @@
+# Contexte de build à la racine du dépôt.
+#
+# Il n'est utilisé que comme contexte NOMMÉ `workspace` par les images api et web
+# (`additional_contexts` dans docker-compose.yml), pour en extraire trois fichiers : les
+# manifestes pnpm et le lockfile. Les images ont chacune leur propre contexte principal, avec
+# son propre `.dockerignore` (`apps/api/.dockerignore`, `apps/web/.dockerignore`,
+# `worker/.dockerignore`).
+#
+# Sans cette liste, tout le dépôt — historique git, node_modules, et le `.env` de l'exploitant
+# dès qu'il existe — serait transféré au constructeur pour rien.
+
+.git
+.github
+
+**/node_modules
+**/dist
+**/*.tsbuildinfo
+**/__pycache__
+
+# Secrets d'exploitation : jamais dans un contexte de build.
+.env
+.env.*
+
+# Données de production éventuellement présentes sur le poste.
+media-store

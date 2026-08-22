@@ -1,0 +1,14 @@
+# Contexte de build de l'image worker (`worker`).
+
+__pycache__
+*.pyc
+
+# Les tests tournent en CI, l'image n'embarque ni suite de tests ni stub de whisper.
+tests
+
+# Fichiers d'environnement : jamais dans une couche.
+.env
+.env.*
+
+Dockerfile
+.dockerignore
