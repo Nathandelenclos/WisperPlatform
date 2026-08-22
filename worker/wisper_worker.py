@@ -1,0 +1,402 @@
+#!/usr/bin/env python3
+"""Worker de transcription WisperPlatform.
+
+Boucle : réclamer un job → télécharger le média → lancer le binaire `whisper` → publier les
+segments au fil de l'eau → conclure (`complete` / `fail`) → effacer le répertoire temporaire.
+
+Bibliothèque standard uniquement. `whisper` est lancé comme processus, en liste d'arguments,
+jamais via un shell, jamais importé.
+
+Le worker n'apprend rien de l'utilisateur : il reçoit un jeton média à courte durée de vie,
+écrit le média sous un nom neutre, et ne journalise ni jeton, ni nom de fichier, ni texte
+transcrit — seulement des identifiants techniques et des compteurs.
+"""
+
+from __future__ import annotations
+
+import dataclasses
+import json
+import logging
+import os
+import queue
+import re
+import shutil
+import signal
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+from datetime import datetime, timezone
+
+from api_client import ApiClient, ApiError
+from whisper_output import SegmentBatcher, parse_segment_line
+
+# Modèles du contrat (`WHISPER_MODELS` côté domaine).
+WHISPER_MODELS = ("tiny", "base", "small", "medium", "large", "turbo")
+LANGUAGE_PATTERN = re.compile(r"^[A-Za-z]{2,32}$")
+
+# Borne dure d'un job : au-delà, le sous-processus est arrêté et le job déclaré en échec.
+WHISPER_TIMEOUT_SECONDS = 6 * 60 * 60
+# Délai laissé à `whisper` pour sortir après `terminate`, avant `kill`.
+TERMINATE_GRACE_SECONDS = 10.0
+# Période de réveil de la boucle de lecture : borne la réactivité à un arrêt demandé.
+LOOP_TICK_SECONDS = 0.5
+# Bail inexploitable (absent ou illisible) : repli prudent sur un battement fréquent.
+FALLBACK_HEARTBEAT_SECONDS = 20.0
+# Nom neutre du média sur le disque : le nom d'origine ne quitte jamais l'API.
+MEDIA_FILENAME = "media"
+
+LOGGER = logging.getLogger("wisper.worker")
+
+
+class ConfigurationError(Exception):
+    """Configuration d'environnement absente ou invalide."""
+
+
+@dataclasses.dataclass(frozen=True)
+class WorkerConfig:
+    api_url: str
+    worker_token: str
+    worker_id: str
+    whisper_bin: str
+    model_dir: str
+    models: tuple
+    poll_interval_seconds: float
+
+    @staticmethod
+    def from_environment(environ):
+        api_url = (environ.get("WISPER_API_URL") or "").strip()
+        if not api_url:
+            raise ConfigurationError("WISPER_API_URL est requis")
+        worker_token = environ.get("WISPER_WORKER_TOKEN") or ""
+        if not worker_token.strip():
+            raise ConfigurationError("WISPER_WORKER_TOKEN est requis")
+        return WorkerConfig(
+            api_url=api_url,
+            worker_token=worker_token,
+            worker_id=(environ.get("WISPER_WORKER_ID") or "").strip() or "local-worker",
+            whisper_bin=(environ.get("WHISPER_BIN") or "").strip() or "whisper",
+            model_dir=(environ.get("WHISPER_MODEL_DIR") or "").strip(),
+            models=_parse_models(environ.get("WISPER_WORKER_MODELS")),
+            poll_interval_seconds=_parse_poll_interval(environ.get("POLL_INTERVAL_SECONDS")),
+        )
+
+
+def _parse_models(raw):
+    if not raw or not raw.strip():
+        return WHISPER_MODELS
+    models = tuple(model.strip() for model in raw.split(",") if model.strip())
+    unknown = [model for model in models if model not in WHISPER_MODELS]
+    if not models or unknown:
+        raise ConfigurationError(
+            "WISPER_WORKER_MODELS n'accepte que : " + ", ".join(WHISPER_MODELS)
+        )
+    return models
+
+
+def _parse_poll_interval(raw):
+    if raw is None or not raw.strip():
+        return 3.0
+    try:
+        interval = float(raw)
+    except ValueError:
+        raise ConfigurationError("POLL_INTERVAL_SECONDS doit être un nombre de secondes") from None
+    if interval <= 0:
+        raise ConfigurationError("POLL_INTERVAL_SECONDS doit être strictement positif")
+    return interval
+
+
+class JsonFormatter(logging.Formatter):
+    """Une ligne JSON par événement. Aucun secret, aucune donnée personnelle."""
+
+    def format(self, record):
+        event = {
+            "time": datetime.fromtimestamp(record.created, timezone.utc)
+            .isoformat(timespec="milliseconds")
+            .replace("+00:00", "Z"),
+            "level": record.levelname.lower(),
+            "component": "worker",
+            "message": record.getMessage(),
+        }
+        fields = getattr(record, "fields", None)
+        if fields:
+            event.update(fields)
+        return json.dumps(event, ensure_ascii=False, sort_keys=True)
+
+
+def configure_logging(stream=None):
+    handler = logging.StreamHandler(stream if stream is not None else sys.stdout)
+    handler.setFormatter(JsonFormatter())
+    LOGGER.handlers = [handler]
+    LOGGER.setLevel(logging.INFO)
+    LOGGER.propagate = False
+    return LOGGER
+
+
+def log(level, message, **fields):
+    LOGGER.log(level, message, extra={"fields": fields})
+
+
+def run_loop(config, client, stop):
+    """Réclame et traite des jobs jusqu'à ce que `stop` soit armé."""
+    log(logging.INFO, "worker started", workerId=config.worker_id, models=list(config.models))
+    while not stop.is_set():
+        try:
+            job = client.claim(config.worker_id, config.models)
+        except ApiError as error:
+            log(logging.WARNING, "claim failed", workerId=config.worker_id, detail=str(error))
+            stop.wait(config.poll_interval_seconds)
+            continue
+        if job is None:
+            stop.wait(config.poll_interval_seconds)
+            continue
+        if not _is_usable_job(job):
+            # Réponse hors contrat : on ne peut ni la traiter, ni la déclarer en échec.
+            log(logging.ERROR, "claim response rejected", workerId=config.worker_id)
+            stop.wait(config.poll_interval_seconds)
+            continue
+        process_job(config, client, job, stop)
+    log(logging.INFO, "worker stopped", workerId=config.worker_id)
+
+
+def _is_usable_job(job):
+    """Champs sans lesquels aucune action n'est possible, pas même signaler l'échec."""
+    return isinstance(job, dict) and all(
+        isinstance(job.get(name), str) and job[name]
+        for name in ("transcriptionId", "runId", "mediaToken")
+    )
+
+
+def process_job(config, client, job, stop):
+    run_id = job["runId"]
+    transcription_id = job["transcriptionId"]
+    fields = {
+        "workerId": config.worker_id,
+        "transcriptionId": transcription_id,
+        "runId": run_id,
+        "model": job.get("model"),
+    }
+    log(logging.INFO, "job claimed", **fields)
+    workdir = tempfile.mkdtemp(prefix="wisper-worker-")
+    heartbeat = Heartbeat(client, run_id, transcription_id, _heartbeat_interval(job), fields)
+    try:
+        # Le bail court dès la réclamation : le battement couvre aussi le téléchargement.
+        heartbeat.start()
+        reason = _reject_unsupported(job)
+        if reason is None:
+            media_path = os.path.join(workdir, MEDIA_FILENAME)
+            client.download_media(job["mediaToken"], media_path)
+            reason = _run_whisper(config, client, job, media_path, workdir, stop, fields)
+        if reason is None:
+            client.complete(run_id, transcription_id)
+            log(logging.INFO, "job completed", **fields)
+        else:
+            client.fail(run_id, transcription_id, reason)
+            log(logging.WARNING, "job failed", reason=reason, **fields)
+    except ApiError as error:
+        # L'API est injoignable ou refuse ce run : le bail expirera et la transcription
+        # sera remise en file côté API. Insister ici ne ferait que retarder cette reprise.
+        log(logging.ERROR, "job abandoned", detail=str(error), status=error.status, **fields)
+    except Exception as error:  # un job cassé ne doit jamais tuer la boucle
+        log(logging.ERROR, "job crashed", detail=type(error).__name__, **fields)
+        _fail_quietly(client, run_id, transcription_id, "worker error", fields)
+    finally:
+        heartbeat.stop()
+        shutil.rmtree(workdir, ignore_errors=True)
+
+
+def _reject_unsupported(job):
+    """Frontière de confiance : model et language finissent en arguments de processus."""
+    if job.get("model") not in WHISPER_MODELS:
+        return "unsupported model"
+    if not LANGUAGE_PATTERN.match(str(job.get("language", ""))):
+        return "unsupported language"
+    return None
+
+
+def _fail_quietly(client, run_id, transcription_id, reason, fields):
+    try:
+        client.fail(run_id, transcription_id, reason)
+    except ApiError as error:
+        log(logging.ERROR, "failure report lost", detail=str(error), **fields)
+
+
+class Heartbeat:
+    """Renouvelle le bail dans un thread, et s'arrête proprement sur demande."""
+
+    def __init__(self, client, run_id, transcription_id, interval, fields):
+        self._client = client
+        self._run_id = run_id
+        self._transcription_id = transcription_id
+        self._interval = interval
+        self._fields = fields
+        self._stop = threading.Event()
+        self._thread = None
+
+    def start(self):
+        self._thread = threading.Thread(target=self._loop, name="wisper-heartbeat", daemon=True)
+        self._thread.start()
+
+    def stop(self):
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join(timeout=TERMINATE_GRACE_SECONDS)
+            self._thread = None
+
+    def _loop(self):
+        while not self._stop.wait(self._interval):
+            try:
+                self._client.heartbeat(self._run_id, self._transcription_id)
+            except ApiError as error:
+                log(logging.WARNING, "heartbeat failed", status=error.status, **self._fields)
+                if not error.retryable:
+                    return  # run périmé côté API : ce bail n'est plus renouvelable
+
+
+def _heartbeat_interval(job):
+    """Un tiers du bail restant : deux battements peuvent être perdus sans perdre le job."""
+    expires_at = _parse_iso8601(job.get("leaseExpiresAt"))
+    if expires_at is None:
+        return FALLBACK_HEARTBEAT_SECONDS
+    remaining = (expires_at - datetime.now(timezone.utc)).total_seconds()
+    return max(1.0, min(remaining / 3.0, FALLBACK_HEARTBEAT_SECONDS))
+
+
+def _parse_iso8601(value):
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        # `datetime.fromisoformat` n'accepte pas le suffixe « Z » avant Python 3.11.
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
+def _run_whisper(config, client, job, media_path, workdir, stop, fields):
+    """Lance whisper et publie ses segments. Rend `None` en succès, une raison courte sinon."""
+    command = [
+        config.whisper_bin,
+        media_path,
+        "--model",
+        job["model"],
+        "--language",
+        job["language"],
+        "--output_format",
+        "json",
+        "--output_dir",
+        workdir,
+        "--verbose",
+        "True",
+    ]
+    if config.model_dir:
+        command += ["--model_dir", config.model_dir]
+    # Sans PYTHONUNBUFFERED, stdout est bufferisé par blocs et le streaming n'a pas lieu.
+    environment = dict(os.environ, PYTHONUNBUFFERED="1")
+    # Liste d'arguments, jamais de shell : ni le modèle ni la langue ne peuvent s'échapper.
+    # stderr reste hérité : les diagnostics de whisper restent dans le flux du conteneur,
+    # jamais dans nos logs structurés ni dans une raison d'échec remontée à l'utilisateur.
+    process = subprocess.Popen(
+        command,
+        cwd=workdir,
+        env=environment,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        text=True,
+        errors="replace",
+        bufsize=1,
+    )
+    log(logging.INFO, "whisper started", **fields)
+    lines = queue.Queue()
+    reader = threading.Thread(target=_pump, args=(process.stdout, lines), name="wisper-stdout", daemon=True)
+    reader.start()
+    try:
+        interrupted = _stream_segments(lines, client, job, stop, fields)
+        if interrupted is not None:
+            return interrupted
+        # stdout est fermé : la sortie du processus est imminente.
+        code = process.wait(timeout=TERMINATE_GRACE_SECONDS)
+        return None if code == 0 else "whisper exited with code {}".format(code)
+    except subprocess.TimeoutExpired:
+        return "whisper did not exit"
+    finally:
+        _terminate(process)
+        reader.join(timeout=TERMINATE_GRACE_SECONDS)
+        process.stdout.close()
+
+
+def _pump(stdout, lines):
+    """Déverse stdout dans une file : la boucle principale garde la main sur le temps."""
+    try:
+        for line in stdout:
+            lines.put(line)
+    except (ValueError, OSError):
+        pass  # tube fermé sous le thread : la sentinelle suffit
+    finally:
+        lines.put(None)
+
+
+def _stream_segments(lines, client, job, stop, fields):
+    """Consomme les lignes et publie les lots. Rend `None` à la fin normale du flux."""
+    batcher = SegmentBatcher()
+    sequence = 0
+    deadline = time.monotonic() + WHISPER_TIMEOUT_SECONDS
+    while True:
+        if stop.is_set():
+            return "worker stopped"
+        if time.monotonic() >= deadline:
+            return "transcription timed out"
+        due_in = batcher.seconds_until_due()
+        end_of_stream = False
+        try:
+            line = lines.get(timeout=LOOP_TICK_SECONDS if due_in is None else min(LOOP_TICK_SECONDS, due_in))
+        except queue.Empty:
+            batch = batcher.due()
+        else:
+            end_of_stream = line is None
+            if end_of_stream:
+                batch = batcher.flush()
+            else:
+                segment = parse_segment_line(line)
+                batch = batcher.add(segment) if segment is not None else None
+        if batch:
+            sequence += 1
+            _post(client, job, sequence, batch, fields)
+        if end_of_stream:
+            return None
+
+
+def _post(client, job, sequence, batch, fields):
+    client.post_segments(job["runId"], job["transcriptionId"], sequence, batch)
+    log(logging.INFO, "segments posted", batchSequence=sequence, segmentCount=len(batch), **fields)
+
+
+def _terminate(process):
+    if process.poll() is not None:
+        return
+    process.terminate()
+    try:
+        process.wait(timeout=TERMINATE_GRACE_SECONDS)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait(timeout=TERMINATE_GRACE_SECONDS)
+
+
+def main():
+    configure_logging()
+    try:
+        config = WorkerConfig.from_environment(os.environ)
+    except ConfigurationError as error:
+        log(logging.ERROR, "configuration rejected", detail=str(error))
+        return 2
+    stop = threading.Event()
+    for received in (signal.SIGTERM, signal.SIGINT):
+        signal.signal(received, lambda *_: stop.set())
+    client = ApiClient(config.api_url, config.worker_token)
+    run_loop(config, client, stop)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
