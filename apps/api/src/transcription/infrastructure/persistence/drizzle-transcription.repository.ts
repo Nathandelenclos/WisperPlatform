@@ -1,10 +1,11 @@
-import { asc, eq } from 'drizzle-orm';
+import { and, asc, eq } from 'drizzle-orm';
 
 import type { Database } from '../../../shared/infrastructure/persistence/database';
 import {
   transcriptionSegments,
   transcriptions,
 } from '../../../shared/infrastructure/persistence/schema';
+import { ConcurrentTranscriptionWriteError } from '../../application/errors';
 import type { TranscriptionRepository } from '../../application/ports/transcription-repository';
 import type { SegmentState } from '../../domain/segment';
 import {
@@ -22,6 +23,12 @@ type SegmentRow = typeof transcriptionSegments.$inferSelect;
  * le domaine ignore qu'une base existe.
  */
 export class DrizzleTranscriptionRepository implements TranscriptionRepository {
+  /**
+   * Version lue pour chaque aggregate chargé. Le compteur est une préoccupation de
+   * persistance : le domaine n'a pas à le porter, et une `WeakMap` le libère avec l'aggregate.
+   */
+  private readonly loadedVersions = new WeakMap<Transcription, number>();
+
   constructor(private readonly db: Database) {}
 
   /**
@@ -52,15 +59,28 @@ export class DrizzleTranscriptionRepository implements TranscriptionRepository {
       completedAt: state.completedAt,
     };
 
+    const expectedVersion = this.loadedVersions.get(transcription) ?? null;
+
     await this.db.transaction(async (tx) => {
-      await tx
-        .insert(transcriptions)
-        .values(row)
-        .onConflictDoUpdate({
-          target: transcriptions.id,
-          // `reservedAt` / `reservedBy` sont volontairement absents : ce sont des colonnes de
-          // file d'attente, invisibles de l'aggregate, qu'une sauvegarde ne doit pas écraser.
-          set: {
+      if (expectedVersion === null) {
+        // Aggregate jamais chargé : c'est une création. Une collision de clé signifie qu'un
+        // autre écrivain l'a devancé.
+        const inserted = await tx
+          .insert(transcriptions)
+          .values({ ...row, version: 1 })
+          .onConflictDoNothing({ target: transcriptions.id })
+          .returning({ id: transcriptions.id });
+        if (inserted.length === 0) {
+          throw new ConcurrentTranscriptionWriteError(state.id);
+        }
+        this.loadedVersions.set(transcription, 1);
+      } else {
+        // Verrou optimiste : l'écriture n'aboutit que si personne n'a touché la ligne depuis
+        // la lecture. Sans lui, une correction utilisateur et un lot de segments arrivés en
+        // même temps s'écrasent l'un l'autre en silence.
+        const updated = await tx
+          .update(transcriptions)
+          .set({
             status: row.status,
             model: row.model,
             language: row.language,
@@ -75,8 +95,19 @@ export class DrizzleTranscriptionRepository implements TranscriptionRepository {
             lastAppliedBatchSequence: row.lastAppliedBatchSequence,
             failureReason: row.failureReason,
             completedAt: row.completedAt,
-          },
-        });
+            version: expectedVersion + 1,
+          })
+          // `reservedAt` / `reservedBy` sont volontairement absents : ce sont des colonnes de
+          // file d'attente, invisibles de l'aggregate, qu'une sauvegarde ne doit pas écraser.
+          .where(
+            and(eq(transcriptions.id, state.id), eq(transcriptions.version, expectedVersion)),
+          )
+          .returning({ id: transcriptions.id });
+        if (updated.length === 0) {
+          throw new ConcurrentTranscriptionWriteError(state.id);
+        }
+        this.loadedVersions.set(transcription, expectedVersion + 1);
+      }
 
       await tx
         .delete(transcriptionSegments)
@@ -107,7 +138,9 @@ export class DrizzleTranscriptionRepository implements TranscriptionRepository {
       .where(eq(transcriptionSegments.transcriptionId, id))
       .orderBy(asc(transcriptionSegments.ordinal));
 
-    return Transcription.restore(toState(row, segmentRows));
+    const transcription = Transcription.restore(toState(row, segmentRows));
+    this.loadedVersions.set(transcription, row.version);
+    return transcription;
   }
 }
 

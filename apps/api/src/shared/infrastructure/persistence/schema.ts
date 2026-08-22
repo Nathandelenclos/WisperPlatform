@@ -123,6 +123,11 @@ export const transcriptions = pgTable(
     completedAt: timestamp('completed_at', { withTimezone: true }),
     reservedAt: timestamp('reserved_at', { withTimezone: true }),
     reservedBy: text('reserved_by'),
+    /**
+     * Verrou optimiste. Toute écriture d'un aggregate chargé exige la version lue et la
+     * remplace : deux écrivains partis du même état ne peuvent pas s'écraser en silence.
+     */
+    version: integer('version').notNull().default(1),
   },
   (table) => [
     index('transcriptions_status_requested_at_idx').on(table.status, table.requestedAt),

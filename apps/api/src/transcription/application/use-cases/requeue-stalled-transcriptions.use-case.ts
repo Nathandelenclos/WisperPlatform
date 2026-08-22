@@ -1,3 +1,4 @@
+import { ConcurrentTranscriptionWriteError } from '../errors';
 import type { Clock } from '../ports/clock';
 import type { Logger } from '../ports/logger';
 import type { TranscriptionEventPublisher } from '../ports/transcription-event-publisher';
@@ -35,7 +36,16 @@ export class RequeueStalledTranscriptionsUseCase {
       if (events.length === 0) {
         continue;
       }
-      await this.repository.save(transcription);
+      try {
+        await this.repository.save(transcription);
+      } catch (error) {
+        // Le worker que l'on croyait mort vient d'écrire : c'est lui qui a raison, on passe.
+        // Le prochain balayage reverra la transcription si son bail est réellement éteint.
+        if (error instanceof ConcurrentTranscriptionWriteError) {
+          continue;
+        }
+        throw error;
+      }
       await this.publisher.publish(events);
       if (events.some((event) => event.name === 'transcription.requeued')) {
         requeued += 1;

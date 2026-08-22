@@ -28,3 +28,14 @@ export class MediaAccessDeniedError extends ApplicationError {
     super('MEDIA_ACCESS_DENIED', message);
   }
 }
+
+/**
+ * Deux écrivains ont modifié la même transcription à partir du même état : le second n'écrit
+ * pas. C'est un échec du port de persistance, rejouable — le cas nominal étant une correction
+ * de l'utilisateur qui croise un lot de segments du worker. Mappée en 409 si elle remonte.
+ */
+export class ConcurrentTranscriptionWriteError extends ApplicationError {
+  constructor(transcriptionId: string) {
+    super('CONCURRENT_WRITE', `transcription ${transcriptionId} modifiée entre-temps`);
+  }
+}
