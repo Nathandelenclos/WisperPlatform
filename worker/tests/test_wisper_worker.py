@@ -7,6 +7,7 @@ Aucun GPU, aucun réseau externe : un serveur HTTP local rejoue le contrat worke
 import io
 import json
 import os
+import random
 import shutil
 import signal
 import subprocess
@@ -18,8 +19,16 @@ import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import wisper_worker
-from api_client import ApiClient
-from wisper_worker import ConfigurationError, WorkerConfig, run_loop
+from api_client import ApiClient, ApiError
+from wisper_worker import (
+    CLAIM_BACKOFF_MAX_SECONDS,
+    CLAIM_FAILURE_THRESHOLD,
+    ConfigurationError,
+    Heartbeat,
+    WorkerConfig,
+    _claim_delay,
+    run_loop,
+)
 
 FAKE_WHISPER = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fake_whisper.py")
 WORKER_SCRIPT = os.path.join(wisper_worker.__file__)
@@ -185,6 +194,258 @@ class ConfigTest(unittest.TestCase):
             WorkerConfig.from_environment(dict(base, POLL_INTERVAL_SECONDS="souvent"))
 
 
+class StubClaims:
+    """Client réduit à `claim` : rejoue les issues fournies, puis répète la dernière."""
+
+    def __init__(self, *outcomes):
+        self._outcomes = list(outcomes)
+        self.claims = 0
+
+    def claim(self, worker_id, models):
+        self.claims += 1
+        outcome = self._outcomes[min(self.claims, len(self._outcomes)) - 1]
+        if isinstance(outcome, BaseException):
+            raise outcome
+        return outcome
+
+
+class RecordingStop:
+    """Faux `threading.Event` : enregistre les sommeils au lieu de dormir.
+
+    La boucle s'arrête après un nombre donné d'attentes, ce qui rend observable la
+    cadence de sondage sans qu'une seule seconde ne s'écoule réellement.
+    """
+
+    def __init__(self, stop_after):
+        self.waits = []
+        self._stop_after = stop_after
+
+    def is_set(self):
+        return len(self.waits) >= self._stop_after
+
+    def wait(self, timeout):
+        self.waits.append(timeout)
+        return self.is_set()
+
+
+def loop_config(interval=3.0):
+    return WorkerConfig.from_environment(
+        {
+            "WISPER_API_URL": "http://api.test",
+            "WISPER_WORKER_TOKEN": "t",
+            "WISPER_WORKER_ID": "test-worker",
+            "POLL_INTERVAL_SECONDS": str(interval),
+        }
+    )
+
+
+def unreachable_api():
+    return ApiError("claim failed: URLError: refused", retryable=True)
+
+
+class ClaimDelayTest(unittest.TestCase):
+    """Courbe du disjoncteur, éprouvée sur la fonction pure : aucun sommeil réel."""
+
+    def test_keeps_the_nominal_interval_below_the_threshold(self):
+        delays = [_claim_delay(3.0, failures, jitter=lambda: 1.0) for failures in range(1, 5)]
+
+        self.assertEqual([3.0] * 4, delays)
+
+    def test_doubles_the_interval_once_the_circuit_is_open_then_caps_it(self):
+        delays = [_claim_delay(3.0, failures, jitter=lambda: 1.0) for failures in range(5, 11)]
+
+        self.assertEqual([6.0, 12.0, 24.0, 48.0, 60.0, 60.0], delays)
+
+    def test_never_leaves_the_interval_between_the_nominal_and_the_ceiling(self):
+        # 2000 échecs : une API absente une journée entière ne doit ni déborder ni dépasser.
+        for failures in (5, 20, 2000):
+            for jitter in (lambda: 0.0, lambda: 0.5, random.random):
+                delay = _claim_delay(3.0, failures, jitter=jitter)
+
+                self.assertGreaterEqual(delay, 3.0)
+                self.assertLessEqual(delay, CLAIM_BACKOFF_MAX_SECONDS)
+
+    def test_a_poll_interval_wider_than_the_ceiling_is_left_alone(self):
+        self.assertEqual(120.0, _claim_delay(120.0, 10, jitter=lambda: 1.0))
+
+
+class ClaimCircuitLoopTest(unittest.TestCase):
+    """Le disjoncteur dans la boucle : comptage, ouverture, remise à zéro, arrêt net."""
+
+    def setUp(self):
+        self.logs = io.StringIO()
+        wisper_worker.configure_logging(self.logs)
+        # Jitter figé : la cadence observée est reproductible d'une exécution à l'autre.
+        random.seed(20260822)
+        self.addCleanup(random.seed)
+
+    def failure_events(self):
+        events = [json.loads(line) for line in self.logs.getvalue().splitlines() if line.strip()]
+        return [event for event in events if "consecutiveFailures" in event]
+
+    def test_polls_at_the_nominal_cadence_while_the_circuit_is_closed(self):
+        stop = RecordingStop(stop_after=CLAIM_FAILURE_THRESHOLD - 1)
+
+        run_loop(loop_config(), StubClaims(unreachable_api()), stop)
+
+        self.assertEqual([3.0] * 4, stop.waits)
+        self.assertEqual([1, 2, 3, 4], [event["consecutiveFailures"] for event in self.failure_events()])
+
+    def test_opens_the_circuit_beyond_the_threshold_without_exceeding_the_ceiling(self):
+        stop = RecordingStop(stop_after=20)
+
+        run_loop(loop_config(), StubClaims(unreachable_api()), stop)
+
+        self.assertEqual([3.0] * 4, stop.waits[:4])
+        self.assertTrue(all(delay > 3.0 for delay in stop.waits[4:]), stop.waits)
+        self.assertLessEqual(max(stop.waits), CLAIM_BACKOFF_MAX_SECONDS)
+        self.assertEqual(list(range(1, 21)), [event["consecutiveFailures"] for event in self.failure_events()])
+
+    def test_closes_the_circuit_again_on_the_first_successful_claim(self):
+        # Cinq échecs ouvrent le circuit, une file vide (204) prouve que l'API répond.
+        stop = RecordingStop(stop_after=7)
+        claims = StubClaims(*([unreachable_api()] * 5), None, unreachable_api())
+
+        run_loop(loop_config(), claims, stop)
+
+        self.assertGreater(stop.waits[4], 3.0)
+        self.assertEqual([3.0, 3.0], stop.waits[5:7])
+        self.assertEqual([1, 2, 3, 4, 5, 1], [event["consecutiveFailures"] for event in self.failure_events()])
+
+    def test_distinguishes_a_refused_token_from_a_transient_outage(self):
+        stop = RecordingStop(stop_after=1)
+
+        run_loop(loop_config(), StubClaims(ApiError("claim rejected with HTTP 401", status=401)), stop)
+
+        rejection = self.failure_events()[0]
+        self.assertEqual("claim rejected", rejection["message"])
+        self.assertEqual("error", rejection["level"])
+        self.assertEqual(401, rejection["status"])
+        self.assertNotIn(WORKER_TOKEN, self.logs.getvalue())
+
+    def test_counts_a_claim_response_that_breaks_the_contract_as_a_failure(self):
+        stop = RecordingStop(stop_after=2)
+
+        run_loop(loop_config(), StubClaims({"transcriptionId": "t-x"}), stop)
+
+        self.assertEqual(
+            ["claim response rejected"] * 2, [event["message"] for event in self.failure_events()]
+        )
+        self.assertEqual([1, 2], [event["consecutiveFailures"] for event in self.failure_events()])
+
+    def test_a_stop_request_cuts_an_open_circuit_wait_short(self):
+        # Seuil abaissé à un échec : le premier tour part déjà sur une attente de 30 s ou plus.
+        original = wisper_worker.CLAIM_FAILURE_THRESHOLD
+        wisper_worker.CLAIM_FAILURE_THRESHOLD = 1
+        self.addCleanup(setattr, wisper_worker, "CLAIM_FAILURE_THRESHOLD", original)
+        claimed = threading.Event()
+
+        class SlowlyFailing(StubClaims):
+            def claim(self, worker_id, models):
+                try:
+                    return super().claim(worker_id, models)
+                finally:
+                    claimed.set()
+
+        stop = threading.Event()
+        loop = threading.Thread(
+            target=run_loop, args=(loop_config(30.0), SlowlyFailing(unreachable_api()), stop), daemon=True
+        )
+        loop.start()
+        self.assertTrue(claimed.wait(5), "la boucle n'a jamais réclamé de job")
+
+        stop.set()
+
+        loop.join(timeout=5)
+        self.assertFalse(loop.is_alive(), "l'arrêt a attendu la fin du sommeil du circuit ouvert")
+
+
+class RecordingHeartbeats:
+    """Client réduit au renouvellement de bail."""
+
+    def __init__(self):
+        self.renewals = []
+
+    def heartbeat(self, run_id, transcription_id):
+        self.renewals.append((run_id, transcription_id))
+
+
+class FakeScheduler:
+    """Ordonnanceur de battements piloté par le test : rien ne s'écoule sans `advance`.
+
+    Vu du battement, c'est un `threading.Event` (`wait`, `set`) ; vu du test, c'est une
+    fausse horloge. `advance` ne rend la main qu'une fois le battement reparti en attente,
+    donc aucune assertion ne court après un thread.
+    """
+
+    def __init__(self):
+        self.waits = []
+        self._parked = threading.Semaphore(0)
+        self._resume = threading.Semaphore(0)
+        self._stopped = False
+
+    def wait(self, timeout):
+        self.waits.append(timeout)
+        self._parked.release()
+        self._resume.acquire()
+        return self._stopped
+
+    def set(self):
+        self._stopped = True
+        self._resume.release()
+
+    def advance(self):
+        """Franchit un intervalle complet."""
+        self._await_park("le battement n'attendait pas")
+        self._resume.release()
+        self._await_park("le battement n'est pas reparti en attente")
+        self._parked.release()  # le jeton reste disponible pour le prochain `advance`
+
+    def release(self, intervals):
+        """Laisse filer des intervalles sans attendre personne : un survivant se ferait voir."""
+        for _ in range(intervals):
+            self._resume.release()
+
+    def _await_park(self, message):
+        if not self._parked.acquire(timeout=5.0):
+            raise AssertionError(message)
+
+
+class HeartbeatTest(unittest.TestCase):
+    """Renouvellement du bail sur horloge injectée : aucun pari sur le temps réel."""
+
+    def setUp(self):
+        wisper_worker.configure_logging(io.StringIO())
+        self.client = RecordingHeartbeats()
+        self.scheduler = FakeScheduler()
+        self.beat = Heartbeat(
+            self.client, JOB["runId"], JOB["transcriptionId"], 10.0, {}, scheduler=self.scheduler
+        )
+        self.addCleanup(self.beat.stop)
+
+    def test_renews_the_lease_while_whisper_works(self):
+        self.beat.start()
+
+        self.scheduler.advance()
+        self.scheduler.advance()
+
+        self.assertEqual([(JOB["runId"], JOB["transcriptionId"])] * 2, self.client.renewals)
+        # Deux intervalles franchis, un troisième en cours : toujours celui du bail.
+        self.assertEqual([10.0] * 3, self.scheduler.waits)
+
+    def test_stops_beating_as_soon_as_the_job_is_settled(self):
+        self.beat.start()
+        self.scheduler.advance()
+
+        self.beat.stop()  # le job vient d'être conclu
+
+        # `stop` joint le thread : plus personne n'est là pour franchir un intervalle.
+        self.assertNotIn("wisper-heartbeat", [thread.name for thread in threading.enumerate()])
+        self.scheduler.release(10)  # dix intervalles de plus, bien au-delà du bail
+        self.assertEqual(1, len(self.client.renewals))
+        self.assertEqual([10.0] * 2, self.scheduler.waits)
+
+
 class WorkerLoopTest(unittest.TestCase):
     """La boucle tourne dans un thread, contre un vrai serveur HTTP local."""
 
@@ -284,16 +545,6 @@ class WorkerLoopTest(unittest.TestCase):
 
         self.assertEqual([JOB["transcriptionId"]], self.stub.completed)
         self.assertIn("claim response rejected", [event["message"] for event in self.log_lines()])
-
-    def test_renews_the_lease_while_whisper_works_then_stops_beating(self):
-        self.stub.lease_seconds = 3  # bail court : un battement par seconde
-
-        self.run_worker({"FAKE_WHISPER_HANG_SECONDS": "2.5"})
-
-        self.assertGreaterEqual(self.stub.heartbeats, 2)
-        settled = self.stub.heartbeats
-        time.sleep(1.5)
-        self.assertEqual(settled, self.stub.heartbeats, "le battement a survécu au job")
 
 
 class SigtermTest(unittest.TestCase):

@@ -19,6 +19,7 @@ import json
 import logging
 import os
 import queue
+import random
 import re
 import shutil
 import signal
@@ -44,6 +45,11 @@ TERMINATE_GRACE_SECONDS = 10.0
 LOOP_TICK_SECONDS = 0.5
 # Bail inexploitable (absent ou illisible) : repli prudent sur un battement fréquent.
 FALLBACK_HEARTBEAT_SECONDS = 20.0
+# Disjoncteur de la boucle de réclamation : au-delà de ce nombre d'échecs consécutifs de
+# `claim`, le circuit s'ouvre et l'intervalle de sondage croît jusqu'à son plafond. Un
+# `claim` abouti — job servi ou file vide — referme le circuit.
+CLAIM_FAILURE_THRESHOLD = 5
+CLAIM_BACKOFF_MAX_SECONDS = 60.0
 # Nom neutre du média sur le disque : le nom d'origine ne quitte jamais l'API.
 MEDIA_FILENAME = "media"
 
@@ -139,25 +145,73 @@ def log(level, message, **fields):
 
 
 def run_loop(config, client, stop):
-    """Réclame et traite des jobs jusqu'à ce que `stop` soit armé."""
+    """Réclame et traite des jobs jusqu'à ce que `stop` soit armé.
+
+    Le disjoncteur vit ici : `failures` compte les `claim` consécutivement perdus et
+    espace les sondages une fois le seuil franchi, pour ne pas marteler une API qui
+    tente de se relever. L'attente passe toujours par `stop.wait`, jamais par `sleep` :
+    un arrêt demandé la tranche net, circuit ouvert ou non.
+    """
     log(logging.INFO, "worker started", workerId=config.worker_id, models=list(config.models))
+    failures = 0
     while not stop.is_set():
         try:
             job = client.claim(config.worker_id, config.models)
         except ApiError as error:
-            log(logging.WARNING, "claim failed", workerId=config.worker_id, detail=str(error))
-            stop.wait(config.poll_interval_seconds)
+            failures += 1
+            delay = _claim_delay(config.poll_interval_seconds, failures)
+            # Une 4xx définitive — jeton refusé, worker inconnu — n'est pas une panne
+            # transitoire : elle ne guérira pas seule, l'exploitant doit la distinguer.
+            # `str(error)` ne porte que l'opération et le statut, jamais l'URL ni le jeton.
+            log(
+                logging.WARNING if error.retryable else logging.ERROR,
+                "claim failed" if error.retryable else "claim rejected",
+                workerId=config.worker_id,
+                status=error.status,
+                detail=str(error),
+                consecutiveFailures=failures,
+                retryInSeconds=round(delay, 3),
+            )
+            stop.wait(delay)
             continue
         if job is None:
+            # File vide : l'API a répondu, le circuit se referme.
+            failures = 0
             stop.wait(config.poll_interval_seconds)
             continue
         if not _is_usable_job(job):
             # Réponse hors contrat : on ne peut ni la traiter, ni la déclarer en échec.
-            log(logging.ERROR, "claim response rejected", workerId=config.worker_id)
-            stop.wait(config.poll_interval_seconds)
+            # Une API qui ne respecte plus le contrat est en panne : elle ouvre le circuit.
+            failures += 1
+            delay = _claim_delay(config.poll_interval_seconds, failures)
+            log(
+                logging.ERROR,
+                "claim response rejected",
+                workerId=config.worker_id,
+                consecutiveFailures=failures,
+                retryInSeconds=round(delay, 3),
+            )
+            stop.wait(delay)
             continue
+        failures = 0
         process_job(config, client, job, stop)
     log(logging.INFO, "worker stopped", workerId=config.worker_id)
+
+
+def _claim_delay(interval, failures, jitter=random.random):
+    """Intervalle avant le prochain `claim`, selon le nombre d'échecs consécutifs.
+
+    Circuit fermé : l'intervalle nominal. Ouvert : il double à chaque échec supplémentaire
+    jusqu'au plafond, et le jitter répartit entre le nominal et ce plafond des workers
+    redémarrés ensemble, qui sinon retomberaient tous sur l'API à la même seconde.
+    """
+    if failures < CLAIM_FAILURE_THRESHOLD:
+        return interval
+    # L'exposant est borné : une API absente une journée entière ne doit pas faire déborder
+    # le flottant, et le plafond est de toute façon atteint en quelques échecs.
+    doublings = min(failures - CLAIM_FAILURE_THRESHOLD + 1, 32)
+    ceiling = max(interval, min(interval * 2**doublings, CLAIM_BACKOFF_MAX_SECONDS))
+    return interval + (ceiling - interval) * jitter()
 
 
 def _is_usable_job(job):
@@ -223,15 +277,21 @@ def _fail_quietly(client, run_id, transcription_id, reason, fields):
 
 
 class Heartbeat:
-    """Renouvelle le bail dans un thread, et s'arrête proprement sur demande."""
+    """Renouvelle le bail dans un thread, et s'arrête proprement sur demande.
 
-    def __init__(self, client, run_id, transcription_id, interval, fields):
+    L'ordonnanceur est injectable, comme l'horloge de `SegmentBatcher` : tout objet qui
+    répond à `wait(timeout) -> bool` (vrai quand l'arrêt est demandé) et à `set()` fait
+    l'affaire. En production c'est un `threading.Event` ; un test le remplace par une
+    fausse horloge pour éprouver les battements sans dormir.
+    """
+
+    def __init__(self, client, run_id, transcription_id, interval, fields, scheduler=None):
         self._client = client
         self._run_id = run_id
         self._transcription_id = transcription_id
         self._interval = interval
         self._fields = fields
-        self._stop = threading.Event()
+        self._stop = scheduler if scheduler is not None else threading.Event()
         self._thread = None
 
     def start(self):
