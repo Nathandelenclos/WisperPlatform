@@ -1,0 +1,84 @@
+/*
+ * Écran de connexion. C'est la porte d'entrée : la marque, ce que fait le produit et un
+ * formulaire d'une seule colonne, rien d'autre. Aucune décoration à charger avant le champ.
+ */
+
+.signin {
+  display: grid;
+  place-items: center;
+  min-height: 100dvh;
+  padding: var(--space-5);
+}
+
+.signin__card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  /* Largeur de mise en page : un formulaire plus large éparpille l'œil entre label et champ. */
+  width: min(100%, 26rem);
+  padding: var(--space-6);
+}
+
+.signin__brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+}
+
+.signin__mark {
+  flex: none;
+  width: var(--space-5);
+  height: var(--space-5);
+  fill: var(--accent);
+}
+
+/* Titre et accroche sont un même bloc : serrés entre eux, détachés du formulaire. */
+.signin__head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.signin__title {
+  font-size: var(--text-xl);
+}
+
+.signin__tagline {
+  color: var(--text-muted);
+}
+
+.signin__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.signin__required {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.signin__feedback:empty {
+  display: none;
+}
+
+/*
+ * Bascule connexion/inscription : détachée du formulaire par un filet, pour qu'on ne la
+ * prenne pas pour une étape de plus.
+ */
+.signin__switch {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+}
+
+.signin__switch-text {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}

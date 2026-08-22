@@ -1,0 +1,337 @@
+/*
+ * Le transcript : du texte long qu'on relit ligne à ligne et qu'on corrige souvent.
+ *
+ * Trois règles gouvernent ce fichier :
+ *  — la mesure de lecture est bornée (`--measure`), l'interligne généreux ;
+ *  — la colonne de timecodes est tabulaire ET commune à toutes les lignes, donc les
+ *    chiffres s'alignent et le texte démarre toujours au même endroit ;
+ *  — rien ne change de taille. Le surlignage du segment lu, l'apparition d'« Enregistrement… »
+ *    ou de « Corrigé » ne prennent aucune place nouvelle : elle est réservée d'avance.
+ */
+
+.transcript {
+  /* Le composant se met en page selon SA largeur, pas celle de la fenêtre : il vit en
+     colonne unique sous 900px et à côté de l'atelier au-delà. */
+  container-type: inline-size;
+  container-name: transcript;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+/* --- En-tête ----------------------------------------------------------------------------- */
+
+.transcript__header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.transcript__heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.transcript__title {
+  /* Un nom de fichier n'a pas de mots : sans coupe forcée, il déborde à 320px. */
+  overflow-wrap: anywhere;
+}
+
+.transcript__facts {
+  display: flex;
+  flex-wrap: wrap;
+  /* Écart intra-groupe plus serré que l'inter-groupe : chaque valeur reste avec son intitulé. */
+  gap: var(--space-3) var(--space-5);
+  font-size: var(--text-sm);
+}
+
+.transcript__fact {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.transcript__fact dt {
+  color: var(--text-muted);
+}
+
+.transcript__fact dd {
+  font-weight: var(--weight-medium);
+}
+
+/* --- Outils : suivi de la lecture et export ---------------------------------------------- */
+
+.transcript__tools {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  padding: var(--space-4);
+}
+
+@container transcript (min-width: 44rem) {
+  .transcript__tools {
+    flex-direction: row;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--space-6);
+  }
+}
+
+.transcript__playback {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-inline-size: var(--measure);
+}
+
+.transcript__follow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  /* Toute l'étiquette est la cible, pas la seule case : 16px ne se pointe pas au doigt. */
+  min-block-size: var(--space-7);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+}
+
+.transcript__follow input {
+  inline-size: var(--space-5);
+  block-size: var(--space-5);
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+/* Anti-affordance : pendant une correction, le réglage est visiblement hors service. */
+.transcript__follow:has(input:disabled),
+.transcript__follow:has(input:disabled) input {
+  color: var(--text-muted);
+  cursor: default;
+}
+
+.transcript__hint {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.transcript__progress {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+/* Action de reprise dans un bandeau : la couleur du ton l'emporte sur celle de l'encre,
+   pour ne jamais poser du bleu sur un fond rouge. */
+.transcript__action {
+  display: inline-flex;
+  align-items: center;
+  min-block-size: var(--space-7);
+  color: inherit;
+  font-weight: var(--weight-semibold);
+  text-decoration: underline;
+}
+
+/* --- Liste des segments ------------------------------------------------------------------ */
+
+.transcript__segments {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  /* Lignes serrées : c'est la ligne d'état de chaque segment qui donne la respiration. */
+  gap: var(--space-1) var(--space-2);
+  padding: 0;
+  list-style: none;
+}
+
+.segment {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-1);
+  /* La place du liseré du segment lu est réservée en transparent : le surlignage
+     n'élargit rien et ne décale pas le texte d'un pixel. */
+  border-inline-start: 2px solid transparent;
+  border-radius: var(--radius-sm);
+  padding-block: var(--space-1);
+  padding-inline: var(--space-2);
+  transition: background-color var(--motion-fast) var(--ease-out);
+}
+
+@container transcript (min-width: 30rem) {
+  /*
+   * La colonne de timecodes est déclarée UNE fois, sur la liste, et partagée par toutes les
+   * lignes via `subgrid`. Sans cela, chaque ligne calculerait sa propre colonne : le premier
+   * `1:02:19` élargirait la sienne et le texte avancerait en escalier au passage de l'heure.
+   */
+  .transcript__segments {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .segment {
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
+    align-items: start;
+  }
+
+  /* Colonne partagée : les timecodes se calent à droite, contre le bord du texte. */
+  .segment__timecode {
+    justify-self: stretch;
+    justify-content: flex-end;
+  }
+}
+
+/*
+ * Segment lu : deux indices, un fond et un liseré. Ni graisse, ni taille, ni bordure qui
+ * pousse — la ligne reste exactement où elle était.
+ */
+.segment--current {
+  background: var(--surface-accent);
+  border-inline-start-color: var(--accent);
+}
+
+.segment--ghost {
+  pointer-events: none;
+}
+
+.segment__timecode {
+  display: inline-flex;
+  align-items: center;
+  /* En colonne unique, le timecode se pose à gauche, juste au-dessus de son texte :
+     étiré à droite de la ligne, il semblerait appartenir au segment précédent. */
+  justify-self: start;
+  justify-content: flex-start;
+  /* Cible ≥ 44px, timecodes du transcript compris (Fitts, WCAG 2.5.8). */
+  min-inline-size: var(--space-7);
+  min-block-size: var(--space-7);
+  padding-inline: var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  /* Chiffres de largeur fixe : la colonne ne tremble pas d'une ligne à l'autre. */
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition:
+    color var(--motion-fast) var(--ease-out),
+    background-color var(--motion-fast) var(--ease-out);
+}
+
+.segment__timecode:hover {
+  background: var(--surface-sunken);
+  color: var(--text);
+}
+
+/* Aucun changement de graisse ici : en chiffres tabulaires, le gras est plus large que le
+   normal et ferait respirer toute la colonne à chaque changement de segment. */
+.segment--current .segment__timecode {
+  color: var(--accent);
+}
+
+.segment__timecode--ghost {
+  display: block;
+  min-inline-size: var(--space-7);
+  min-block-size: var(--space-7);
+}
+
+.segment__body {
+  /* La mesure borne le TEXTE, pas la ligne entière : la colonne de timecodes vit en dehors. */
+  max-inline-size: var(--measure);
+  min-inline-size: 0;
+}
+
+/*
+ * Champ auto-dimensionné, sans mesure en JavaScript : le conteneur duplique le texte du
+ * champ dans un pseudo-élément superposé, invisible, et c'est ce jumeau qui donne sa
+ * hauteur à la grille. Le champ n'a donc jamais de barre de défilement interne, et la
+ * frappe ne déclenche aucun calcul de mise en page côté script.
+ */
+.segment__grow {
+  display: grid;
+}
+
+.segment__grow::after {
+  content: attr(data-replicated-value) " ";
+  visibility: hidden;
+  white-space: pre-wrap;
+}
+
+.segment__grow > textarea {
+  resize: none;
+  overflow: hidden;
+}
+
+/* Le jumeau et le champ partagent la même cellule ET la même boîte : toute différence de
+   police, d'interligne ou de rembourrage ferait mentir la hauteur calculée. */
+.segment__grow::after,
+.segment__grow > textarea {
+  grid-area: 1 / 1 / 2 / 2;
+  padding: var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  font: inherit;
+  font-size: var(--text-reading);
+  line-height: var(--leading-reading);
+  overflow-wrap: anywhere;
+}
+
+.segment__text {
+  background: none;
+  color: var(--text);
+  transition:
+    border-color var(--motion-fast) var(--ease-out),
+    background-color var(--motion-fast) var(--ease-out);
+}
+
+/*
+ * Signifier de correction : quand le texte est modifiable, un filet sous la ligne le dit
+ * sans encadrer 1 500 paragraphes. Le survol et le focus complètent la bordure — seule la
+ * couleur change, jamais l'épaisseur, donc rien ne bouge.
+ */
+.segment__text:not(:read-only) {
+  border-block-end-color: var(--border);
+}
+
+/* Sur le fond du segment lu, `--border` disparaît — or c'est justement la ligne que
+   l'utilisateur va corriger : le filet y passe au ton plus soutenu pour rester visible. */
+.segment--current .segment__text:not(:read-only) {
+  border-block-end-color: var(--border-strong);
+}
+
+.segment__text:not(:read-only):hover {
+  border-color: var(--border);
+  background: var(--surface-raised);
+}
+
+.segment__text:focus {
+  border-color: var(--border-control);
+  background: var(--surface-raised);
+}
+
+.segment__text:read-only {
+  cursor: default;
+}
+
+/*
+ * Ligne d'état du segment. Sa hauteur est réservée en permanence : « Enregistrement… »
+ * puis « Corrigé » s'y succèdent sans jamais ajouter de ligne au transcript.
+ */
+.segment__state {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  min-block-size: var(--space-5);
+  padding-inline: var(--space-2);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+/* Statut de la correction : couleur ET mot, jamais la couleur seule. */
+.segment__error {
+  color: var(--status-failed);
+  font-weight: var(--weight-medium);
+}
+
+.segment__corrected {
+  color: var(--status-done);
+  font-weight: var(--weight-medium);
+}

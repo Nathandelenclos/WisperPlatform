@@ -1,0 +1,42 @@
+/*
+ * Squelette de chargement. Sa vraie fonction n'est pas de faire joli mais de **réserver la
+ * place** : le contenu qui arrive ne pousse alors rien.
+ */
+
+.skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.skeleton__line {
+  display: block;
+  block-size: calc(var(--text-base) * var(--leading-base));
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  /* Battement lent (huit fois le temps de base) : plus vif, il capterait l'attention. */
+  animation: skeleton-pulse calc(var(--motion-base) * 8) var(--ease-out) infinite alternate;
+}
+
+/* Les lignes n'ont pas toutes la même longueur, sinon on lit une grille, pas du texte. */
+.skeleton__line:nth-child(3n + 2) {
+  inline-size: calc(100% - var(--space-6));
+}
+
+.skeleton__line:nth-child(3n) {
+  inline-size: calc(100% - var(--space-8));
+}
+
+@keyframes skeleton-pulse {
+  to {
+    background: var(--surface);
+  }
+}
+
+/* Moins de mouvement demandé : le battement disparaît, la place reste réservée. */
+@media (prefers-reduced-motion: reduce) {
+  .skeleton__line {
+    animation: none;
+    background: var(--surface-sunken);
+  }
+}

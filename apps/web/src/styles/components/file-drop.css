@@ -1,0 +1,109 @@
+/*
+ * Zone de dépôt. Le contrôle réel est l'`<input type="file">` : il porte la classe
+ * `.visually-hidden` du socle, donc il est invisible mais toujours tabulable — `display: none`
+ * l'aurait sorti du parcours clavier. Tout le rendu se fait sur son étiquette.
+ */
+
+.file-drop {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.file-drop__zone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  padding-block: var(--space-5);
+  padding-inline: var(--space-4);
+  border: 1px dashed var(--border-control);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  color: var(--text-muted);
+  text-align: center;
+  cursor: pointer;
+  transition:
+    border-color var(--motion-fast) var(--ease-out),
+    background-color var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out);
+}
+
+.file-drop__glyph {
+  inline-size: var(--space-6);
+  block-size: var(--space-6);
+}
+
+.file-drop__lead {
+  color: var(--text);
+  font-size: var(--text-base);
+  font-weight: var(--weight-medium);
+}
+
+/* Le souligné dit où l'on clique : sans lui, la zone n'annonce que le dépôt à la souris. */
+.file-drop__cue {
+  font-size: var(--text-sm);
+  text-decoration: underline;
+}
+
+.file-drop__zone:hover {
+  border-color: var(--text-muted);
+  background: var(--surface-sunken);
+}
+
+/*
+ * L'anneau de focus se dessine sur la zone visible, l'input étant masqué. `:focus` autant que
+ * `:focus-visible` : l'arrivée par une ancre `#id` doit se voir elle aussi.
+ */
+.file-drop__input:focus + .file-drop__zone,
+.file-drop__input:focus-visible + .file-drop__zone {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* Survol de dépôt : la zone se ferme (trait plein) et prend la couleur d'accueil. */
+.file-drop--dragging .file-drop__zone {
+  border-style: solid;
+  border-color: var(--accent);
+  background: var(--surface-accent);
+  color: var(--text);
+}
+
+.file-drop--invalid .file-drop__zone {
+  border-color: var(--status-failed);
+}
+
+.file-drop--disabled .file-drop__zone {
+  border-color: var(--border);
+  background: var(--surface-sunken);
+  /* Lisible même éteint : la consigne de dépôt reste une information à lire. */
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+.file-drop__hint {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.file-drop__selection {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+/* Un nom de fichier peut être très long : il se coupe plutôt que de déborder de la colonne. */
+.file-drop__chosen {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+.file-drop__error {
+  min-block-size: calc(var(--text-xs) * var(--leading-base));
+  color: var(--status-failed);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+}

@@ -1,0 +1,161 @@
+/*
+ * Coquille de l'atelier : en-tête d'identité, atelier à gauche, transcription à droite.
+ *
+ * Mise en page mobile first : une seule colonne par défaut, deux dès que la place le permet.
+ *
+ * La rupture est une requête de conteneur, pas de fenêtre. Dans un `@container`, `em` se
+ * résout sur la police du conteneur : un texte agrandi à 200 % recule donc la rupture et
+ * l'atelier se replie en une colonne, au lieu de garder deux colonnes dont celle de lecture
+ * serait devenue trop étroite. Un zoom de page, lui, rétrécit le conteneur et produit le
+ * même repli.
+ */
+
+/* --- En-tête ---------------------------------------------------------------------------- */
+
+.topbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.topbar__brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  /* Pousse le compte à l'autre extrémité, sans conteneur intermédiaire. */
+  margin-right: auto;
+  min-width: 0;
+  font-size: var(--text-lg);
+}
+
+.topbar__mark {
+  flex: none;
+  width: var(--space-5);
+  height: var(--space-5);
+  fill: var(--accent);
+}
+
+.topbar__account {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+/*
+ * L'identité du compte est un repère, pas un contenu : elle cède la place avant tout le
+ * reste sur un écran étroit.
+ */
+.topbar__name {
+  overflow: hidden;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Région live vide au repos : elle ne doit pas creuser un vide dans l'en-tête. */
+.topbar__feedback:not(:empty) {
+  flex-basis: 100%;
+}
+
+/* --- Atelier ---------------------------------------------------------------------------- */
+
+.workspace {
+  container-type: inline-size;
+  padding: var(--space-4);
+}
+
+.workspace__grid {
+  display: grid;
+  gap: var(--space-5);
+  align-items: start;
+}
+
+/*
+ * Le lien d'évitement et la sélection d'une transcription posent le focus sur des régions
+ * pleine largeur : l'anneau se dessine à l'intérieur, sinon il déborde et crée un
+ * défilement horizontal à 320px.
+ */
+.workspace:focus-visible,
+.workspace__detail:focus-visible {
+  outline-offset: calc(-1 * var(--space-1));
+}
+
+.workspace__aside {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  min-width: 0;
+}
+
+.workspace__detail {
+  min-width: 0;
+}
+
+/* L'atelier fait 20rem, la lecture prend le reste ; `minmax(0, …)` laisse les deux se couper. */
+@container (min-width: 56.25em) {
+  .workspace__grid {
+    grid-template-columns: minmax(0, 20rem) minmax(0, 1fr);
+    gap: var(--space-6);
+  }
+}
+
+@media (min-width: 56.25em) {
+  .topbar {
+    /* Le transcript se lit longtemps : l'identité et la sortie restent à portée. */
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    padding: var(--space-3) var(--space-5);
+  }
+
+  .workspace {
+    padding: var(--space-6);
+  }
+}
+
+/* --- Écrans d'attente et de repli -------------------------------------------------------- */
+
+.boot {
+  display: grid;
+  place-items: center;
+  min-height: 100dvh;
+  padding: var(--space-6);
+  color: var(--text-muted);
+}
+
+/* Panneau de droite pendant l'ouverture d'une transcription, ou après un rendu interrompu. */
+.detail-status {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-5);
+}
+
+.detail-status__text {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+/* --- Lien d'action ---------------------------------------------------------------------- */
+
+/*
+ * Destination, donc un lien — pas un bouton déguisé. Souligné : la couleur seule ne suffit
+ * pas à distinguer un lien d'un texte statique.
+ */
+.text-link {
+  align-self: start;
+  color: var(--accent);
+  font-weight: var(--weight-medium);
+  text-decoration-thickness: from-font;
+  text-underline-offset: 0.2em;
+}
+
+.text-link:hover {
+  color: var(--accent-hover);
+}

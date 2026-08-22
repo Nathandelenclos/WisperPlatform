@@ -49,3 +49,31 @@ export function formatDateTime(iso: string): string {
   const date = new Date(iso);
   return Number.isNaN(date.getTime()) ? '—' : dateTimeFormat.format(date);
 }
+
+const relativeFormat = new Intl.RelativeTimeFormat('fr-FR', { numeric: 'auto' });
+
+/** Paliers décroissants : on retient le premier dont l'unité est atteinte. */
+const RELATIVE_STEPS: readonly { unit: Intl.RelativeTimeFormatUnit; ms: number }[] = [
+  { unit: 'year', ms: 365 * 86_400_000 },
+  { unit: 'month', ms: 30 * 86_400_000 },
+  { unit: 'day', ms: 86_400_000 },
+  { unit: 'hour', ms: 3_600_000 },
+  { unit: 'minute', ms: 60_000 },
+];
+
+/**
+ * Date ISO → « il y a 3 minutes », « hier ». Dans une bibliothèque, l'écart au présent se
+ * lit plus vite qu'un horodatage ; la date exacte reste portée par l'attribut `datetime`.
+ */
+export function formatRelativeTime(iso: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '—';
+  const elapsed = Date.now() - date.getTime();
+  for (const step of RELATIVE_STEPS) {
+    // Une horloge décalée peut donner une date au futur : « dans 2 minutes » reste juste.
+    if (Math.abs(elapsed) >= step.ms) {
+      return relativeFormat.format(-Math.round(elapsed / step.ms), step.unit);
+    }
+  }
+  return "à l'instant";
+}

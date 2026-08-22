@@ -1,0 +1,125 @@
+/*
+ * Bibliothèque : la navigation de l'atelier. Une liste à plat, un seul niveau, l'élément
+ * courant repérable d'un coup d'œil. Tout doit tenir à 320px sans débordement, d'où des
+ * noms de média qui se coupent où ils peuvent et des méta-données qui passent à la ligne.
+ */
+
+.library {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-4);
+}
+
+.library__head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.library__title {
+  margin-right: auto;
+}
+
+/* Le compte est une donnée, pas un libellé : « 12 », pas « Nombre : 12 ». */
+.library__count {
+  padding: var(--space-1) var(--space-2);
+  background: var(--surface-sunken);
+  border-radius: var(--radius-pill);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  font-variant-numeric: tabular-nums;
+}
+
+.library__feedback:empty {
+  display: none;
+}
+
+.library__loading {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+.library__items {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: 0;
+  list-style: none;
+}
+
+/* --- Ligne ------------------------------------------------------------------------------ */
+
+.library__row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  width: 100%;
+  /* Le retrait à gauche est le même partout : le filet de l'élément courant s'y loge
+     sans décaler une seule ligne de texte. */
+  padding: var(--space-3) var(--space-3) var(--space-3) var(--space-4);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  text-align: left;
+  cursor: pointer;
+  /* Rien ne bouge sous le curseur : seules la couleur et la bordure changent. */
+  transition:
+    background-color var(--motion-fast) var(--ease-out),
+    border-color var(--motion-fast) var(--ease-out);
+}
+
+.library__row:hover {
+  background: var(--surface-sunken);
+  border-color: var(--border);
+}
+
+/*
+ * Élément courant. Le fond ne suffit pas — un daltonien doit le voir : un filet d'encre
+ * le marque à gauche, posé en ombre intérieure pour ne décaler aucun texte.
+ */
+.library__row[aria-current] {
+  background: var(--surface-accent);
+  border-color: var(--accent);
+  box-shadow: inset var(--space-1) 0 0 0 var(--accent);
+}
+
+.library__row--placeholder {
+  border-color: var(--border);
+  cursor: default;
+  pointer-events: none;
+}
+
+.library__row-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+/* Un nom de fichier n'a pas d'espaces : il faut l'autoriser à se couper n'importe où. */
+.library__name {
+  min-width: 0;
+  font-weight: var(--weight-medium);
+  overflow-wrap: anywhere;
+}
+
+.library__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.library__meta-item {
+  font-variant-numeric: tabular-nums;
+}
+
+.library__failure {
+  color: var(--status-failed);
+  font-size: var(--text-xs);
+  overflow-wrap: anywhere;
+}
