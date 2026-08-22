@@ -2,12 +2,18 @@ import 'reflect-metadata';
 
 import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
+import type { IncomingMessage, ServerResponse } from 'node:http';
 import { Logger } from 'nestjs-pino';
 
 import { AppModule } from './app.module';
 import { shouldParseJsonBody } from './auth/interface/json-body-policy';
 import { ENV } from './shared/infrastructure/config/env';
 import type { Env } from './shared/infrastructure/config/env';
+import {
+  CORRELATION_ID_HEADER,
+  correlationStorage,
+  resolveCorrelationId,
+} from './shared/infrastructure/logging/correlation';
 
 /** Les corps JSON de l'API ne portent que des métadonnées ; les médias passent en multipart. */
 const JSON_BODY_LIMIT = '1mb';
@@ -21,6 +27,15 @@ async function bootstrap(): Promise<void> {
   });
 
   app.useLogger(app.get(Logger));
+
+  // Premier middleware de la chaîne : il ouvre le contexte de corrélation, pour que chaque
+  // ligne émise pendant la requête — journal d'accès comme journal métier — porte le même
+  // identifiant. Enregistré ici, donc avant tout ce que Nest ajoute à l'initialisation.
+  app.use((request: IncomingMessage, response: ServerResponse, next: () => void) => {
+    const correlationId = resolveCorrelationId(request.headers[CORRELATION_ID_HEADER]);
+    response.setHeader(CORRELATION_ID_HEADER, correlationId);
+    correlationStorage.run(correlationId, next);
+  });
   app.useBodyParser('json', { limit: JSON_BODY_LIMIT, type: shouldParseJsonBody });
   app.setGlobalPrefix('api');
 

@@ -1,8 +1,8 @@
 import { All, Controller, Inject, Req, Res } from '@nestjs/common';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
-import { AUTH_REQUEST_HANDLER } from '../application/ports/authentication';
-import type { AuthRequestHandler } from '../application/ports/authentication';
+import { AUTH_REQUEST_HANDLER } from './auth-request-handler';
+import type { AuthRequestHandler } from './auth-request-handler';
 
 /**
  * Monte l'intégralité des routes du fournisseur d'identité sous `/api/auth`.
