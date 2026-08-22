@@ -40,9 +40,20 @@ RUN pnpm --filter @wisper/api build
 # --- Dépendances de production ----------------------------------------------------------------
 FROM workspace-base AS production-deps
 
-# `--prod` écarte les devDependencies, `--ignore-scripts` interdit l'exécution de scripts
-# d'installation : rien n'est compilé ici, donc rien de compilé n'entre dans l'image finale.
-RUN pnpm install --frozen-lockfile --prod --ignore-scripts --filter @wisper/api
+# Les devDependencies sont retirées du MANIFESTE avant l'installation, et pas seulement écartées
+# par `--prod` : `better-auth` déclare `vitest` et `drizzle-kit` en pairs optionnels, donc tant
+# qu'elles figurent dans le manifeste pnpm résout ces arêtes et matérialise leurs binaires
+# esbuild (0.18.20, 0.25.12, 0.28.2) dans le magasin virtuel, que `--prod` recopiait ensuite en
+# entier — c'est de là que venaient toutes les vulnérabilités HIGH/CRITICAL de la Go stdlib
+# relevées par Trivy. `pnpm deploy` rend un `node_modules` autonome, recopiable tel quel dans
+# l'étape runtime : plus de liens relatifs à entretenir entre deux répertoires. `--legacy` est
+# exigé par pnpm 11 hors `inject-workspace-packages`, que cet espace de travail n'active pas.
+# ponytail: le manifeste amputé désaccorde le lockfile, donc cette étape résout au lieu de
+# figer (`--no-frozen-lockfile`). Vérifié : les 159 paquets installés portent exactement les
+# versions du lockfile — les spécificateurs de production sont inchangés, seuls les suffixes de
+# pairs bougent — et l'étape `builder` reste figée. Sortie : `pnpm.overrides` sur les pairs
+# optionnels de `better-auth` dans `apps/api/package.json`, ou un pnpm qui ignore les pairs
+# optionnels sous `--prod` ; les deux sont hors de ce correctif.
 
 
 # --- Runtime ----------------------------------------------------------------------------------
@@ -55,21 +66,22 @@ LABEL org.opencontainers.image.title="wisper-api" \
 
 ENV NODE_ENV=production
 
-# Aucun gestionnaire de paquets dans l'image finale. `media-store` est créé et attribué ici
+# Aucun gestionnaire de paquets dans l'image finale — yarn compris, que l'image `node` livre
+# hors de `node_modules` et que Trivy voyait encore. `media-store` est créé et attribué ici
 # pour qu'un volume neuf hérite de la bonne propriété : la racine du conteneur est montée en
 # lecture seule, et les envois multipart transitent par `media-store/incoming`.
 RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
            /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
+           /opt/yarn-v* /usr/local/bin/yarn /usr/local/bin/yarnpkg \
     && mkdir -p /app/media-store \
     && chown node:node /app/media-store
 
 WORKDIR /app/apps/api
 
-# node_modules de l'espace de travail pnpm : le magasin virtuel vit à la racine, les liens
-# relatifs de `apps/api/node_modules` restent valides parce que l'arborescence est identique.
-COPY --from=production-deps --chown=node:node /app/node_modules /app/node_modules
-COPY --from=production-deps --chown=node:node /app/apps/api/node_modules ./node_modules
-COPY --from=production-deps --chown=node:node /app/apps/api/package.json ./package.json
+# `node_modules` autonome produit par `pnpm deploy` : magasin virtuel et liens de premier
+# niveau vivent dans le même répertoire, une seule copie suffit.
+COPY --from=production-deps --chown=node:node /deploy/node_modules ./node_modules
+COPY --from=production-deps --chown=node:node /deploy/package.json ./package.json
 COPY --from=builder --chown=node:node /app/apps/api/dist ./dist
 COPY --from=builder --chown=node:node /app/apps/api/drizzle ./drizzle
 
