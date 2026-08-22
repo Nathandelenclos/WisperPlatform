@@ -9,11 +9,11 @@ module.exports = {
     {
       name: 'domain-stays-pure',
       severity: 'error',
-      comment: 'Le domaine ne dépend de rien : ni couche externe, ni framework, ni ORM.',
-      from: { path: '^src/[^/]+/domain/' },
-      to: {
-        pathNot: '^src/[^/]+/domain/',
-      },
+      comment:
+        "Le domaine ne dépend de rien : ni couche externe, ni framework, ni ORM, ni module de " +
+        'plateforme — et pas davantage du domaine d\'un autre contexte borné.',
+      from: { path: '^src/([^/]+)/domain/' },
+      to: { pathNot: '^src/$1/domain/' },
     },
     {
       name: 'application-never-reaches-out',
@@ -23,10 +23,24 @@ module.exports = {
       to: { path: '^src/([^/]+)/(infrastructure|interface)/' },
     },
     {
+      name: 'application-stays-technology-free',
+      severity: 'error',
+      comment:
+        "L'application n'importe aucun paquet ni module de plateforme : c'est l'absence de " +
+        'cette règle qui avait laissé `node:http` entrer dans un port. Seule exception, ' +
+        'assumée et nommée : `node:stream`, dont le type `Readable` décrit le contrat de ' +
+        "lecture d'un média (voir le port MediaStorage).",
+      from: { path: '^src/[^/]+/application/' },
+      to: {
+        dependencyTypes: ['npm', 'npm-dev', 'npm-optional', 'npm-peer', 'core'],
+        pathNot: '^stream$',
+      },
+    },
+    {
       name: 'controllers-never-touch-infrastructure',
       severity: 'error',
       comment: "L'interface passe par l'application ; seul le module de composition câble l'infra.",
-      from: { path: '^src/[^/]+/interface/', pathNot: '\\.module\\.ts$' },
+      from: { path: '^src/[^/]+/interface/' },
       to: { path: '^src/([^/]+)/infrastructure/' },
     },
     {
