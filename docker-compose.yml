@@ -36,6 +36,13 @@ x-worker-env: &worker-env
   WHISPER_MODEL_DIR: /home/wisper/.cache/whisper
   POLL_INTERVAL_SECONDS: ${POLL_INTERVAL_SECONDS:-3}
   TMPDIR: /var/tmp/wisper
+  # Diarisation : les poids sont dans l'image, à l'emplacement que `diarization.py` cherche par
+  # défaut — rien à poser pour qu'elle marche. Ce qui reste réglable, c'est le coût et la
+  # sensibilité du regroupement : un seuil plus haut fond deux voix proches en une, un seuil plus
+  # bas coupe une même voix en plusieurs. Une valeur illisible éteint la passe, elle ne tue pas
+  # le worker, et un transcript sort quand même.
+  WISPER_DIARIZATION_THREADS: ${WISPER_DIARIZATION_THREADS:-2}
+  WISPER_DIARIZATION_CLUSTER_THRESHOLD: ${WISPER_DIARIZATION_CLUSTER_THRESHOLD:-0.5}
 
 x-worker-base: &worker-base
   <<: *hardened
