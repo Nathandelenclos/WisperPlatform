@@ -10,12 +10,15 @@ import {
 } from './api/transcriptions';
 import { useSession } from './auth/client';
 import { MIN_PASSWORD_LENGTH } from './auth/session';
+import { NoSelection } from './components/NoSelection';
 import { SignInPanel } from './components/SignInPanel';
+import { TopBar } from './components/TopBar';
 import { TranscriptionEditor } from './components/TranscriptionEditor';
 import { TranscriptionList } from './components/TranscriptionList';
 import { UploadForm } from './components/UploadForm';
+import { formatByteSize } from './format';
 import { useAuthCommand, useSignOut } from './hooks/use-auth';
-import { useTranscriptionEvents } from './hooks/use-transcription-events';
+import { useTranscriptionEvents, type StreamState } from './hooks/use-transcription-events';
 import {
   useCorrectSegment,
   useRequestTranscription,
@@ -33,13 +36,21 @@ function describeFailure(error: unknown): string | null {
  * L'éditeur, lui, ne reçoit que des données et des callbacks.
  */
 function SelectedTranscription({ transcriptionId }: { transcriptionId: string }) {
-  const detail = useTranscription(transcriptionId);
+  const [stream, setStream] = useState<StreamState>('connecting');
+  // Jeton de reprise : l'incrémenter rouvre le flux, c'est le bouton « Reconnecter ».
+  const [resumeToken, setResumeToken] = useState(0);
+
+  // Flux perdu : le détail est rappelé périodiquement, faute de mieux, pour que la vue
+  // finisse quand même par voir la fin de la transcription.
+  const detail = useTranscription(transcriptionId, { degraded: stream === 'lost' });
   const correction = useCorrectSegment(transcriptionId);
   const status = detail.data?.status;
 
   useTranscriptionEvents({
     transcriptionId,
     enabled: status === 'pending' || status === 'transcribing',
+    resumeToken,
+    onStateChange: setStream,
   });
 
   if (detail.data === undefined) {
@@ -64,6 +75,8 @@ function SelectedTranscription({ transcriptionId }: { transcriptionId: string })
       buildExportUrl={(format: SubtitleFormat) => transcriptionUrls.export(transcriptionId, format)}
       savingOrdinal={savingOrdinal}
       errorMessage={describeFailure(correction.error)}
+      streamLost={stream === 'lost'}
+      onRetryStream={() => setResumeToken((token) => token + 1)}
       onCorrectSegment={(request) => correction.mutate(request)}
     />
   );
@@ -83,30 +96,24 @@ function Workspace({
 }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [acceptedId, setAcceptedId] = useState<string | null>(null);
+  const [file, setFile] = useState<File | null>(null);
   const library = useTranscriptionList();
   const upload = useRequestTranscription();
 
+  // Règle de taille du média : elle appartient au contrat de l'API, pas au formulaire.
+  const sizeError =
+    file !== null && file.size > MEDIA_MAX_BYTES
+      ? `Fichier trop volumineux : ${formatByteSize(file.size)} pour ${formatByteSize(MEDIA_MAX_BYTES)} autorisés.`
+      : null;
+
   return (
     <div className="app">
-      <header className="topbar">
-        <p className="wordmark">WisperPlatform</p>
-        <div className="topbar__user">
-          <span className="topbar__name">{displayName}</span>
-          {signOutError === null ? null : (
-            <span className="topbar__error" role="alert">
-              {signOutError}
-            </span>
-          )}
-          <button
-            className="button button--ghost"
-            type="button"
-            disabled={signingOut}
-            onClick={onSignOut}
-          >
-            {signingOut ? 'Déconnexion…' : 'Se déconnecter'}
-          </button>
-        </div>
-      </header>
+      <TopBar
+        displayName={displayName}
+        signingOut={signingOut}
+        signOutError={signOutError}
+        onSignOut={onSignOut}
+      />
 
       <main className="workspace">
         <div className="workspace__side">
@@ -116,15 +123,19 @@ function Workspace({
             defaultModel={DEFAULT_MODEL}
             defaultLanguage={DEFAULT_LANGUAGE}
             maxByteSize={MEDIA_MAX_BYTES}
+            file={file}
+            sizeError={sizeError}
             submitting={upload.isPending}
             errorMessage={describeFailure(upload.error)}
             acceptedId={acceptedId}
+            onFileChange={setFile}
             onSubmit={(request) =>
               upload.mutate(request, {
                 onSuccess: (accepted) => {
                   // On ouvre aussitôt la transcription : les segments y arrivent en direct.
                   setAcceptedId(accepted.id);
                   setSelectedId(accepted.id);
+                  setFile(null);
                 },
               })
             }
@@ -141,12 +152,9 @@ function Workspace({
 
         <div className="workspace__main">
           {selectedId === null ? (
-            <p className="empty empty--main">
-              Choisissez une transcription dans la liste pour lire le média, corriger le texte et
-              l'exporter.
-            </p>
+            <NoSelection />
           ) : (
-            <SelectedTranscription transcriptionId={selectedId} />
+            <SelectedTranscription key={selectedId} transcriptionId={selectedId} />
           )}
         </div>
       </main>

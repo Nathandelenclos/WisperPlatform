@@ -1,19 +1,33 @@
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import {
   parseTranscriptionEvent,
   transcriptionUrls,
   type Segment,
   type TranscriptionEvent,
+  type TranscriptionStatus,
   type TranscriptionSummary,
   type TranscriptionView,
 } from '../api/transcriptions';
 import { transcriptionKeys } from './use-transcriptions';
 
-/** Reconnexion bornée : au-delà, on cesse d'insister et la vue reste sur son état. */
+/** Reconnexion bornée : au-delà, on cesse d'insister et on le dit à l'appelant. */
 const MAX_RECONNECT_ATTEMPTS = 5;
 const FIRST_RECONNECT_DELAY_MS = 1_000;
 const MAX_RECONNECT_DELAY_MS = 15_000;
+
+/**
+ * Durée au-delà de laquelle une connexion est tenue pour établie même sans message.
+ * Un serveur qui accepte puis referme aussitôt ne doit pas rendre le budget infini.
+ */
+const PROVEN_AFTER_MS = 30_000;
+
+/** État du flux, tel que l'interface doit le montrer. */
+export type StreamState = 'idle' | 'connecting' | 'live' | 'lost';
+
+function isTerminal(status: TranscriptionStatus): boolean {
+  return status === 'completed' || status === 'failed';
+}
 
 function mergeSegments(known: Segment[], incoming: readonly Segment[]): Segment[] {
   // Un lot rejoué ne doit rien dupliquer : l'ordinal est l'identité du segment.
@@ -26,15 +40,20 @@ function mergeSegments(known: Segment[], incoming: readonly Segment[]): Segment[
 function reduceView(view: TranscriptionView, event: TranscriptionEvent): TranscriptionView {
   switch (event.name) {
     case 'transcription.started':
+      // Statut terminal collant : un `started` en retard ne doit pas vider le transcrit.
+      if (isTerminal(view.status)) return view;
       // Une nouvelle tentative repart de zéro : les segments de la précédente tombent.
       return { ...view, status: 'transcribing', segments: [], failureReason: null };
     case 'transcription.requeued':
+      if (isTerminal(view.status)) return view;
       return { ...view, status: 'pending', segments: [], failureReason: null };
     case 'transcription.segments-appended': {
       const segments = mergeSegments(view.segments, event.segments);
+      // Un lot en retard complète les segments sans ramener la vue à « en cours ».
+      const status = isTerminal(view.status) ? view.status : 'transcribing';
       // Rejeu sans nouveauté : la vue est laissée telle quelle, aucun rendu inutile.
-      if (segments === view.segments && view.status === 'transcribing') return view;
-      return { ...view, status: 'transcribing', segments };
+      if (segments === view.segments && status === view.status) return view;
+      return { ...view, status, segments };
     }
     case 'transcription.completed':
       return { ...view, status: 'completed', completedAt: event.occurredAt };
@@ -64,6 +83,8 @@ function reduceSummary(
 ): TranscriptionSummary {
   switch (event.name) {
     case 'transcription.started':
+      // Même règle que sur le détail : le terminal ne régresse pas.
+      if (isTerminal(summary.status)) return summary;
       return {
         ...summary,
         status: 'transcribing',
@@ -72,6 +93,7 @@ function reduceSummary(
         failureReason: null,
       };
     case 'transcription.requeued':
+      if (isTerminal(summary.status)) return summary;
       return {
         ...summary,
         status: 'pending',
@@ -80,11 +102,12 @@ function reduceSummary(
         failureReason: null,
       };
     case 'transcription.segments-appended': {
-      if (view === undefined) return { ...summary, status: 'transcribing' };
+      const status = isTerminal(summary.status) ? summary.status : 'transcribing';
+      if (view === undefined) return { ...summary, status };
       const last = view.segments.at(-1);
       return {
         ...summary,
-        status: 'transcribing',
+        status,
         segmentCount: view.segments.length,
         durationMs: last === undefined ? summary.durationMs : last.endMs,
       };
@@ -127,17 +150,35 @@ function applyEvent(queryClient: QueryClient, transcriptionId: string, event: Tr
  * Branche le flux SSE d'une transcription sur le cache : les segments arrivent au fil
  * de l'eau, sans refetch de la vue complète.
  *
+ * Le flux n'a ni tampon ni rejeu côté serveur : tout ce qui est émis pendant une
+ * coupure est perdu. Chaque connexion repart donc d'un instantané du serveur, le flux
+ * ne portant ensuite que le delta.
+ *
  * `enabled` reste faux sur une transcription terminée : plus rien n'a à être diffusé.
+ * `resumeToken` sert la reprise manuelle : le changer rouvre le flux depuis zéro.
  */
 export function useTranscriptionEvents(p: {
   transcriptionId: string | null;
   enabled: boolean;
+  resumeToken: number;
+  onStateChange: (state: StreamState) => void;
 }): void {
   const queryClient = useQueryClient();
-  const { transcriptionId, enabled } = p;
+  const { transcriptionId, enabled, resumeToken, onStateChange } = p;
+
+  // Le rapport d'état passe par une ref : un callback recréé à chaque rendu ne doit
+  // pas relancer l'effet, sous peine de reconnecter en boucle.
+  const report = useRef(onStateChange);
+  useEffect(() => {
+    report.current = onStateChange;
+  }, [onStateChange]);
 
   useEffect(() => {
-    if (transcriptionId === null || !enabled) return;
+    if (transcriptionId === null || !enabled) {
+      report.current('idle');
+      return;
+    }
+    report.current('connecting');
 
     let abandoned = false;
     let attempts = 0;
@@ -149,12 +190,23 @@ export function useTranscriptionEvents(p: {
         withCredentials: true,
       });
       source = stream;
+      let openedAt = 0;
+      let proven = false;
 
       stream.onopen = () => {
-        attempts = 0;
+        openedAt = Date.now();
+        report.current('live');
+        // Resynchronisation : ce qui a été émis avant cette connexion n'arrivera jamais.
+        void queryClient.invalidateQueries({
+          queryKey: transcriptionKeys.detail(transcriptionId),
+        });
+        void queryClient.invalidateQueries({ queryKey: transcriptionKeys.list });
       };
 
       stream.onmessage = (message: MessageEvent<string>) => {
+        // Un message reçu prouve la connexion : le budget de reconnexion peut repartir.
+        proven = true;
+        attempts = 0;
         const event = parseTranscriptionEvent(message.data);
         if (event !== null) applyEvent(queryClient, transcriptionId, event);
       };
@@ -162,7 +214,15 @@ export function useTranscriptionEvents(p: {
       stream.onerror = () => {
         // `EventSource` réessaie sans fin de lui-même : on reprend la main pour borner.
         stream.close();
-        if (abandoned || attempts >= MAX_RECONNECT_ATTEMPTS) return;
+        if (abandoned) return;
+        // Le budget ne repart que sur un flux prouvé, sinon un serveur qui accepte puis
+        // referme aussitôt ferait reconnecter indéfiniment.
+        if (proven || (openedAt !== 0 && Date.now() - openedAt >= PROVEN_AFTER_MS)) attempts = 0;
+        if (attempts >= MAX_RECONNECT_ATTEMPTS) {
+          report.current('lost');
+          return;
+        }
+        report.current('connecting');
         const backoff = Math.min(FIRST_RECONNECT_DELAY_MS * 2 ** attempts, MAX_RECONNECT_DELAY_MS);
         const jitter = 0.7 + Math.random() * 0.6;
         attempts += 1;
@@ -177,5 +237,5 @@ export function useTranscriptionEvents(p: {
       window.clearTimeout(retryTimer);
       source?.close();
     };
-  }, [transcriptionId, enabled, queryClient]);
+  }, [transcriptionId, enabled, resumeToken, queryClient]);
 }

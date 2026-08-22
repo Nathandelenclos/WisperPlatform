@@ -8,10 +8,15 @@ type UploadFormProps = {
   defaultModel: WhisperModel;
   defaultLanguage: string;
   maxByteSize: number;
+  /** Fichier retenu par le conteneur, qui en juge la taille. */
+  file: File | null;
+  /** Message du refus de taille, calculé par le conteneur ; bloque l'envoi. */
+  sizeError: string | null;
   submitting: boolean;
   errorMessage: string | null;
-  /** Identifiant de la dernière transcription acceptée : remet le formulaire à zéro. */
+  /** Identifiant de la dernière transcription acceptée : remet le champ fichier à zéro. */
   acceptedId: string | null;
+  onFileChange: (file: File | null) => void;
   onSubmit: (request: { file: File; model: WhisperModel; language: string }) => void;
 };
 
@@ -22,26 +27,18 @@ export function UploadForm({
   defaultModel,
   defaultLanguage,
   maxByteSize,
+  file,
+  sizeError,
   submitting,
   errorMessage,
   acceptedId,
+  onFileChange,
   onSubmit,
 }: UploadFormProps) {
-  const [file, setFile] = useState<File | null>(null);
   const [model, setModel] = useState<WhisperModel>(defaultModel);
   const [language, setLanguage] = useState(defaultLanguage);
-  const [clearedFor, setClearedFor] = useState(acceptedId);
 
-  if (acceptedId !== clearedFor) {
-    // Le dépôt a été accepté : le champ fichier est vidé (sa `key` change) et l'état suit.
-    setClearedFor(acceptedId);
-    setFile(null);
-  }
-
-  const tooLarge = file !== null && file.size > maxByteSize;
-  const localError = tooLarge
-    ? `Fichier trop volumineux : ${formatByteSize(file.size)} pour ${formatByteSize(maxByteSize)} autorisés.`
-    : errorMessage;
+  const localError = sizeError ?? errorMessage;
 
   return (
     <section className="panel" aria-labelledby="upload-title">
@@ -53,7 +50,7 @@ export function UploadForm({
         className="form"
         onSubmit={(submitEvent) => {
           submitEvent.preventDefault();
-          if (file === null || tooLarge || submitting) return;
+          if (file === null || sizeError !== null || submitting) return;
           onSubmit({ file, model, language });
         }}
       >
@@ -70,7 +67,7 @@ export function UploadForm({
             accept="audio/*,video/*"
             required
             aria-describedby="upload-file-hint"
-            onChange={(changeEvent) => setFile(changeEvent.target.files?.[0] ?? null)}
+            onChange={(changeEvent) => onFileChange(changeEvent.target.files?.[0] ?? null)}
           />
           <p className="field__hint" id="upload-file-hint">
             {formatByteSize(maxByteSize)} maximum.
@@ -130,7 +127,7 @@ export function UploadForm({
         <button
           className="button button--primary"
           type="submit"
-          disabled={submitting || file === null || tooLarge}
+          disabled={submitting || file === null || sizeError !== null}
         >
           {submitting ? 'Envoi du média…' : 'Lancer la transcription'}
         </button>

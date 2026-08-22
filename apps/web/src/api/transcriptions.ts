@@ -121,17 +121,27 @@ export async function requestTranscription(p: {
   return requestJson<{ id: string }>('/api/transcriptions', {
     method: 'POST',
     body: form,
-    signal: AbortSignal.timeout(UPLOAD_TIMEOUT_MS),
+    timeoutMs: UPLOAD_TIMEOUT_MS,
   });
 }
 
-/** Transcriptions de l'utilisateur connecté, les plus récentes d'abord. */
-export async function listTranscriptions(): Promise<TranscriptionSummary[]> {
-  return requestJson<TranscriptionSummary[]>('/api/transcriptions');
+/**
+ * Transcriptions de l'utilisateur connecté, les plus récentes d'abord. Le signal vient
+ * de React Query : une requête devenue inutile est annulée au lieu de courir jusqu'au bout.
+ */
+export async function listTranscriptions(p: { signal?: AbortSignal } = {}): Promise<
+  TranscriptionSummary[]
+> {
+  return requestJson<TranscriptionSummary[]>('/api/transcriptions', { signal: p.signal });
 }
 
-export async function getTranscription(id: string): Promise<TranscriptionView> {
-  return requestJson<TranscriptionView>(`/api/transcriptions/${encodeURIComponent(id)}`);
+export async function getTranscription(
+  id: string,
+  p: { signal?: AbortSignal } = {},
+): Promise<TranscriptionView> {
+  return requestJson<TranscriptionView>(`/api/transcriptions/${encodeURIComponent(id)}`, {
+    signal: p.signal,
+  });
 }
 
 /** Corrige le texte d'un segment déjà transcrit. */

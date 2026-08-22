@@ -17,6 +17,9 @@ type TranscriptionEditorProps = {
   /** Segment en cours d'enregistrement, s'il y en a un. */
   savingOrdinal: number | null;
   errorMessage: string | null;
+  /** Le flux d'événements est coupé : la vue n'avance plus en direct. */
+  streamLost: boolean;
+  onRetryStream: () => void;
   onCorrectSegment: (correction: { ordinal: number; text: string }) => void;
 };
 
@@ -30,6 +33,8 @@ export function TranscriptionEditor({
   buildExportUrl,
   savingOrdinal,
   errorMessage,
+  streamLost,
+  onRetryStream,
   onCorrectSegment,
 }: TranscriptionEditorProps) {
   const mediaRef = useRef<HTMLMediaElement | null>(null);
@@ -37,6 +42,8 @@ export function TranscriptionEditor({
 
   const { segments, status } = transcription;
   const isVideo = transcription.mediaContentType.startsWith('video/');
+  // Le domaine ne corrige un segment que sur une transcription terminée.
+  const editable = status === 'completed';
 
   // Identité stable : un ref-callback recréé à chaque rendu serait détaché/rattaché.
   const attachMedia = useCallback((node: HTMLMediaElement | null) => {
@@ -112,7 +119,23 @@ export function TranscriptionEditor({
         </p>
       )}
 
-      {status === 'transcribing' ? (
+      {streamLost ? (
+        <div className="notice notice--warning notice--action" role="alert">
+          <span>
+            Connexion au flux perdue : les phrases n'arrivent plus en direct. La vue est
+            rafraîchie toutes les quelques secondes en attendant.
+          </span>
+          <button
+            className="button button--ghost button--compact"
+            type="button"
+            onClick={onRetryStream}
+          >
+            Reconnecter
+          </button>
+        </div>
+      ) : null}
+
+      {status === 'transcribing' && !streamLost ? (
         <p className="live" role="status">
           <span className="live__dot" aria-hidden="true" />
           Transcription en cours — les phrases s'ajoutent au fil de l'eau.
@@ -122,6 +145,13 @@ export function TranscriptionEditor({
       {status === 'pending' ? (
         <p className="notice" role="status">
           En file d'attente : la transcription démarrera dès qu'un worker sera libre.
+        </p>
+      ) : null}
+
+      {!editable && segments.length > 0 ? (
+        <p className="notice" role="status">
+          Texte en lecture seule : la correction n'est possible qu'une fois la transcription
+          terminée.
         </p>
       ) : null}
 
@@ -151,6 +181,7 @@ export function TranscriptionEditor({
             key={segment.ordinal}
             segment={segment}
             current={segment.ordinal === currentOrdinal}
+            editable={editable}
             saving={segment.ordinal === savingOrdinal}
             onSeek={seek}
             onCommit={(text) => onCorrectSegment({ ordinal: segment.ordinal, text })}

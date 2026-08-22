@@ -193,6 +193,13 @@ button {
   text-underline-offset: 3px;
 }
 
+/* Bouton d'appoint logé dans un message : plus discret, cible toujours cliquable. */
+.button--compact {
+  min-height: 36px;
+  padding: 0 var(--s3);
+  font-size: var(--text-xs);
+}
+
 /* ---------- Champs ---------- */
 
 .form {
@@ -279,6 +286,26 @@ button {
   background: var(--danger-soft);
   color: var(--danger-ink);
   border-left-color: var(--danger-ink);
+}
+
+.notice--warning {
+  background: var(--pending-soft);
+  color: var(--pending-ink);
+  border-left-color: var(--pending-ink);
+}
+
+/* Le bouton d'un message reprend la couleur du message : contraste conservé. */
+.notice--warning .button {
+  color: inherit;
+  border-color: currentColor;
+}
+
+.notice--action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--s3);
 }
 
 .empty {
@@ -667,8 +694,13 @@ button {
   resize: vertical;
 }
 
-.segment__text:hover {
+.segment__text:hover:not(:read-only) {
   border-color: var(--line);
+}
+
+/* Lecture seule : plus d'affordance d'édition, mais le texte reste pleinement lisible. */
+.segment__text:read-only {
+  cursor: default;
 }
 
 .segment__text:focus {

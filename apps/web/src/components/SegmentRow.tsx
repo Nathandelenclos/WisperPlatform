@@ -6,16 +6,26 @@ type SegmentRowProps = {
   segment: Segment;
   /** Le segment couvre la position de lecture courante. */
   current: boolean;
+  /** La correction n'est ouverte que sur une transcription terminée. */
+  editable: boolean;
   saving: boolean;
   onSeek: (startMs: number) => void;
   onCommit: (text: string) => void;
 };
 
 /**
- * Une ligne de transcription : timecode cliquable et texte éditable. La correction
- * est confiée au parent au moment où le champ perd le focus, si le texte a changé.
+ * Une ligne de transcription : timecode cliquable et texte du segment. La correction
+ * est confiée au parent au moment où le champ perd le focus, si le texte a changé ;
+ * hors transcription terminée, le champ est en lecture seule.
  */
-export function SegmentRow({ segment, current, saving, onSeek, onCommit }: SegmentRowProps) {
+export function SegmentRow({
+  segment,
+  current,
+  editable,
+  saving,
+  onSeek,
+  onCommit,
+}: SegmentRowProps) {
   const [draft, setDraft] = useState(segment.text);
   const [known, setKnown] = useState(segment.text);
   const [emptyRejected, setEmptyRejected] = useState(false);
@@ -48,12 +58,16 @@ export function SegmentRow({ segment, current, saving, onSeek, onCommit }: Segme
           className="segment__text"
           id={`segment-${segment.ordinal}`}
           rows={rows}
-          spellCheck
+          spellCheck={editable}
+          readOnly={!editable}
           value={draft}
           onChange={(changeEvent) => setDraft(changeEvent.target.value)}
           onBlur={() => {
             const text = draft.trim();
             if (text.length === 0) {
+              // Correction vide refusée : le champ retrouve le dernier texte accepté,
+              // sinon l'utilisateur perd de vue ce qu'il était en train de corriger.
+              setDraft(segment.text);
               setEmptyRejected(true);
               return;
             }

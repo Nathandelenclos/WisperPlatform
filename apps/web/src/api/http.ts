@@ -34,18 +34,28 @@ async function toApiError(response: Response): Promise<ApiError> {
   return new ApiError({ code, message, status: response.status });
 }
 
-/** Aucune requête n'attend indéfiniment ; l'appelant peut fournir son propre délai. */
+/** Aucune requête n'attend indéfiniment ; l'appelant peut allonger le délai. */
 const DEFAULT_TIMEOUT_MS = 15_000;
 
-async function send(path: string, init: RequestInit): Promise<Response> {
+/** `RequestInit`, plus le délai maximal propre à la requête. */
+export type RequestOptions = RequestInit & { timeoutMs?: number };
+
+async function send(path: string, init: RequestOptions): Promise<Response> {
+  const { timeoutMs = DEFAULT_TIMEOUT_MS, ...request } = init;
+  // Le signal de l'appelant (React Query annule une requête devenue inutile) et la
+  // borne de temps s'appliquent tous les deux : annulable sans cesser d'être borné.
+  const caller = init.signal ?? null;
+  const deadline = AbortSignal.timeout(timeoutMs);
   let response: Response;
   try {
     response = await fetch(path, {
       credentials: 'include',
-      ...init,
-      signal: init.signal ?? AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
+      ...request,
+      signal: caller === null ? deadline : AbortSignal.any([caller, deadline]),
     });
   } catch (cause) {
+    // Annulation demandée par l'appelant : ce n'est pas une panne, on la propage telle quelle.
+    if (caller !== null && caller.aborted) throw cause;
     const timedOut = cause instanceof DOMException && cause.name === 'TimeoutError';
     throw new ApiError({
       code: timedOut ? 'request_timeout' : 'network_unreachable',
@@ -60,7 +70,7 @@ async function send(path: string, init: RequestInit): Promise<Response> {
 }
 
 /** Requête attendant un corps JSON. Lève une `ApiError` sur réponse non 2xx. */
-export async function requestJson<T>(path: string, init: RequestInit = {}): Promise<T> {
+export async function requestJson<T>(path: string, init: RequestOptions = {}): Promise<T> {
   const response = await send(path, {
     ...init,
     headers: { Accept: 'application/json', ...init.headers },
@@ -69,6 +79,6 @@ export async function requestJson<T>(path: string, init: RequestInit = {}): Prom
 }
 
 /** Requête sans corps de réponse utile (204). Lève une `ApiError` sur réponse non 2xx. */
-export async function requestNoContent(path: string, init: RequestInit): Promise<void> {
+export async function requestNoContent(path: string, init: RequestOptions): Promise<void> {
   await send(path, init);
 }

@@ -13,15 +13,27 @@ export const transcriptionKeys = {
   detail: (transcriptionId: string) => ['transcriptions', 'detail', transcriptionId] as const,
 };
 
+/**
+ * Cadence de repli quand le flux d'événements est coupé : la vue continue d'avancer,
+ * plus lentement, au lieu de rester figée sur son dernier état connu.
+ */
+const DEGRADED_POLL_MS = 5_000;
+
 export function useTranscriptionList() {
-  return useQuery({ queryKey: transcriptionKeys.list, queryFn: listTranscriptions });
+  return useQuery({
+    queryKey: transcriptionKeys.list,
+    queryFn: ({ signal }) => listTranscriptions({ signal }),
+  });
 }
 
-export function useTranscription(transcriptionId: string | null) {
+export function useTranscription(transcriptionId: string | null, p: { degraded?: boolean } = {}) {
   return useQuery({
     queryKey: transcriptionKeys.detail(transcriptionId ?? 'none'),
     queryFn:
-      transcriptionId === null ? skipToken : () => getTranscription(transcriptionId),
+      transcriptionId === null
+        ? skipToken
+        : ({ signal }) => getTranscription(transcriptionId, { signal }),
+    refetchInterval: p.degraded === true ? DEGRADED_POLL_MS : false,
   });
 }
 
