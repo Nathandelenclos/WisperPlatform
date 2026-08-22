@@ -1,0 +1,115 @@
+/*
+ * Champs de formulaire : une colonne, label au-dessus, aide puis contrôle puis erreur.
+ * L'espacement intra-champ est plus serré que l'espacement entre champs — c'est la proximité,
+ * pas une bordure, qui dit ce qui va ensemble.
+ */
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.field__label {
+  color: var(--text);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+}
+
+/* L'aide est un texte utile : jamais `--text-faint`, qui passe sous 4.5:1 en thème clair. */
+.field__hint {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+/*
+ * Zone d'erreur toujours présente, vide au repos : la hauteur d'une ligne est réservée pour que
+ * l'apparition du message ne pousse pas le reste du formulaire.
+ */
+.field__error {
+  min-block-size: calc(var(--text-xs) * var(--leading-base));
+  color: var(--status-failed);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+}
+
+/* --- Contrôles -------------------------------------------------------------------------- */
+
+.control {
+  /* La cible de 44px se compose de l'échelle (32 + 12) et tient sur le contrôle lui-même :
+     un `TextInput` employé hors d'un `Field` garde sa hauteur minimale. */
+  --control-target: calc(var(--space-6) + var(--space-3));
+
+  inline-size: 100%;
+  min-block-size: var(--control-target);
+  padding-block: var(--space-2);
+  padding-inline: var(--space-3);
+  border: 1px solid var(--border-control);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  color: var(--text);
+  font-size: var(--text-base);
+  transition:
+    border-color var(--motion-fast) var(--ease-out),
+    background-color var(--motion-fast) var(--ease-out);
+}
+
+/* Le placeholder complète le label, il ne le remplace pas — et il reste lisible. */
+.control::placeholder {
+  color: var(--text-muted);
+}
+
+.control:hover:not(:disabled) {
+  border-color: var(--text-muted);
+}
+
+.control:disabled {
+  border-color: var(--border);
+  background: var(--surface-sunken);
+  /* Lisible même éteint : la valeur d'un champ inactif reste une information à lire. */
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+/*
+ * Erreur : la bordure s'épaissit par une ombre plutôt que par sa largeur, qui décalerait la
+ * mise en page. La couleur ne suffit pas — le message de `.field__error` porte l'information.
+ */
+.field--invalid .control,
+.control[aria-invalid='true'] {
+  border-color: var(--status-failed);
+  box-shadow: 0 0 0 1px var(--status-failed);
+}
+
+/*
+ * Validation native après saisie, dans sa propre règle : un sélecteur inconnu d'un navigateur
+ * invaliderait toute la liste où il figure.
+ */
+.control:user-invalid {
+  border-color: var(--status-failed);
+  box-shadow: 0 0 0 1px var(--status-failed);
+}
+
+/* --- Liste déroulante -------------------------------------------------------------------- */
+
+.control-shell {
+  position: relative;
+  display: block;
+}
+
+.control--select {
+  appearance: none;
+  padding-inline-end: var(--space-6);
+}
+
+.control-shell__chevron {
+  position: absolute;
+  inset-block-start: 50%;
+  inset-inline-end: var(--space-3);
+  translate: 0 -50%;
+  inline-size: var(--space-4);
+  block-size: var(--space-4);
+  color: var(--text-muted);
+  /* Le chevron n'est qu'un signe : les clics vont au `select`, y compris sur son dos. */
+  pointer-events: none;
+}

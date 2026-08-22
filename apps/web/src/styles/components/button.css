@@ -1,0 +1,217 @@
+/*
+ * Boutons : action textuelle (`.button`) et action réduite à son icône (`.icon-button`).
+ *
+ * La cible minimale de 44px ne figure pas telle quelle dans les tokens : elle se compose de
+ * l'échelle d'espacement (32 + 12), ce qui évite d'inventer une valeur à côté du système.
+ */
+
+.button,
+.icon-button {
+  --control-target: calc(var(--space-6) + var(--space-3));
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-block-size: var(--control-target);
+  padding-block: var(--space-2);
+  padding-inline: var(--space-4);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: none;
+  font-size: var(--text-base);
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-tight);
+  text-align: center;
+  cursor: pointer;
+  transition:
+    background-color var(--motion-fast) var(--ease-out),
+    border-color var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out);
+}
+
+/* Le dessin se resserre, la hauteur de cible héritée de `.button` reste à 44px. */
+.button--sm {
+  padding-inline: var(--space-3);
+  font-size: var(--text-sm);
+}
+
+.button__icon,
+.button__spinner {
+  flex: none;
+  inline-size: var(--space-4);
+  block-size: var(--space-4);
+}
+
+.button__icon > svg {
+  inline-size: 100%;
+  block-size: 100%;
+}
+
+/* Une rotation lente : quatre fois le temps de base, sinon le disque paraît affolé. */
+.button__spinner {
+  animation: button-spin calc(var(--motion-base) * 4) linear infinite;
+}
+
+@keyframes button-spin {
+  to {
+    rotate: 360deg;
+  }
+}
+
+/*
+ * Moins de mouvement demandé : la rotation disparaît. L'arc reste comme signe fixe, et
+ * l'occupation continue d'être portée par le texte et par `aria-busy`.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .button__spinner {
+    animation: none;
+  }
+}
+
+/* --- Variantes --------------------------------------------------------------------------- */
+
+.button--primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast);
+}
+
+.button--primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+/*
+ * La bordure du bouton secondaire l'identifie comme contrôle : elle prend `--border-control`
+ * (≥ 3:1) et ne s'affaiblit pas au survol, où c'est le fond qui se creuse. Un état ne peut pas
+ * repasser sous le seuil.
+ */
+.button--secondary {
+  background: var(--surface-raised);
+  border-color: var(--border-control);
+  color: var(--text);
+}
+
+.button--secondary:hover:not(:disabled) {
+  background: var(--surface-sunken);
+}
+
+.button--ghost {
+  color: var(--text-muted);
+}
+
+.button--ghost:hover:not(:disabled) {
+  background: var(--surface-sunken);
+  color: var(--text);
+}
+
+/*
+ * Destructif sans hurler : le rouge est dans le texte et la bordure, pas en aplat. Une action
+ * dangereuse doit se remarquer, pas dominer l'écran.
+ */
+.button--danger {
+  background: var(--surface-raised);
+  border-color: var(--border-control);
+  color: var(--status-failed);
+}
+
+.button--danger:hover:not(:disabled) {
+  background: var(--status-failed-bg);
+  border-color: var(--status-failed);
+}
+
+/* --- États ------------------------------------------------------------------------------- */
+
+.button:disabled,
+.icon-button:disabled {
+  background: var(--surface-sunken);
+  border-color: var(--border);
+  /*
+   * WCAG 1.4.3 exempte le texte d'un contrôle inactif, mais un bouton éteint est justement
+   * celui qu'on lit pour comprendre pourquoi il l'est : on reste au-dessus du seuil (6.9:1).
+   * L'inactivité se voit au fond aplati, à la bordure affaiblie et au curseur, pas à un texte
+   * qu'il faut deviner.
+   */
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+/* Occupé : le bouton reste focusable, le curseur annonce l'attente. */
+.button--loading {
+  cursor: progress;
+}
+
+/* --- Bouton icône ------------------------------------------------------------------------ */
+
+.icon-button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition:
+    background-color var(--motion-fast) var(--ease-out),
+    border-color var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out);
+}
+
+.icon-button--md {
+  inline-size: var(--control-target);
+  block-size: var(--control-target);
+}
+
+.icon-button--sm {
+  inline-size: var(--space-6);
+  block-size: var(--space-6);
+}
+
+/*
+ * Le dessin se resserre en taille `sm`, la cible non : ce pseudo-élément la ramène à 44×44 et
+ * la centre sur le bouton. Les lignes denses du transcript restent pointables au doigt.
+ * Le conteneur doit espacer ces boutons d'au moins un cran, sinon les cibles se chevauchent.
+ */
+.icon-button--sm::after {
+  content: '';
+  position: absolute;
+  inset-block-start: 50%;
+  inset-inline-start: 50%;
+  translate: -50% -50%;
+  inline-size: var(--control-target);
+  block-size: var(--control-target);
+}
+
+.icon-button__glyph {
+  display: inline-flex;
+}
+
+.icon-button__glyph > svg {
+  inline-size: var(--space-4);
+  block-size: var(--space-4);
+}
+
+.icon-button--sm .icon-button__glyph > svg {
+  inline-size: var(--space-3);
+  block-size: var(--space-3);
+}
+
+.icon-button--ghost:hover:not(:disabled) {
+  background: var(--surface-sunken);
+  color: var(--text);
+}
+
+.icon-button--secondary {
+  background: var(--surface-raised);
+  border-color: var(--border-control);
+  color: var(--text);
+}
+
+.icon-button--secondary:hover:not(:disabled) {
+  background: var(--surface-sunken);
+}

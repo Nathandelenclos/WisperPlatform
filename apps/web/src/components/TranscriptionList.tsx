@@ -1,82 +1,149 @@
 import type { TranscriptionSummary } from '../api/transcriptions';
-import { formatByteSize, formatDateTime, formatDuration } from '../format';
-import { StatusBadge } from './StatusBadge';
+import { formatDuration, formatRelativeTime } from '../format';
+import { EmptyState, Notice, Skeleton, StatusPill, VisuallyHidden } from './primitives';
+
+/** Trois lignes fantômes : assez pour occuper la place, pas assez pour faire attendre. */
+const PLACEHOLDER_ROWS = [0, 1, 2];
+
+/**
+ * Ce que la ligne dit de l'avancement. Une transcription en cours annonce ce qui est déjà
+ * arrivé : sans ça, une attente qui dure des minutes ne se distingue pas d'un blocage.
+ */
+function describeSegments(item: TranscriptionSummary): string {
+  const plural = item.segmentCount === 1 ? '' : 's';
+  if (item.status !== 'transcribing') return `${item.segmentCount} segment${plural}`;
+  if (item.segmentCount === 0) return 'transcription en cours de démarrage';
+  return `${item.segmentCount} segment${plural} déjà reçu${plural}`;
+}
 
 type TranscriptionListProps = {
   items: readonly TranscriptionSummary[];
+  /** Sert à nommer la langue dans celle de l'utilisateur, pas dans celle du worker. */
+  languages: readonly { value: string; label: string }[];
   selectedId: string | null;
   loading: boolean;
   errorMessage: string | null;
   onSelect: (transcriptionId: string) => void;
 };
 
-/** Liste des transcriptions de l'utilisateur ; la sélection remonte au parent. */
+/**
+ * Bibliothèque des transcriptions. C'est la navigation principale de l'atelier : elle
+ * répond à « où suis-je » (élément courant marqué) et « où puis-je aller » (tout est à
+ * plat, un seul niveau). La sélection remonte au conteneur.
+ */
 export function TranscriptionList({
   items,
+  languages,
   selectedId,
   loading,
   errorMessage,
   onSelect,
 }: TranscriptionListProps) {
+  const firstLoad = loading && items.length === 0;
+  const empty = !loading && items.length === 0 && errorMessage === null;
+
   return (
-    <section className="panel" aria-labelledby="library-title">
-      <h2 className="panel__title" id="library-title">
-        Mes transcriptions
-      </h2>
+    <nav className="library panel" aria-labelledby="library-title">
+      <div className="library__head">
+        <h2 className="library__title" id="library-title">
+          Mes transcriptions
+        </h2>
+        {items.length === 0 ? null : <span className="library__count">{items.length}</span>}
+      </div>
 
-      {errorMessage === null ? null : (
-        <p className="notice notice--error" role="alert">
-          {errorMessage}
-        </p>
+      {/*
+        Région live rendue en permanence et vide au repos : une région créée en même temps
+        que son contenu n'est pas annoncée. Erreur et attente y passent tour à tour.
+      */}
+      <div className="library__feedback" aria-live="polite">
+        {errorMessage !== null ? (
+          <Notice tone="error" title="Bibliothèque indisponible">
+            {errorMessage}
+          </Notice>
+        ) : firstLoad ? (
+          <p className="library__loading">Chargement de vos transcriptions…</p>
+        ) : null}
+      </div>
+
+      {/* La place est réservée dès le premier rendu : la liste qui arrive ne pousse rien. */}
+      {firstLoad ? (
+        <ul className="library__items" aria-hidden="true">
+          {PLACEHOLDER_ROWS.map((row) => (
+            <li key={row}>
+              <div className="library__row library__row--placeholder">
+                <Skeleton lines={3} />
+              </div>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
+      {empty ? (
+        <EmptyState
+          title="Aucune transcription pour l'instant"
+          description="Déposez un audio ou une vidéo : les phrases apparaîtront ici au fil de la transcription, et chaque transcription restera consultable ensuite."
+          action={
+            <a className="text-link" href="#upload-file">
+              Choisir un fichier
+            </a>
+          }
+        />
+      ) : null}
+
+      {items.length === 0 ? null : (
+        <ul className="library__items">
+          {items.map((item) => {
+            const selected = item.id === selectedId;
+            const language =
+              languages.find((candidate) => candidate.value === item.language)?.label ??
+              item.language;
+
+            return (
+              <li key={item.id}>
+                <button
+                  className="library__row"
+                  type="button"
+                  aria-current={selected ? 'true' : undefined}
+                  onClick={() => onSelect(item.id)}
+                >
+                  <span className="library__row-head">
+                    <span className="library__name">{item.mediaName}</span>
+                    <StatusPill status={item.status} size="sm" />
+                  </span>
+
+                  <span className="library__meta">
+                    <span className="library__meta-item">
+                      <VisuallyHidden>Modèle </VisuallyHidden>
+                      {item.model}
+                    </span>
+                    <span className="library__meta-item">
+                      <VisuallyHidden>Langue </VisuallyHidden>
+                      {language}
+                    </span>
+                    <time className="library__meta-item" dateTime={item.requestedAt}>
+                      {formatRelativeTime(item.requestedAt)}
+                    </time>
+                  </span>
+
+                  <span className="library__meta">
+                    {item.durationMs > 0 ? (
+                      <span className="library__meta-item">
+                        <VisuallyHidden>Durée </VisuallyHidden>
+                        {formatDuration(item.durationMs)}
+                      </span>
+                    ) : null}
+                    <span className="library__meta-item">{describeSegments(item)}</span>
+                  </span>
+
+                  {item.failureReason === null ? null : (
+                    <span className="library__failure">{item.failureReason}</span>
+                  )}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
       )}
-
-      {loading && items.length === 0 ? (
-        <p className="notice" role="status">
-          Chargement de vos transcriptions…
-        </p>
-      ) : null}
-
-      {!loading && items.length === 0 && errorMessage === null ? (
-        <p className="empty">
-          Aucune transcription pour l'instant. Déposez un fichier audio ou vidéo ci-dessus : les
-          phrases apparaîtront ici au fil de la transcription.
-        </p>
-      ) : null}
-
-      <ul className="library">
-        {items.map((item) => (
-          <li key={item.id}>
-            <button
-              className={`library__row${item.id === selectedId ? ' library__row--selected' : ''}`}
-              type="button"
-              aria-current={item.id === selectedId}
-              onClick={() => onSelect(item.id)}
-            >
-              <span className="library__name">{item.mediaName}</span>
-              <StatusBadge status={item.status} />
-              <span className="library__meta">
-                <span>{item.model}</span>
-                <span aria-hidden="true">·</span>
-                <span>{item.language}</span>
-                <span aria-hidden="true">·</span>
-                <span>{formatByteSize(item.mediaByteSize)}</span>
-              </span>
-              <span className="library__meta">
-                <span>{formatDateTime(item.requestedAt)}</span>
-                <span aria-hidden="true">·</span>
-                <span>{formatDuration(item.durationMs)}</span>
-                <span aria-hidden="true">·</span>
-                <span>
-                  {item.segmentCount} {item.segmentCount === 1 ? 'segment' : 'segments'}
-                </span>
-              </span>
-              {item.failureReason === null ? null : (
-                <span className="library__failure">{item.failureReason}</span>
-              )}
-            </button>
-          </li>
-        ))}
-      </ul>
-    </section>
+    </nav>
   );
 }

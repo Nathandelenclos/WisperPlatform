@@ -1,0 +1,41 @@
+/*
+ * Lecteur média : l'élément natif du navigateur, jamais un lecteur maison. Il connaît déjà
+ * le clavier, le plein écran, la vitesse de lecture et les préférences système — un lecteur
+ * réécrit perdrait tout cela. Aucune lecture automatique : le son ne part jamais sans geste.
+ */
+
+.media-player {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  /* Le lecteur reste dans la mesure de lecture : une vidéo pleine largeur écraserait le texte. */
+  max-inline-size: var(--measure);
+}
+
+/*
+ * La place de l'image est réservée avant même que les métadonnées n'arrivent. Sans ratio
+ * déclaré, l'élément passe de sa taille par défaut à sa taille réelle au chargement et
+ * pousse tout le transcript vers le bas — un saut de mise en page gratuit.
+ */
+.media-player__video {
+  inline-size: 100%;
+  aspect-ratio: 16 / 9;
+  /* L'image garde ses proportions dans le cadre réservé ; le fond tient les marges. */
+  object-fit: contain;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+}
+
+.media-player__audio {
+  inline-size: 100%;
+}
+
+/*
+ * Un conteneur vidéo sans piste d'image exploitable (un `.mov` enregistré au micro) n'a
+ * qu'un rectangle noir à montrer : on lui préfère le lecteur audio, et on dit pourquoi.
+ */
+.media-player__note {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}

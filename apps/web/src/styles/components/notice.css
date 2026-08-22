@@ -1,0 +1,120 @@
+/*
+ * Messages adressés à l'utilisateur : `Notice` (quelque chose s'est passé) et `EmptyState`
+ * (il n'y a rien, voilà quoi faire). Deux façons de parler dans le vide, d'où le même fichier.
+ */
+
+.notice {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-2) var(--space-3);
+  align-items: start;
+  padding-block: var(--space-3);
+  padding-inline: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  font-size: var(--text-sm);
+}
+
+/* L'icône occupe la colonne de gauche sur toute la hauteur du message et de son action. */
+.notice__icon {
+  grid-row: 1 / -1;
+  align-self: start;
+  inline-size: var(--space-5);
+  block-size: var(--space-5);
+}
+
+/*
+ * La couleur de ton reste sur l'icône et le titre. Le corps passe en `--text` : un paragraphe
+ * entier dans la teinte du ton se lit moins bien et dilue le signal.
+ */
+.notice__title {
+  color: inherit;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+}
+
+/* Sans cette remise à zéro, un mot insécable élargirait la colonne de grille au lieu de se couper. */
+.notice__body {
+  min-inline-size: 0;
+}
+
+.notice__content {
+  color: var(--text);
+}
+
+.notice__content > * + * {
+  margin-block-start: var(--space-2);
+}
+
+.notice__action {
+  grid-column: 2;
+}
+
+.notice--info {
+  border-color: var(--accent);
+  background: var(--surface-accent);
+  color: var(--accent);
+}
+
+.notice--warning {
+  border-color: var(--status-running);
+  background: var(--status-running-bg);
+  color: var(--status-running);
+}
+
+.notice--error {
+  border-color: var(--status-failed);
+  background: var(--status-failed-bg);
+  color: var(--status-failed);
+}
+
+.notice--success {
+  border-color: var(--status-done);
+  background: var(--status-done-bg);
+  color: var(--status-done);
+}
+
+/* --- État vide --------------------------------------------------------------------------- */
+
+/*
+ * Volontairement peu dense et aligné à gauche : c'est un texte à lire, pas une affiche. Le
+ * centrage est réservé aux titres courts, et un bloc vide centré ressemble à une erreur.
+ */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: start;
+  gap: var(--space-2);
+  padding-block: var(--space-6);
+  padding-inline: var(--space-4);
+  border: 1px dashed var(--border-control);
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+}
+
+.empty-state__icon {
+  display: inline-flex;
+  color: var(--text-muted);
+}
+
+.empty-state__icon > svg {
+  inline-size: var(--space-6);
+  block-size: var(--space-6);
+}
+
+.empty-state__title {
+  color: var(--text);
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-tight);
+}
+
+.empty-state__description {
+  max-inline-size: var(--measure);
+  color: var(--text-muted);
+}
+
+.empty-state__action {
+  margin-block-start: var(--space-2);
+}

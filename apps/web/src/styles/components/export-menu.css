@@ -1,0 +1,68 @@
+/*
+ * Export du transcript. Ce n'est pas un menu déroulant : trois options nommées, visibles,
+ * avec leur usage. Rien à ouvrir, rien à mémoriser, aucun piège de focus à construire.
+ */
+
+.export-menu {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.export-menu__title {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.export-menu__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: 0;
+  list-style: none;
+}
+
+/*
+ * Une option est un lien de téléchargement : bloc cliquable, bordure de contrôle au survol
+ * et au focus, et deux lignes — le format, puis ce à quoi il sert.
+ */
+.export-option {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-block-size: var(--space-7);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  text-decoration: none;
+  transition:
+    border-color var(--motion-fast) var(--ease-out),
+    background-color var(--motion-fast) var(--ease-out);
+}
+
+.export-option:hover {
+  border-color: var(--border-control);
+  background: var(--surface-sunken);
+}
+
+.export-option__label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: var(--weight-semibold);
+}
+
+/* La flèche descendante dit « ceci télécharge » ; le mot dit lequel. */
+.export-option__icon {
+  flex: none;
+  inline-size: 1em;
+  block-size: 1em;
+  color: var(--text-muted);
+}
+
+.export-option__use {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
