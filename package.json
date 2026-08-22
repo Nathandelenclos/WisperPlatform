@@ -1,0 +1,14 @@
+{
+  "name": "wisper-platform",
+  "private": true,
+  "packageManager": "pnpm@11.1.3",
+  "scripts": {
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "lint:arch": "pnpm --filter @wisper/api lint:arch",
+    "dev": "pnpm -r --parallel dev"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3"
+  }
+}

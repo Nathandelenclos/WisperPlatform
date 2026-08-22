@@ -1,0 +1,11 @@
+packages:
+  - apps/*
+
+# Décision explicite sur chaque script de build d'installation (pnpm >= 11).
+# esbuild : nécessaire à vitest et à vite. Les autres sont des accélérations natives
+# optionnelles de testcontainers, dont on se passe.
+allowBuilds:
+  esbuild: true
+  cpu-features: false
+  protobufjs: false
+  ssh2: false
