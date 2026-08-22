@@ -5,10 +5,9 @@
 #
 # Portée des secrets : `web` n'en reçoit aucun, `worker` reçoit son seul jeton porteur — c'est
 # tout le point du jeton média HMAC, un worker qui détiendrait `MEDIA_TOKEN_SECRET` pourrait
-# forger l'accès au média de n'importe quel utilisateur. `api` et `migrate` partagent en
-# revanche tout le fichier : `migrate` valide le schéma d'environnement complet au démarrage,
-# donc il exige aujourd'hui des secrets dont une migration SQL n'a aucun usage. Plafond assumé,
-# à lever en restreignant la validation de `migrate.ts` à `DATABASE_URL`.
+# forger l'accès au média de n'importe quel utilisateur. `migrate` n'a pas `env_file` : une
+# migration SQL n'a besoin que d'une chaîne de connexion, que son bloc `environment` définit.
+# Seul `api` reçoit le fichier entier, parce que lui seul consomme les trois secrets.
 #
 # Démarrage : `docker compose build && docker compose up -d`.
 # L'image de l'API est construite une seule fois et réutilisée par le service `migrate`.
@@ -74,12 +73,9 @@ services:
     # Image produite par le service `api` : elle n'est ni reconstruite ni tirée d'un registre.
     pull_policy: never
     command: ["node", "dist/shared/infrastructure/persistence/migrate.js"]
-    env_file:
-      - .env
     environment:
-      # `.env` porte NODE_ENV=development pour le poste de développement ; ici la précédence de
-      # Compose (environment > env_file) le remet à production, sinon l'image tournerait en
-      # mode dev alors que son `ENV` disait le contraire.
+      # Portée réduite au strict nécessaire : pas de `env_file`, donc aucun des trois secrets
+      # applicatifs. Une migration SQL n'a besoin que de ces deux variables.
       NODE_ENV: production
       DATABASE_URL: postgres://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:?}
     user: "1000:1000"
@@ -184,7 +180,10 @@ services:
     # jamais le magasin de médias — il télécharge chaque média par jeton HTTP à courte durée.
     environment:
       WISPER_API_URL: http://api:3000
-      WISPER_WORKER_TOKEN: ${WISPER_WORKER_TOKEN:?WISPER_WORKER_TOKEN manquant dans .env}
+      # Le secret partagé n'existe que sous un nom, `WORKER_SHARED_TOKEN` : le worker le lit
+      # sous le sien, mais `.env` n'en porte qu'une valeur, donc aucune rotation ne peut n'en
+      # mettre qu'une moitié à jour et laisser le worker boucler sur des 401.
+      WISPER_WORKER_TOKEN: ${WORKER_SHARED_TOKEN:?WORKER_SHARED_TOKEN manquant dans .env}
       WISPER_WORKER_ID: ${WISPER_WORKER_ID:-compose-worker}
       WHISPER_BIN: ${WHISPER_BIN:-whisper}
       WHISPER_MODEL_DIR: /home/wisper/.cache/whisper
