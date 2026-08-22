@@ -1,6 +1,7 @@
 import pino from 'pino';
 
 import type { Env } from '../../../shared/infrastructure/config/env';
+import { correlationStorage } from '../../../shared/infrastructure/logging/correlation';
 import type { Logger } from '../../application/ports/logger';
 
 /**
@@ -62,6 +63,13 @@ export function createPinoLogger(
     redact: { paths: REDACTION_PATHS, censor: '[redacted]', remove: false },
     formatters: { level: (label) => ({ level: label }) },
     timestamp: pino.stdTimeFunctions.isoTime,
+    // Chaque ligne applicative porte l'identifiant de la requête qui l'a provoquée, repris
+    // du contexte asynchrone ouvert à l'entrée : le journal d'accès et le journal métier se
+    // recoupent sans qu'aucun appelant n'ait à faire circuler l'identifiant.
+    mixin: () => {
+      const correlationId = correlationStorage.getStore();
+      return correlationId === undefined ? {} : { correlationId };
+    },
   };
   return new PinoLogger(destination ? pino(options, destination) : pino(options));
 }
