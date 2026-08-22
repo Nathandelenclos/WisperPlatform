@@ -171,10 +171,20 @@
     align-items: start;
   }
 
-  /* Colonne partagée : les timecodes se calent à droite, contre le bord du texte. */
+  /*
+   * Placement explicite des deux colonnes : le tour de parole s'insère AVANT le timecode
+   * dans le flux et occupe toute la largeur, et sans colonnes déclarées le placement
+   * automatique décalerait le timecode sur les lignes qui ouvrent un tour. Les timecodes,
+   * eux, se calent à droite de leur colonne partagée, contre le bord du texte.
+   */
   .segment__timecode {
+    grid-column: 1;
     justify-self: stretch;
     justify-content: flex-end;
+  }
+
+  .segment__body {
+    grid-column: 2;
   }
 }
 

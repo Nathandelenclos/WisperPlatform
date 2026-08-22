@@ -37,6 +37,17 @@ export type Segment = {
   endMs: number;
   text: string;
   corrected: boolean;
+  /** Locuteur attribué par la diarisation ; `null` quand aucun tour ne recouvre le segment. */
+  speakerIndex: number | null;
+};
+
+/**
+ * Locuteur découvert par la diarisation. L'index est technique (produit par le clustering) ;
+ * `name` est celui que le propriétaire a donné, `null` tant que personne n'a renommé.
+ */
+export type Speaker = {
+  index: number;
+  name: string | null;
 };
 
 /** Vue de liste. Dates sérialisées en ISO 8601 par l'API. */
@@ -67,6 +78,8 @@ export type TranscriptionView = {
   completedAt: string | null;
   failureReason: string | null;
   segments: Segment[];
+  /** Locuteurs découverts. Vide quand la diarisation n'a pas eu lieu. */
+  speakers: Speaker[];
 };
 
 export const SUBTITLE_FORMATS = ['srt', 'vtt', 'txt'] as const;
@@ -92,6 +105,22 @@ export type TranscriptionEvent =
       transcriptionId: string;
       occurredAt: string;
       ordinal: number;
+    }
+  | {
+      name: 'transcription.speakers-assigned';
+      transcriptionId: string;
+      occurredAt: string;
+      speakers: Speaker[];
+      /** Tous les segments, `speakerIndex` à jour : la passe recalcule l'attribution. */
+      segments: Segment[];
+    }
+  | {
+      name: 'transcription.speaker-renamed';
+      transcriptionId: string;
+      occurredAt: string;
+      index: number;
+      /** `speakerName`, et non `name` : ce dernier porte déjà le nom de l'événement. */
+      speakerName: string;
     };
 
 /** URL servies directement au navigateur (lecteur média, liens d'export, flux SSE). */
@@ -160,6 +189,25 @@ export async function correctSegment(p: {
   );
 }
 
+/**
+ * Renomme un locuteur pour toute la transcription. L'API répond avec la vue de détail
+ * complète : c'est elle qui fait autorité, le client n'a rien à recomposer.
+ */
+export async function renameSpeaker(p: {
+  transcriptionId: string;
+  index: number;
+  name: string;
+}): Promise<TranscriptionView> {
+  return requestJson<TranscriptionView>(
+    `/api/transcriptions/${encodeURIComponent(p.transcriptionId)}/speakers/${p.index}`,
+    {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: p.name }),
+    },
+  );
+}
+
 const EVENT_NAMES: readonly TranscriptionEvent['name'][] = [
   'transcription.requested',
   'transcription.started',
@@ -168,7 +216,19 @@ const EVENT_NAMES: readonly TranscriptionEvent['name'][] = [
   'transcription.failed',
   'transcription.requeued',
   'transcription.segment-corrected',
+  'transcription.speakers-assigned',
+  'transcription.speaker-renamed',
 ];
+
+function isSpeaker(value: unknown): value is Speaker {
+  if (value === null || typeof value !== 'object') return false;
+  return (
+    'index' in value &&
+    typeof value.index === 'number' &&
+    'name' in value &&
+    (value.name === null || typeof value.name === 'string')
+  );
+}
 
 function isSegment(value: unknown): value is Segment {
   if (value === null || typeof value !== 'object') return false;
@@ -182,7 +242,9 @@ function isSegment(value: unknown): value is Segment {
     'text' in value &&
     typeof value.text === 'string' &&
     'corrected' in value &&
-    typeof value.corrected === 'boolean'
+    typeof value.corrected === 'boolean' &&
+    'speakerIndex' in value &&
+    (value.speakerIndex === null || typeof value.speakerIndex === 'number')
   );
 }
 
@@ -210,6 +272,16 @@ export function parseTranscriptionEvent(raw: string): TranscriptionEvent | null 
   }
   if (name === 'transcription.segment-corrected') {
     if (!('ordinal' in payload) || typeof payload.ordinal !== 'number') return null;
+  }
+  if (name === 'transcription.speakers-assigned') {
+    if (!('speakers' in payload) || !Array.isArray(payload.speakers)) return null;
+    if (!payload.speakers.every(isSpeaker)) return null;
+    if (!('segments' in payload) || !Array.isArray(payload.segments)) return null;
+    if (!payload.segments.every(isSegment)) return null;
+  }
+  if (name === 'transcription.speaker-renamed') {
+    if (!('index' in payload) || typeof payload.index !== 'number') return null;
+    if (!('speakerName' in payload) || typeof payload.speakerName !== 'string') return null;
   }
   if (name === 'transcription.failed') {
     if (!('reason' in payload) || typeof payload.reason !== 'string') return null;

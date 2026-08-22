@@ -18,5 +18,6 @@
 @import "./styles/components/sign-in.css";
 
 @import "./styles/components/transcript.css";
+@import "./styles/components/speaker-turn.css";
 @import "./styles/components/export-menu.css";
 @import "./styles/components/media-player.css";

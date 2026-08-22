@@ -43,10 +43,10 @@ function reduceView(view: TranscriptionView, event: TranscriptionEvent): Transcr
       // Statut terminal collant : un `started` en retard ne doit pas vider le transcrit.
       if (isTerminal(view.status)) return view;
       // Une nouvelle tentative repart de zéro : les segments de la précédente tombent.
-      return { ...view, status: 'transcribing', segments: [], failureReason: null };
+      return { ...view, status: 'transcribing', segments: [], speakers: [], failureReason: null };
     case 'transcription.requeued':
       if (isTerminal(view.status)) return view;
-      return { ...view, status: 'pending', segments: [], failureReason: null };
+      return { ...view, status: 'pending', segments: [], speakers: [], failureReason: null };
     case 'transcription.segments-appended': {
       const segments = mergeSegments(view.segments, event.segments);
       // Un lot en retard complète les segments sans ramener la vue à « en cours ».
@@ -64,6 +64,30 @@ function reduceView(view: TranscriptionView, event: TranscriptionEvent): Transcr
         ...view,
         segments: view.segments.map((segment) =>
           segment.ordinal === event.ordinal ? { ...segment, corrected: true } : segment,
+        ),
+      };
+    case 'transcription.speakers-assigned': {
+      // La passe recalcule l'attribution de zéro et republie tous les segments : le lot reçu
+      // fait donc autorité sur le locuteur. Le texte connu, lui, n'est pas écrasé — une
+      // correction plus récente que la passe ne doit pas régresser.
+      const merged = mergeSegments(view.segments, event.segments);
+      const assigned = new Map(
+        event.segments.map((segment) => [segment.ordinal, segment.speakerIndex]),
+      );
+      return {
+        ...view,
+        speakers: event.speakers,
+        segments: merged.map((segment) => {
+          const speakerIndex = assigned.get(segment.ordinal) ?? null;
+          return segment.speakerIndex === speakerIndex ? segment : { ...segment, speakerIndex };
+        }),
+      };
+    }
+    case 'transcription.speaker-renamed':
+      return {
+        ...view,
+        speakers: view.speakers.map((speaker) =>
+          speaker.index === event.index ? { ...speaker, name: event.speakerName } : speaker,
         ),
       };
     case 'transcription.requested':
@@ -118,6 +142,10 @@ function reduceSummary(
       return { ...summary, status: 'failed', failureReason: event.reason };
     case 'transcription.requested':
     case 'transcription.segment-corrected':
+    // Le nombre de segments ne bouge pas : la diarisation n'en ajoute aucun, elle ne fait
+    // que leur attribuer un locuteur — et la ligne de liste n'en montre pas.
+    case 'transcription.speakers-assigned':
+    case 'transcription.speaker-renamed':
       return summary;
   }
 }

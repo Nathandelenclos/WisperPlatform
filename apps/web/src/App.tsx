@@ -30,6 +30,7 @@ import { useAuthCommand, useSignOut } from './hooks/use-auth';
 import { useTranscriptionEvents, type StreamState } from './hooks/use-transcription-events';
 import {
   useCorrectSegment,
+  useRenameSpeaker,
   useRequestTranscription,
   useTranscription,
   useTranscriptionList,
@@ -103,6 +104,7 @@ function SelectedTranscription({
   // finisse quand même par voir la fin de la transcription.
   const detail = useTranscription(transcriptionId, { degraded: stream === 'lost' });
   const correction = useCorrectSegment(transcriptionId);
+  const rename = useRenameSpeaker(transcriptionId);
   const status = detail.data?.status;
   const readableId = detail.data?.id;
 
@@ -150,6 +152,7 @@ function SelectedTranscription({
   }
 
   const savingOrdinal = correction.isPending ? (correction.variables?.ordinal ?? null) : null;
+  const renamingSpeakerIndex = rename.isPending ? (rename.variables?.index ?? null) : null;
 
   return (
     <TranscriptionEditor
@@ -161,6 +164,9 @@ function SelectedTranscription({
       streamLost={stream === 'lost'}
       onRetryStream={() => setResumeToken((token) => token + 1)}
       onCorrectSegment={(request) => correction.mutate(request)}
+      renamingSpeakerIndex={renamingSpeakerIndex}
+      renameErrorMessage={describeFailure(rename.error)}
+      onRenameSpeaker={(request) => rename.mutate(request)}
     />
   );
 }

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import type { Segment } from '../api/transcriptions';
 import { formatTimecode } from '../format';
 import { VisuallyHidden } from './primitives';
@@ -10,6 +10,11 @@ import { VisuallyHidden } from './primitives';
  */
 type SegmentRowProps = {
   segment: Segment;
+  /**
+   * Étiquette du locuteur, quand ce segment ouvre un tour de parole. Le parent tranche : lui
+   * seul voit la ligne précédente, et l'étiquette ne se répète pas d'une ligne à l'autre.
+   */
+  speakerHead: ReactNode;
   /** Le segment couvre la position de lecture courante. */
   current: boolean;
   /** La correction n'est ouverte que sur une transcription terminée. */
@@ -33,6 +38,7 @@ type SegmentRowProps = {
  */
 export function SegmentRow({
   segment,
+  speakerHead,
   current,
   editable,
   saving,
@@ -92,6 +98,9 @@ export function SegmentRow({
       data-ordinal={segment.ordinal}
       aria-current={current ? 'location' : undefined}
     >
+      {/* Le tour de parole coiffe la ligne entière, timecode compris. */}
+      {speakerHead}
+
       <button className="segment__timecode" type="button" onClick={() => onSeek(segment.startMs)}>
         {/* Le timecode visible sert d'étiquette ; le lecteur d'écran entend le geste. */}
         <VisuallyHidden>Écouter à partir de </VisuallyHidden>

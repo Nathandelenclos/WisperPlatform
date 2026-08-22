@@ -1,0 +1,92 @@
+/*
+ * Tour de parole : le nom du locuteur, posé au-dessus de la ligne qui ouvre son tour.
+ *
+ * Trois règles gouvernent ce fichier :
+ *  — le locuteur est identifié par son NOM ÉCRIT. Aucune pastille teintée, aucun code
+ *    couleur : rien ici ne disparaît en niveaux de gris ni sous un daltonisme (WCAG 1.4.1) ;
+ *  — l'étiquette est une respiration, pas une ligne de plus : c'est l'espace au-dessus
+ *    d'elle, plus large que l'écart entre deux lignes, qui découpe la conversation en tours ;
+ *  — le nom se cale exactement sur la colonne des timecodes, donc rien n'avance en escalier.
+ */
+
+.speaker-turn {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  /* La coupure entre deux tours de parole vit ici : la liste espace ses lignes de
+     `--space-1`, un tour s'ouvre nettement plus loin de la précédente. */
+  padding-block-start: var(--space-4);
+}
+
+/* Le tour coiffe la ligne entière, timecode compris : le nom commence à gauche de tout. */
+@container transcript (min-width: 30rem) {
+  .speaker-turn {
+    grid-column: 1 / -1;
+  }
+}
+
+/*
+ * Le nom EST le bouton de renommage : le geste vit là où on lit le nom, pas dans un panneau
+ * à côté. Il porte le rembourrage des timecodes, et comme eux il se cale sur le bord de sa
+ * colonne : le nom démarre exactement au-dessus de l'heure du tour qu'il ouvre.
+ */
+.speaker-turn__name {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  /* Cible ≥ 44px (WCAG 2.5.8), comme les timecodes de la même colonne. */
+  min-block-size: var(--space-7);
+  padding-inline: var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  text-align: start;
+  cursor: pointer;
+  transition: background-color var(--motion-fast) var(--ease-out);
+}
+
+.speaker-turn__name:hover {
+  background: var(--surface-sunken);
+}
+
+/* Le crayon dit que le nom se modifie. Décoratif : le bouton porte déjà l'effet en mots. */
+.speaker-turn__glyph {
+  flex: none;
+  inline-size: var(--space-4);
+  block-size: var(--space-4);
+  color: var(--text-muted);
+}
+
+.speaker-turn__name:hover .speaker-turn__glyph {
+  color: var(--text);
+}
+
+/*
+ * Formulaire ouvert. Il prend la place du nom sans repousser le transcript plus loin que
+ * nécessaire : la mesure de lecture le borne, et les deux boutons restent sur la même ligne
+ * que le champ tant que la colonne est assez large.
+ */
+.speaker-turn--editing {
+  align-items: flex-end;
+  max-inline-size: var(--measure);
+}
+
+.speaker-turn__input {
+  /* Un nom de personne : 24 caractères suffisent, et le champ ne prend pas la largeur
+     d'un paragraphe pour recevoir « Marc ». */
+  inline-size: 24ch;
+  max-inline-size: 100%;
+}
+
+.speaker-turn__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  /* La zone d'erreur du champ est réservée en permanence sous lui (`.field__error`) : les
+     boutons s'en décalent d'autant pour rester sur la ligne du champ, pas sous elle. */
+  padding-block-end: calc(var(--space-1) + var(--text-xs) * var(--leading-base));
+}

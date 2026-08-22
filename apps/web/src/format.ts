@@ -50,6 +50,15 @@ export function formatDateTime(iso: string): string {
   return Number.isNaN(date.getTime()) ? '—' : dateTimeFormat.format(date);
 }
 
+/**
+ * Nom d'un locuteur tel qu'il s'affiche : celui qu'on lui a donné, ou son rang à défaut.
+ * L'index vient du clustering, il est technique — il ne se montre jamais nu, et le rang
+ * part de 1 comme dans les exports produits par l'API.
+ */
+export function formatSpeakerName(speaker: { index: number; name: string | null }): string {
+  return speaker.name ?? `Locuteur ${speaker.index + 1}`;
+}
+
 const relativeFormat = new Intl.RelativeTimeFormat('fr-FR', { numeric: 'auto' });
 
 /** Paliers décroissants : on retient le premier dont l'unité est atteinte. */

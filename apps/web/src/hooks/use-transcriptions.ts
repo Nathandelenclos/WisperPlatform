@@ -3,6 +3,7 @@ import {
   correctSegment,
   getTranscription,
   listTranscriptions,
+  renameSpeaker,
   requestTranscription,
   type TranscriptionView,
 } from '../api/transcriptions';
@@ -70,6 +71,22 @@ export function useCorrectSegment(transcriptionId: string) {
           };
         },
       );
+    },
+  });
+}
+
+/**
+ * Renomme un locuteur pour toute la transcription. L'API répond avec la vue de détail
+ * complète : elle est écrite telle quelle dans le cache — l'attribution des segments a pu
+ * bouger entre-temps, et le serveur est le seul à savoir dans quel état elle est.
+ */
+export function useRenameSpeaker(transcriptionId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (rename: { index: number; name: string }) =>
+      renameSpeaker({ transcriptionId, ...rename }),
+    onSuccess: (view) => {
+      queryClient.setQueryData<TranscriptionView>(transcriptionKeys.detail(transcriptionId), view);
     },
   });
 }

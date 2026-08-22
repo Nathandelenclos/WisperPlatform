@@ -9,6 +9,7 @@ import {
 import { formatByteSize, formatDateTime, formatDuration, formatTimecode } from '../format';
 import { ExportMenu } from './ExportMenu';
 import { SegmentRow } from './SegmentRow';
+import { SpeakerTurn } from './SpeakerTurn';
 import { Button, EmptyState, Notice, Skeleton, StatusPill, VisuallyHidden } from './primitives';
 
 /** Recommencer, ici, c'est redéposer un média : l'ancre mène au panneau de dépôt. */
@@ -49,6 +50,10 @@ type TranscriptionEditorProps = {
   streamLost: boolean;
   onRetryStream: () => void;
   onCorrectSegment: (correction: { ordinal: number; text: string }) => void;
+  /** Locuteur en cours de renommage, s'il y en a un. */
+  renamingSpeakerIndex: number | null;
+  renameErrorMessage: string | null;
+  onRenameSpeaker: (rename: { index: number; name: string }) => void;
 };
 
 /**
@@ -64,6 +69,9 @@ export function TranscriptionEditor({
   streamLost,
   onRetryStream,
   onCorrectSegment,
+  renamingSpeakerIndex,
+  renameErrorMessage,
+  onRenameSpeaker,
 }: TranscriptionEditorProps) {
   const mediaRef = useRef<HTMLMediaElement | null>(null);
   const listRef = useRef<HTMLOListElement | null>(null);
@@ -77,8 +85,11 @@ export function TranscriptionEditor({
   const [follow, setFollow] = useState(false);
   const [picture, setPicture] = useState<Picture>('unknown');
   const [announcement, setAnnouncement] = useState<{ token: number; text: string } | null>(null);
+  // Tour de parole dont le formulaire de renommage est ouvert, désigné par l'ordinal du
+  // segment qui l'ouvre : un locuteur peut avoir vingt tours, un seul champ à la fois.
+  const [openTurn, setOpenTurn] = useState<number | null>(null);
 
-  const { segments, status } = transcription;
+  const { segments, speakers, status } = transcription;
   const isVideo = transcription.mediaContentType.startsWith('video/');
   // Un conteneur vidéo peut n'avoir aucune image exploitable — un `.mov` enregistré au micro,
   // par exemple. Afficher un rectangle noir mentirait sur ce que contient le fichier.
@@ -169,6 +180,27 @@ export function TranscriptionEditor({
         : `Segment${where} non enregistré : ${errorMessage}`,
     );
   }, [savingOrdinal, errorMessage, segments, announce]);
+
+  // Le sort d'un renommage s'entend aussi. La fin de l'envoi se lit à la disparition de
+  // `renamingSpeakerIndex` ; le formulaire ne se referme que si le serveur a accepté, sinon
+  // la correction se rejoue là où elle a été saisie.
+  const previousRenaming = useRef<number | null>(null);
+  useEffect(() => {
+    const previous = previousRenaming.current;
+    previousRenaming.current = renamingSpeakerIndex;
+    if (previous === null || previous === renamingSpeakerIndex) return;
+    if (renameErrorMessage !== null) {
+      announce(`Locuteur non renommé : ${renameErrorMessage}`);
+      return;
+    }
+    setOpenTurn(null);
+    const renamed = speakers.find((speaker) => speaker.index === previous)?.name ?? null;
+    announce(
+      renamed === null
+        ? 'Locuteur renommé dans toute la transcription.'
+        : `Locuteur renommé en ${renamed} dans toute la transcription.`,
+    );
+  }, [renamingSpeakerIndex, renameErrorMessage, speakers, announce]);
 
   // Un flux perdu se voit — et s'entend : le bandeau ne suffit pas à qui ne le voit pas.
   const previousLost = useRef(streamLost);
@@ -324,18 +356,47 @@ export function TranscriptionEditor({
 
       {segments.length > 0 || status === 'transcribing' ? (
         <ol className="transcript__segments" ref={listRef}>
-          {segments.map((segment) => (
-            <SegmentRow
-              key={segment.ordinal}
-              segment={segment}
-              current={segment.ordinal === currentOrdinal}
-              editable={editable}
-              saving={segment.ordinal === savingOrdinal}
-              onSeek={seek}
-              onCommit={commitSegment}
-              onEditingChange={setFieldFocused}
-            />
-          ))}
+          {segments.map((segment, position) => {
+            // Étiquette de locuteur au seul CHANGEMENT de tour : une conversation se lit en
+            // tours de parole, et le même nom répété à chaque ligne n'est que du bruit.
+            // Un index absent du modèle de lecture garde son rang pour nom : mieux vaut un
+            // tour nommé par défaut qu'un tour effacé.
+            const previousSpeaker = position === 0 ? null : segments[position - 1].speakerIndex;
+            const { speakerIndex } = segment;
+            const speaker =
+              speakerIndex === null || speakerIndex === previousSpeaker
+                ? null
+                : (speakers.find((candidate) => candidate.index === speakerIndex) ?? {
+                    index: speakerIndex,
+                    name: null,
+                  });
+
+            return (
+              <SegmentRow
+                key={segment.ordinal}
+                segment={segment}
+                speakerHead={
+                  speaker === null ? null : (
+                    <SpeakerTurn
+                      speaker={speaker}
+                      editing={openTurn === segment.ordinal}
+                      saving={renamingSpeakerIndex === speaker.index}
+                      error={openTurn === segment.ordinal ? renameErrorMessage : null}
+                      onOpen={() => setOpenTurn(segment.ordinal)}
+                      onCancel={() => setOpenTurn(null)}
+                      onCommit={(name) => onRenameSpeaker({ index: speaker.index, name })}
+                    />
+                  )
+                }
+                current={segment.ordinal === currentOrdinal}
+                editable={editable}
+                saving={segment.ordinal === savingOrdinal}
+                onSeek={seek}
+                onCommit={commitSegment}
+                onEditingChange={setFieldFocused}
+              />
+            );
+          })}
 
           {status === 'transcribing' && !streamLost ? (
             // Ligne fantôme : la place du segment suivant est réservée en bas de liste, là
