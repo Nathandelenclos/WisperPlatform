@@ -25,6 +25,15 @@ export const correctSegmentBodySchema = z.object({
   text: z.string(),
 });
 
+export const renameSpeakerParamsSchema = z.object({
+  id: z.uuid(),
+  index: z.coerce.number().int(),
+});
+
+export const renameSpeakerBodySchema = z.object({
+  name: z.string(),
+});
+
 const SUBTITLE_FORMATS = ['srt', 'vtt', 'txt'] as const satisfies readonly SubtitleFormat[];
 
 export const exportQuerySchema = z.object({

@@ -3,11 +3,13 @@ import { and, asc, eq } from 'drizzle-orm';
 import type { Database } from '../../../shared/infrastructure/persistence/database';
 import {
   transcriptionSegments,
+  transcriptionSpeakers,
   transcriptions,
 } from '../../../shared/infrastructure/persistence/schema';
 import { ConcurrentTranscriptionWriteError } from '../../application/errors';
 import type { TranscriptionRepository } from '../../application/ports/transcription-repository';
 import type { SegmentState } from '../../domain/segment';
+import type { SpeakerState } from '../../domain/speaker';
 import {
   Transcription,
   type TranscriptionState,
@@ -17,6 +19,7 @@ import type { WhisperModel } from '../../domain/transcription-settings';
 
 type TranscriptionRow = typeof transcriptions.$inferSelect;
 type SegmentRow = typeof transcriptionSegments.$inferSelect;
+type SpeakerRow = typeof transcriptionSpeakers.$inferSelect;
 
 /**
  * Traduction état de l'aggregate ↔ colonnes. Ce mapping vit ici et nulle part ailleurs :
@@ -32,10 +35,11 @@ export class DrizzleTranscriptionRepository implements TranscriptionRepository {
   constructor(private readonly db: Database) {}
 
   /**
-   * Écrit l'aggregate ENTIER en une seule transaction : la ligne d'en-tête et le jeu complet
-   * de segments. Les segments sont remplacés plutôt que fusionnés, parce que l'aggregate est
-   * la seule autorité sur leur contenu ; la déduplication d'un lot rejoué est déjà portée par
-   * `lastAppliedBatchSequence`, persisté dans la même transaction — d'où l'idempotence.
+   * Écrit l'aggregate ENTIER en une seule transaction : la ligne d'en-tête, le jeu complet de
+   * segments et celui des locuteurs. Ils sont remplacés plutôt que fusionnés, parce que
+   * l'aggregate est la seule autorité sur leur contenu ; la déduplication d'un lot rejoué est
+   * déjà portée par `lastAppliedBatchSequence`, persisté dans la même transaction — d'où
+   * l'idempotence.
    */
   async save(transcription: Transcription): Promise<void> {
     const state = transcription.state();
@@ -122,6 +126,21 @@ export class DrizzleTranscriptionRepository implements TranscriptionRepository {
             endMs: segment.endMs,
             text: segment.text,
             corrected: segment.corrected,
+            speakerIndex: segment.speakerIndex,
+          })),
+        );
+      }
+
+      await tx
+        .delete(transcriptionSpeakers)
+        .where(eq(transcriptionSpeakers.transcriptionId, state.id));
+
+      if (state.speakers.length > 0) {
+        await tx.insert(transcriptionSpeakers).values(
+          state.speakers.map((speaker) => ({
+            transcriptionId: state.id,
+            index: speaker.index,
+            name: speaker.name,
           })),
         );
       }
@@ -138,13 +157,23 @@ export class DrizzleTranscriptionRepository implements TranscriptionRepository {
       .where(eq(transcriptionSegments.transcriptionId, id))
       .orderBy(asc(transcriptionSegments.ordinal));
 
-    const transcription = Transcription.restore(toState(row, segmentRows));
+    const speakerRows = await this.db
+      .select()
+      .from(transcriptionSpeakers)
+      .where(eq(transcriptionSpeakers.transcriptionId, id))
+      .orderBy(asc(transcriptionSpeakers.index));
+
+    const transcription = Transcription.restore(toState(row, segmentRows, speakerRows));
     this.loadedVersions.set(transcription, row.version);
     return transcription;
   }
 }
 
-function toState(row: TranscriptionRow, segmentRows: readonly SegmentRow[]): TranscriptionState {
+function toState(
+  row: TranscriptionRow,
+  segmentRows: readonly SegmentRow[],
+  speakerRows: readonly SpeakerRow[],
+): TranscriptionState {
   return {
     id: row.id,
     ownerId: row.ownerId,
@@ -173,7 +202,11 @@ function toState(row: TranscriptionRow, segmentRows: readonly SegmentRow[]): Tra
         endMs: segment.endMs,
         text: segment.text,
         corrected: segment.corrected,
+        speakerIndex: segment.speakerIndex,
       }),
+    ),
+    speakers: speakerRows.map(
+      (speaker): SpeakerState => ({ index: speaker.index, name: speaker.name }),
     ),
   };
 }

@@ -97,3 +97,24 @@ export class InvalidLeaseDurationError extends DomainError {
     super('INVALID_LEASE_DURATION', message);
   }
 }
+
+/** L'indice d'un locuteur est un entier positif ou nul : c'est ce que produit le clustering. */
+export class InvalidSpeakerError extends DomainError {
+  constructor(message: string) {
+    super('INVALID_SPEAKER', message);
+  }
+}
+
+/** Le nom donné à un locuteur ne respecte pas ses invariants (vide, trop long, multiligne). */
+export class InvalidSpeakerNameError extends DomainError {
+  constructor(message: string) {
+    super('INVALID_SPEAKER_NAME', message);
+  }
+}
+
+/** Aucun locuteur découvert ne porte l'indice demandé. */
+export class SpeakerNotFoundError extends DomainError {
+  constructor(message: string) {
+    super('SPEAKER_NOT_FOUND', message);
+  }
+}

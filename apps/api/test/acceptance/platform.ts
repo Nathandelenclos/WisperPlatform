@@ -1,4 +1,5 @@
 import { AppendTranscribedSegmentsUseCase } from '../../src/transcription/application/use-cases/append-transcribed-segments.use-case';
+import { AssignSpeakersUseCase } from '../../src/transcription/application/use-cases/assign-speakers.use-case';
 import { ClaimNextTranscriptionUseCase } from '../../src/transcription/application/use-cases/claim-next-transcription.use-case';
 import { CompleteTranscriptionUseCase } from '../../src/transcription/application/use-cases/complete-transcription.use-case';
 import { CorrectSegmentUseCase } from '../../src/transcription/application/use-cases/correct-segment.use-case';
@@ -8,6 +9,7 @@ import { GetTranscriptionUseCase } from '../../src/transcription/application/use
 import { ListTranscriptionsUseCase } from '../../src/transcription/application/use-cases/list-transcriptions.use-case';
 import { OpenMediaForRunUseCase } from '../../src/transcription/application/use-cases/open-media-for-run.use-case';
 import { OpenOwnedMediaUseCase } from '../../src/transcription/application/use-cases/open-owned-media.use-case';
+import { RenameSpeakerUseCase } from '../../src/transcription/application/use-cases/rename-speaker.use-case';
 import { RenewTranscriptionLeaseUseCase } from '../../src/transcription/application/use-cases/renew-transcription-lease.use-case';
 import { ReleaseTranscriptionRunUseCase } from '../../src/transcription/application/use-cases/release-transcription-run.use-case';
 import { RequestTranscriptionUseCase } from '../../src/transcription/application/use-cases/request-transcription.use-case';
@@ -49,10 +51,12 @@ export type TranscriptionPlatform = {
   claimNextTranscription: ClaimNextTranscriptionUseCase;
   releaseTranscriptionRun: ReleaseTranscriptionRunUseCase;
   appendTranscribedSegments: AppendTranscribedSegmentsUseCase;
+  assignSpeakers: AssignSpeakersUseCase;
   renewTranscriptionLease: RenewTranscriptionLeaseUseCase;
   completeTranscription: CompleteTranscriptionUseCase;
   failTranscription: FailTranscriptionUseCase;
   correctSegment: CorrectSegmentUseCase;
+  renameSpeaker: RenameSpeakerUseCase;
   getTranscription: GetTranscriptionUseCase;
   listTranscriptions: ListTranscriptionsUseCase;
   exportTranscription: ExportTranscriptionUseCase;
@@ -105,6 +109,7 @@ export function aPlatform(startedAt: Date = NOW): TranscriptionPlatform {
       { leaseSeconds: LEASE_SECONDS, reservationSeconds: RESERVATION_SECONDS },
     ),
     appendTranscribedSegments: new AppendTranscribedSegmentsUseCase(repository, publisher, clock),
+    assignSpeakers: new AssignSpeakersUseCase(repository, publisher, clock),
     releaseTranscriptionRun: new ReleaseTranscriptionRunUseCase(repository, queue, publisher, clock),
     renewTranscriptionLease: new RenewTranscriptionLeaseUseCase(repository, clock, {
       leaseSeconds: LEASE_SECONDS,
@@ -112,6 +117,7 @@ export function aPlatform(startedAt: Date = NOW): TranscriptionPlatform {
     completeTranscription: new CompleteTranscriptionUseCase(repository, publisher, clock),
     failTranscription: new FailTranscriptionUseCase(repository, publisher, clock),
     correctSegment: new CorrectSegmentUseCase(repository, publisher, clock),
+    renameSpeaker: new RenameSpeakerUseCase(repository, publisher, clock),
     getTranscription: new GetTranscriptionUseCase(repository),
     listTranscriptions: new ListTranscriptionsUseCase(catalog),
     exportTranscription: new ExportTranscriptionUseCase(repository),

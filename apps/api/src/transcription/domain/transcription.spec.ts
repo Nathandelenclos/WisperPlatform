@@ -6,10 +6,12 @@ import {
   OutOfOrderBatchError,
   OverlappingSegmentsError,
   SegmentNotFoundError,
+  SpeakerNotFoundError,
   StaleRunError,
   TranscriptionNotCorrectableError,
 } from './errors';
 import { MediaAsset } from './media-asset';
+import { SpeakerTurn } from './speaker-turn';
 import { TimeRange } from './time-range';
 import { Transcription, type TranscriptionState } from './transcription';
 import { TranscriptionSettings } from './transcription-settings';
@@ -186,9 +188,23 @@ describe('Transcription — flux de segments', () => {
     });
 
     expect(transcription.state().segments).toEqual([
-      { ordinal: 1, startMs: 0, endMs: 1_000, text: 'un', corrected: false },
-      { ordinal: 2, startMs: 1_000, endMs: 2_000, text: 'deux', corrected: false },
-      { ordinal: 3, startMs: 2_500, endMs: 3_000, text: 'trois', corrected: false },
+      { ordinal: 1, startMs: 0, endMs: 1_000, text: 'un', corrected: false, speakerIndex: null },
+      {
+        ordinal: 2,
+        startMs: 1_000,
+        endMs: 2_000,
+        text: 'deux',
+        corrected: false,
+        speakerIndex: null,
+      },
+      {
+        ordinal: 3,
+        startMs: 2_500,
+        endMs: 3_000,
+        text: 'trois',
+        corrected: false,
+        speakerIndex: null,
+      },
     ]);
     expect(transcription.state().lastAppliedBatchSequence).toBe(2);
   });
@@ -217,7 +233,16 @@ describe('Transcription — flux de segments', () => {
       name: 'transcription.segments-appended',
       transcriptionId: transcription.id,
       ownerId: 'owner-a',
-      segments: [{ ordinal: 2, startMs: 1_000, endMs: 2_000, text: 'deux', corrected: false }],
+      segments: [
+        {
+          ordinal: 2,
+          startMs: 1_000,
+          endMs: 2_000,
+          text: 'deux',
+          corrected: false,
+          speakerIndex: null,
+        },
+      ],
       occurredAt: SEGMENTS_AT,
     });
   });
@@ -517,6 +542,7 @@ describe('Transcription — correction', () => {
       endMs: 1_000,
       text: 'bonjour',
       corrected: true,
+      speakerIndex: null,
     });
     expect(transcription.state().segments[1].corrected).toBe(false);
     expect(transcription.pullEvents()).toEqual([
@@ -564,6 +590,206 @@ describe('Transcription — correction', () => {
 });
 
 // Invariant 7
+describe('Transcription — diarisation', () => {
+  /** Trois segments d'une seconde chacun, contigus, sur un run ouvert. */
+  function aTranscribedTranscription(): Transcription {
+    const transcription = aStartedTranscription();
+    transcription.appendTranscribedSegments({
+      at: SEGMENTS_AT,
+      runId: 'run-1',
+      batchSequence: 1,
+      segments: batch([0, 1_000, 'un'], [1_000, 2_000, 'deux'], [2_000, 3_000, 'trois']),
+    });
+    transcription.pullEvents();
+    return transcription;
+  }
+
+  function turns(...spans: [number, number, number][]): SpeakerTurn[] {
+    return spans.map(([startMs, endMs, speaker]) =>
+      SpeakerTurn.of(TimeRange.fromMilliseconds(startMs, endMs), speaker),
+    );
+  }
+
+  function assignedSpeakers(transcription: Transcription): (number | null)[] {
+    return transcription.state().segments.map((segment) => segment.speakerIndex);
+  }
+
+  it('attribue à chaque segment le locuteur qui le recouvre le plus', () => {
+    const transcription = aTranscribedTranscription();
+
+    transcription.assignSpeakers({
+      runId: 'run-1',
+      turns: turns([0, 1_400, 0], [1_400, 3_000, 1]),
+      at: SEGMENTS_AT,
+    });
+
+    // Le deuxième segment est partagé 400/600 ms : il revient au locuteur 1.
+    expect(assignedSpeakers(transcription)).toEqual([0, 1, 1]);
+    expect(transcription.state().speakers).toEqual([
+      { index: 0, name: null },
+      { index: 1, name: null },
+    ]);
+  });
+
+  it('annonce les locuteurs découverts et les segments réattribués', () => {
+    const transcription = aTranscribedTranscription();
+
+    transcription.assignSpeakers({
+      runId: 'run-1',
+      turns: turns([0, 3_000, 0]),
+      at: SEGMENTS_AT,
+    });
+
+    expect(transcription.pullEvents()).toEqual([
+      {
+        name: 'transcription.speakers-assigned',
+        transcriptionId: transcription.id,
+        ownerId: 'owner-a',
+        speakers: [{ index: 0, name: null }],
+        segments: transcription.state().segments,
+        occurredAt: SEGMENTS_AT,
+      },
+    ]);
+  });
+
+  it('laisse sans locuteur un segment qu\'aucun tour ne recouvre', () => {
+    const transcription = aTranscribedTranscription();
+
+    transcription.assignSpeakers({
+      runId: 'run-1',
+      turns: turns([0, 1_000, 0], [2_000, 3_000, 0]),
+      at: SEGMENTS_AT,
+    });
+
+    // Le tour s'arrête exactement où le deuxième segment commence : recouvrement nul.
+    expect(assignedSpeakers(transcription)).toEqual([0, null, 0]);
+  });
+
+  it('ne dépend pas de l\'ordre des tours reçus', () => {
+    const ordered = aTranscribedTranscription();
+    const shuffled = aTranscribedTranscription();
+    const spans: [number, number, number][] = [[0, 1_200, 0], [1_200, 1_800, 2], [1_800, 3_000, 1]];
+
+    ordered.assignSpeakers({ runId: 'run-1', turns: turns(...spans), at: SEGMENTS_AT });
+    shuffled.assignSpeakers({
+      runId: 'run-1',
+      turns: turns(spans[2], spans[0], spans[1]),
+      at: SEGMENTS_AT,
+    });
+
+    expect(assignedSpeakers(shuffled)).toEqual(assignedSpeakers(ordered));
+  });
+
+  it('efface l\'attribution quand la diarisation ne rend aucun tour', () => {
+    const transcription = aTranscribedTranscription();
+    transcription.assignSpeakers({ runId: 'run-1', turns: turns([0, 3_000, 0]), at: SEGMENTS_AT });
+
+    transcription.assignSpeakers({ runId: 'run-1', turns: [], at: SEGMENTS_AT });
+
+    expect(assignedSpeakers(transcription)).toEqual([null, null, null]);
+    expect(transcription.state().speakers).toEqual([]);
+  });
+
+  it('rend le même état quand le worker rejoue la même publication', () => {
+    const transcription = aTranscribedTranscription();
+    const spans: [number, number, number][] = [[0, 1_500, 1], [1_500, 3_000, 0]];
+    transcription.assignSpeakers({ runId: 'run-1', turns: turns(...spans), at: SEGMENTS_AT });
+    const once = transcription.state();
+
+    transcription.assignSpeakers({ runId: 'run-1', turns: turns(...spans), at: SEGMENTS_AT });
+
+    expect(transcription.state()).toEqual(once);
+  });
+
+  it('garde le nom déjà donné à un locuteur que la diarisation retrouve', () => {
+    const transcription = aTranscribedTranscription();
+    transcription.assignSpeakers({ runId: 'run-1', turns: turns([0, 3_000, 0]), at: SEGMENTS_AT });
+    transcription.renameSpeaker({ index: 0, name: 'Marc', at: SEGMENTS_AT });
+
+    transcription.assignSpeakers({
+      runId: 'run-1',
+      turns: turns([0, 1_500, 0], [1_500, 3_000, 1]),
+      at: SEGMENTS_AT,
+    });
+
+    expect(transcription.state().speakers).toEqual([
+      { index: 0, name: 'Marc' },
+      { index: 1, name: null },
+    ]);
+  });
+
+  it('refuse une attribution qui vient d\'une tentative remplacée', () => {
+    const transcription = aTranscribedTranscription();
+
+    expect(() =>
+      transcription.assignSpeakers({
+        runId: 'run-2',
+        turns: turns([0, 3_000, 0]),
+        at: SEGMENTS_AT,
+      }),
+    ).toThrow(StaleRunError);
+  });
+
+  it('oublie les locuteurs quand une nouvelle tentative démarre', () => {
+    const transcription = aTranscribedTranscription();
+    transcription.assignSpeakers({ runId: 'run-1', turns: turns([0, 3_000, 0]), at: SEGMENTS_AT });
+    transcription.releaseRun({ runId: 'run-1', at: LEASE_UNTIL });
+
+    transcription.startTranscribing({
+      runId: 'run-2',
+      workerId: 'worker-2',
+      leaseSeconds: LEASE_SECONDS,
+      at: LEASE_UNTIL,
+    });
+
+    expect(transcription.state().speakers).toEqual([]);
+    expect(transcription.state().segments).toEqual([]);
+  });
+
+  it('renomme un locuteur pour toute la transcription d\'un coup', () => {
+    const transcription = aTranscribedTranscription();
+    transcription.assignSpeakers({
+      runId: 'run-1',
+      turns: turns([0, 1_000, 0], [1_000, 2_000, 1], [2_000, 3_000, 0]),
+      at: SEGMENTS_AT,
+    });
+    transcription.pullEvents();
+
+    transcription.renameSpeaker({ index: 0, name: '  Marc  ', at: LEASE_UNTIL });
+
+    expect(transcription.render('txt')).toBe('Marc : un\nLocuteur 2 : deux\nMarc : trois\n');
+    expect(transcription.pullEvents()).toEqual([
+      {
+        name: 'transcription.speaker-renamed',
+        transcriptionId: transcription.id,
+        ownerId: 'owner-a',
+        index: 0,
+        speakerName: 'Marc',
+        occurredAt: LEASE_UNTIL,
+      },
+    ]);
+  });
+
+  it('refuse de renommer un locuteur que la diarisation n\'a pas trouvé', () => {
+    const transcription = aTranscribedTranscription();
+    transcription.assignSpeakers({ runId: 'run-1', turns: turns([0, 3_000, 0]), at: SEGMENTS_AT });
+
+    expect(() => transcription.renameSpeaker({ index: 1, name: 'Marc', at: LEASE_UNTIL })).toThrow(
+      SpeakerNotFoundError,
+    );
+  });
+
+  it('refuse un nom de locuteur vide', () => {
+    const transcription = aTranscribedTranscription();
+    transcription.assignSpeakers({ runId: 'run-1', turns: turns([0, 3_000, 0]), at: SEGMENTS_AT });
+
+    expect(() => transcription.renameSpeaker({ index: 0, name: ' ', at: LEASE_UNTIL })).toThrow(
+      expect.objectContaining({ code: 'INVALID_SPEAKER_NAME' }),
+    );
+  });
+});
+
+// Invariant 8
 describe('Transcription — aller-retour de persistance', () => {
   it('rend exactement l\'état qu\'on lui a confié', () => {
     const state: TranscriptionState = {
@@ -585,8 +811,12 @@ describe('Transcription — aller-retour de persistance', () => {
       requestedAt: REQUESTED_AT,
       completedAt: null,
       segments: [
-        { ordinal: 1, startMs: 0, endMs: 1_000, text: 'un', corrected: false },
-        { ordinal: 2, startMs: 1_000, endMs: 2_000, text: 'deux', corrected: true },
+        { ordinal: 1, startMs: 0, endMs: 1_000, text: 'un', corrected: false, speakerIndex: 0 },
+        { ordinal: 2, startMs: 1_000, endMs: 2_000, text: 'deux', corrected: true, speakerIndex: 1 },
+      ],
+      speakers: [
+        { index: 0, name: 'Marc' },
+        { index: 1, name: null },
       ],
     };
 

@@ -15,6 +15,13 @@
       "when": 1787429513512,
       "tag": "0001_optimistic_lock",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1787439596756,
+      "tag": "0002_speakers",
+      "breakpoints": true
     }
   ]
 }

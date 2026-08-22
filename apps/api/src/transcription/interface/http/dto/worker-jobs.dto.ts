@@ -10,6 +10,12 @@ import { z } from 'zod';
 const MAX_SERVED_MODELS = 16;
 const MAX_SEGMENTS_PER_BATCH = 1_000;
 
+/**
+ * Un tour de parole par seconde de média pendant plus de deux heures : au-delà, ce n'est plus
+ * une diarisation. La borne existe pour que rien d'illimité ne traverse la frontière.
+ */
+const MAX_SPEAKER_TURNS = 10_000;
+
 export const runIdSchema = z.uuid();
 
 export const mediaTokenSchema = z.string().min(1).max(1_024);
@@ -40,4 +46,17 @@ export const jobReferenceBodySchema = z.object({
 export const failJobBodySchema = z.object({
   transcriptionId: z.uuid(),
   reason: z.string().max(2_000),
+});
+
+export const assignSpeakersBodySchema = z.object({
+  transcriptionId: z.uuid(),
+  turns: z
+    .array(
+      z.object({
+        startMs: z.number().int().min(0),
+        endMs: z.number().int(),
+        speaker: z.number().int().min(0),
+      }),
+    )
+    .max(MAX_SPEAKER_TURNS),
 });

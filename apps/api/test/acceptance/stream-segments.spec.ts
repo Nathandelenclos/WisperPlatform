@@ -40,9 +40,30 @@ describe('Scénario : le worker envoie ses segments au fil de l\'eau', () => {
     const view = await platform.getTranscription.execute({ transcriptionId, ownerId: OWNER });
     expect(view.status).toBe('transcribing');
     expect(view.segments).toEqual([
-      { ordinal: 1, startMs: 0, endMs: 1_200, text: 'Bonjour à tous.', corrected: false },
-      { ordinal: 2, startMs: 1_200, endMs: 2_400, text: 'Merci d\'être là.', corrected: false },
-      { ordinal: 3, startMs: 2_400, endMs: 4_000, text: 'Commençons.', corrected: false },
+      {
+        ordinal: 1,
+        startMs: 0,
+        endMs: 1_200,
+        text: 'Bonjour à tous.',
+        corrected: false,
+        speakerIndex: null,
+      },
+      {
+        ordinal: 2,
+        startMs: 1_200,
+        endMs: 2_400,
+        text: 'Merci d\'être là.',
+        corrected: false,
+        speakerIndex: null,
+      },
+      {
+        ordinal: 3,
+        startMs: 2_400,
+        endMs: 4_000,
+        text: 'Commençons.',
+        corrected: false,
+        speakerIndex: null,
+      },
     ]);
 
     expect(platform.publisher.names()).toEqual([

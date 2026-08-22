@@ -19,6 +19,7 @@ function cloneState(state: TranscriptionState): TranscriptionState {
     requestedAt: new Date(state.requestedAt),
     completedAt: state.completedAt === null ? null : new Date(state.completedAt),
     segments: state.segments.map((segment) => ({ ...segment })),
+    speakers: state.speakers.map((speaker) => ({ ...speaker })),
   };
 }
 

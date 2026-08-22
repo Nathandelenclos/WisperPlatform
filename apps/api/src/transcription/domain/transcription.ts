@@ -4,12 +4,15 @@ import {
   OutOfOrderBatchError,
   OverlappingSegmentsError,
   SegmentNotFoundError,
+  SpeakerNotFoundError,
   StaleRunError,
   TranscriptionNotCorrectableError,
 } from './errors';
 import type { TranscriptionEvent } from './events';
 import { MediaAsset } from './media-asset';
 import { Segment, type SegmentState } from './segment';
+import { Speaker, SpeakerName, type SpeakerState } from './speaker';
+import { distinctSpeakers, dominantSpeaker, type SpeakerTurn } from './speaker-turn';
 import { renderSubtitles, type SubtitleFormat } from './subtitle-document';
 import { TimeRange } from './time-range';
 import { TranscriptionSettings, type WhisperModel } from './transcription-settings';
@@ -36,6 +39,7 @@ export type TranscriptionState = {
   requestedAt: Date;
   completedAt: Date | null;
   segments: SegmentState[];
+  speakers: SpeakerState[];
 };
 
 /** Raison figée d'un échec provoqué par l'abandon d'un worker. */
@@ -56,6 +60,7 @@ export class Transcription {
   private failureReason: string | null;
   private completedAt: Date | null;
   private segmentList: Segment[];
+  private speakerList: Speaker[];
   /** Copie interne : l'instant de la demande n'est jamais la `Date` de l'appelant. */
   private readonly requestedAtInstant: Date;
   private readonly events: TranscriptionEvent[] = [];
@@ -76,6 +81,7 @@ export class Transcription {
       failureReason: string | null;
       completedAt: Date | null;
       segments: Segment[];
+      speakers: Speaker[];
     },
   ) {
     // Instants recopiés à l'entrée comme ils le sont à la sortie : l'appelant qui garde la
@@ -90,6 +96,7 @@ export class Transcription {
     this.failureReason = state.failureReason;
     this.completedAt = state.completedAt === null ? null : new Date(state.completedAt);
     this.segmentList = state.segments;
+    this.speakerList = state.speakers;
   }
 
   static request(p: {
@@ -115,6 +122,7 @@ export class Transcription {
         failureReason: null,
         completedAt: null,
         segments: [],
+        speakers: [],
       },
     );
     transcription.events.push({
@@ -148,6 +156,7 @@ export class Transcription {
         failureReason: state.failureReason,
         completedAt: state.completedAt,
         segments: state.segments.map((segment) => Segment.restore(segment)),
+        speakers: state.speakers.map((speaker) => Speaker.restore(speaker)),
       },
     );
   }
@@ -156,13 +165,18 @@ export class Transcription {
     return this.segmentList;
   }
 
+  get speakers(): readonly Speaker[] {
+    return this.speakerList;
+  }
+
   /** Échéance du bail en cours, copiée : `null` hors d'une tentative en cours. */
   get leaseExpiry(): Date | null {
     return this.leaseExpiresAt === null ? null : new Date(this.leaseExpiresAt);
   }
 
   /**
-   * Une nouvelle tentative démarre : les segments de la tentative précédente sont abandonnés.
+   * Une nouvelle tentative démarre : les segments de la tentative précédente sont abandonnés,
+   * et avec eux les locuteurs qu'une diarisation avait pu découvrir.
    * L'aggregate dérive lui-même l'échéance du bail — « un bail est une fenêtre bornée qui
    * commence maintenant » est une règle du contexte, pas un calcul d'appelant.
    */
@@ -181,6 +195,7 @@ export class Transcription {
     this.failureReason = null;
     this.completedAt = null;
     this.segmentList = [];
+    this.speakerList = [];
     this.events.push({
       name: 'transcription.started',
       transcriptionId: this.id,
@@ -343,6 +358,58 @@ export class Transcription {
   }
 
   /**
+   * Passe de diarisation du run en cours : chaque segment reçoit le locuteur qui recouvre la
+   * plus grande part de sa durée, et les locuteurs découverts remplacent les précédents.
+   *
+   * L'attribution est recalculée de zéro à chaque appel : le worker peut rejouer la même
+   * publication sans rien changer (sa livraison est at-least-once). Les noms déjà donnés par
+   * le propriétaire survivent à un indice qui revient — c'est son travail, pas celui du worker.
+   */
+  assignSpeakers(p: { runId: string; turns: readonly SpeakerTurn[]; at: Date }): void {
+    this.assertRunIsInProgress(p.runId, 'attribuer les locuteurs');
+
+    const previous = new Map(this.speakerList.map((speaker) => [speaker.index, speaker]));
+    this.speakerList = distinctSpeakers(p.turns).map(
+      (index) => previous.get(index) ?? Speaker.discovered(index),
+    );
+    this.segmentList = this.segmentList.map((segment) =>
+      segment.withSpeaker(dominantSpeaker(p.turns, segment.range)),
+    );
+
+    this.events.push({
+      name: 'transcription.speakers-assigned',
+      transcriptionId: this.id,
+      ownerId: this.ownerId,
+      speakers: this.speakerList.map((speaker) => speaker.state()),
+      segments: this.segmentList.map((segment) => segment.state()),
+      occurredAt: p.at,
+    });
+  }
+
+  /**
+   * Nommer un locuteur porte sur toute la transcription d'un coup : c'est le geste métier —
+   * « ce locuteur-là, c'est Marc » — et non l'édition segment par segment.
+   */
+  renameSpeaker(p: { index: number; name: string; at: Date }): void {
+    const position = this.speakerList.findIndex((speaker) => speaker.index === p.index);
+    if (position === -1) {
+      throw new SpeakerNotFoundError(`aucun locuteur ne porte l'indice ${p.index}`);
+    }
+    const name = SpeakerName.of(p.name);
+    const renamed = [...this.speakerList];
+    renamed[position] = this.speakerList[position].withName(name);
+    this.speakerList = renamed;
+    this.events.push({
+      name: 'transcription.speaker-renamed',
+      transcriptionId: this.id,
+      ownerId: this.ownerId,
+      index: p.index,
+      speakerName: name.value,
+      occurredAt: p.at,
+    });
+  }
+
+  /**
    * Ce laissez-passer ouvre-t-il encore le média ? La question appartient au domaine : la
    * réponse est le même invariant que celui qui autorise un run à écrire, et le contrôle
    * d'accès au média doit suivre l'aggregate quand cet invariant se durcit.
@@ -352,7 +419,7 @@ export class Transcription {
   }
 
   render(format: SubtitleFormat): string {
-    return renderSubtitles(this.segmentList, format);
+    return renderSubtitles(this.segmentList, format, this.speakerList);
   }
 
   /** Vide et rend les événements accumulés : à publier après un enregistrement réussi. */
@@ -382,6 +449,7 @@ export class Transcription {
       requestedAt: new Date(this.requestedAtInstant),
       completedAt: this.completedAt === null ? null : new Date(this.completedAt),
       segments: this.segmentList.map((segment) => segment.state()),
+      speakers: this.speakerList.map((speaker) => speaker.state()),
     };
   }
 

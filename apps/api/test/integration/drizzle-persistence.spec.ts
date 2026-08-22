@@ -11,6 +11,7 @@ import {
 import { runMigrations } from '../../src/shared/infrastructure/persistence/migrate';
 import {
   transcriptionSegments,
+  transcriptionSpeakers,
   transcriptions,
   user,
 } from '../../src/shared/infrastructure/persistence/schema';
@@ -95,7 +96,7 @@ function postgres(): Promise<Harness> {
 
 async function truncateTranscriptions(connection: DatabaseConnection): Promise<void> {
   await connection.db.execute(
-    sql`truncate table ${transcriptionSegments}, ${transcriptions} cascade`,
+    sql`truncate table ${transcriptionSegments}, ${transcriptionSpeakers}, ${transcriptions} cascade`,
   );
 }
 

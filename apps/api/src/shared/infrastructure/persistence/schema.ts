@@ -147,11 +147,34 @@ export const transcriptionSegments = pgTable(
     endMs: integer('end_ms').notNull(),
     text: text('text').notNull(),
     corrected: boolean('corrected').notNull().default(false),
+    /** Locuteur attribué par la diarisation ; `null` quand elle n'a pas eu lieu. */
+    speakerIndex: integer('speaker_index'),
   },
   (table) => [
     primaryKey({
       name: 'transcription_segments_pkey',
       columns: [table.transcriptionId, table.ordinal],
+    }),
+  ],
+);
+
+/**
+ * Locuteurs d'une transcription. L'indice vient du clustering de la diarisation, le nom du
+ * propriétaire — d'où sa nullité : un locuteur existe avant d'avoir un nom.
+ */
+export const transcriptionSpeakers = pgTable(
+  'transcription_speakers',
+  {
+    transcriptionId: uuid('transcription_id')
+      .notNull()
+      .references(() => transcriptions.id, { onDelete: 'cascade' }),
+    index: integer('index').notNull(),
+    name: text('name'),
+  },
+  (table) => [
+    primaryKey({
+      name: 'transcription_speakers_pkey',
+      columns: [table.transcriptionId, table.index],
     }),
   ],
 );

@@ -5,6 +5,7 @@ import type { TranscriptionQueue } from '../../src/transcription/application/por
 import type { TranscriptionRepository } from '../../src/transcription/application/ports/transcription-repository';
 import { MediaAsset } from '../../src/transcription/domain/media-asset';
 import { ConcurrentTranscriptionWriteError } from '../../src/transcription/application/errors';
+import { SpeakerTurn } from '../../src/transcription/domain/speaker-turn';
 import { TimeRange } from '../../src/transcription/domain/time-range';
 import { Transcription } from '../../src/transcription/domain/transcription';
 import {
@@ -120,13 +121,34 @@ export function describeTranscriptionRepositoryContract(
         expect(state?.claimedBy).toBe('worker-1');
         expect(state?.completedAt).toEqual(LEASE_UNTIL);
         expect(state?.segments).toEqual([
-          { ordinal: 1, startMs: 0, endMs: 1_500, text: 'bonjour', corrected: true },
-          { ordinal: 2, startMs: 1_500, endMs: 3_000, text: 'à tous', corrected: false },
-          { ordinal: 3, startMs: 3_000, endMs: 4_200, text: 'et bienvenue', corrected: false },
+          {
+            ordinal: 1,
+            startMs: 0,
+            endMs: 1_500,
+            text: 'bonjour',
+            corrected: true,
+            speakerIndex: null,
+          },
+          {
+            ordinal: 2,
+            startMs: 1_500,
+            endMs: 3_000,
+            text: 'à tous',
+            corrected: false,
+            speakerIndex: null,
+          },
+          {
+            ordinal: 3,
+            startMs: 3_000,
+            endMs: 4_200,
+            text: 'et bienvenue',
+            corrected: false,
+            speakerIndex: null,
+          },
         ]);
       });
 
-      it('relit un aggregate en attente, sans bail ni segment', async () => {
+      it('relit un aggregate en attente, sans bail, sans segment ni locuteur', async () => {
         const transcription = aRequest({ id: uuid('2') });
 
         await harness.repository.save(transcription);
@@ -135,6 +157,7 @@ export function describeTranscriptionRepositoryContract(
         expect(reloaded?.state()).toEqual(transcription.state());
         expect(reloaded?.state().leaseExpiresAt).toBeNull();
         expect(reloaded?.state().segments).toEqual([]);
+        expect(reloaded?.state().speakers).toEqual([]);
       });
 
       it('remplace l\'état précédent au lieu de l\'empiler', async () => {
@@ -165,6 +188,87 @@ export function describeTranscriptionRepositoryContract(
         const reloaded = await harness.repository.findById(transcription.id);
         expect(reloaded?.state().status).toBe('completed');
         expect(reloaded?.state().segments).toHaveLength(2);
+      });
+
+      it('relit les locuteurs et le locuteur porté par chaque segment', async () => {
+        const transcription = aRequest({ id: uuid('4') });
+        transcription.startTranscribing({
+          runId: uuid('a4'),
+          workerId: 'worker-1',
+          leaseSeconds: LEASE_SECONDS,
+          at: REQUESTED_AT,
+        });
+        transcription.appendTranscribedSegments({
+          at: APPENDED_AT,
+          runId: uuid('a4'),
+          batchSequence: 1,
+          segments: [
+            { range: TimeRange.fromMilliseconds(0, 1_000), text: 'bonjour' },
+            { range: TimeRange.fromMilliseconds(1_000, 2_000), text: 'à tous' },
+            { range: TimeRange.fromMilliseconds(5_000, 6_000), text: 'et voilà' },
+          ],
+        });
+        transcription.assignSpeakers({
+          runId: uuid('a4'),
+          at: APPENDED_AT,
+          turns: [
+            SpeakerTurn.of(TimeRange.fromMilliseconds(0, 1_000), 0),
+            SpeakerTurn.of(TimeRange.fromMilliseconds(1_000, 2_000), 1),
+          ],
+        });
+        transcription.renameSpeaker({ index: 1, name: 'Marc', at: LEASE_UNTIL });
+
+        await harness.repository.save(transcription);
+        const reloaded = await harness.repository.findById(transcription.id);
+
+        expect(reloaded?.state()).toEqual(transcription.state());
+        expect(reloaded?.state().speakers).toEqual([
+          { index: 0, name: null },
+          { index: 1, name: 'Marc' },
+        ]);
+        // Le troisième segment n'est recouvert par aucun tour : il reste sans locuteur.
+        expect(reloaded?.state().segments.map((segment) => segment.speakerIndex)).toEqual([
+          0,
+          1,
+          null,
+        ]);
+      });
+
+      it('remplace le jeu de locuteurs au lieu de l\'empiler', async () => {
+        const transcription = aRequest({ id: uuid('5') });
+        transcription.startTranscribing({
+          runId: uuid('a5'),
+          workerId: 'worker-1',
+          leaseSeconds: LEASE_SECONDS,
+          at: REQUESTED_AT,
+        });
+        transcription.appendTranscribedSegments({
+          at: APPENDED_AT,
+          runId: uuid('a5'),
+          batchSequence: 1,
+          segments: [{ range: TimeRange.fromMilliseconds(0, 2_000), text: 'seul' }],
+        });
+        transcription.assignSpeakers({
+          runId: uuid('a5'),
+          at: APPENDED_AT,
+          turns: [
+            SpeakerTurn.of(TimeRange.fromMilliseconds(0, 1_000), 0),
+            SpeakerTurn.of(TimeRange.fromMilliseconds(1_000, 2_000), 1),
+          ],
+        });
+        await harness.repository.save(transcription);
+
+        // Une seconde passe ne trouve plus qu'une voix : la première ne doit pas survivre.
+        transcription.assignSpeakers({
+          runId: uuid('a5'),
+          at: APPENDED_AT,
+          turns: [SpeakerTurn.of(TimeRange.fromMilliseconds(0, 2_000), 0)],
+        });
+        await harness.repository.save(transcription);
+
+        const reloaded = await harness.repository.findById(transcription.id);
+        expect(reloaded?.state().speakers).toEqual([{ index: 0, name: null }]);
+        expect(reloaded?.state().segments[0].speakerIndex).toBe(0);
       });
 
       it('rend null pour un aggregate inconnu', async () => {

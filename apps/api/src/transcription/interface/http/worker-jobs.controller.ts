@@ -14,6 +14,7 @@ import {
 import type { ServerResponse } from 'node:http';
 
 import { AppendTranscribedSegmentsUseCase } from '../../application/use-cases/append-transcribed-segments.use-case';
+import { AssignSpeakersUseCase } from '../../application/use-cases/assign-speakers.use-case';
 import { ClaimNextTranscriptionUseCase } from '../../application/use-cases/claim-next-transcription.use-case';
 import { CompleteTranscriptionUseCase } from '../../application/use-cases/complete-transcription.use-case';
 import { FailTranscriptionUseCase } from '../../application/use-cases/fail-transcription.use-case';
@@ -22,6 +23,7 @@ import { OpenMediaForRunUseCase } from '../../application/use-cases/open-media-f
 import { RenewTranscriptionLeaseUseCase } from '../../application/use-cases/renew-transcription-lease.use-case';
 import {
   appendSegmentsBodySchema,
+  assignSpeakersBodySchema,
   claimJobBodySchema,
   failJobBodySchema,
   jobReferenceBodySchema,
@@ -43,6 +45,7 @@ export class WorkerJobsController {
     @Inject(ClaimNextTranscriptionUseCase) private readonly claimNextTranscription: ClaimNextTranscriptionUseCase,
     @Inject(OpenMediaForRunUseCase) private readonly openMediaForRun: OpenMediaForRunUseCase,
     @Inject(AppendTranscribedSegmentsUseCase) private readonly appendSegments: AppendTranscribedSegmentsUseCase,
+    @Inject(AssignSpeakersUseCase) private readonly assignSpeakers: AssignSpeakersUseCase,
     @Inject(RenewTranscriptionLeaseUseCase) private readonly renewLease: RenewTranscriptionLeaseUseCase,
     @Inject(CompleteTranscriptionUseCase) private readonly completeTranscription: CompleteTranscriptionUseCase,
     @Inject(FailTranscriptionUseCase) private readonly failTranscription: FailTranscriptionUseCase,
@@ -91,6 +94,21 @@ export class WorkerJobsController {
       runId: parseHttpInput(runIdSchema, runId),
       batchSequence,
       segments,
+    });
+  }
+
+  /**
+   * Passe de diarisation, optionnelle : un worker qui n'en est pas capable n'appelle jamais
+   * cette route et se comporte exactement comme avant.
+   */
+  @Post('jobs/:runId/speakers')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async assignSpeakersOfRun(@Param('runId') runId: string, @Body() body: unknown): Promise<void> {
+    const { transcriptionId, turns } = parseHttpInput(assignSpeakersBodySchema, body);
+    await this.assignSpeakers.execute({
+      transcriptionId,
+      runId: parseHttpInput(runIdSchema, runId),
+      turns,
     });
   }
 

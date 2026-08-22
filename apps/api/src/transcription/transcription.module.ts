@@ -30,6 +30,7 @@ import type { TranscriptionQueue } from './application/ports/transcription-queue
 import { TRANSCRIPTION_REPOSITORY } from './application/ports/transcription-repository';
 import type { TranscriptionRepository } from './application/ports/transcription-repository';
 import { AppendTranscribedSegmentsUseCase } from './application/use-cases/append-transcribed-segments.use-case';
+import { AssignSpeakersUseCase } from './application/use-cases/assign-speakers.use-case';
 import { ClaimNextTranscriptionUseCase } from './application/use-cases/claim-next-transcription.use-case';
 import { CompleteTranscriptionUseCase } from './application/use-cases/complete-transcription.use-case';
 import { CorrectSegmentUseCase } from './application/use-cases/correct-segment.use-case';
@@ -39,6 +40,7 @@ import { GetTranscriptionUseCase } from './application/use-cases/get-transcripti
 import { ListTranscriptionsUseCase } from './application/use-cases/list-transcriptions.use-case';
 import { OpenMediaForRunUseCase } from './application/use-cases/open-media-for-run.use-case';
 import { OpenOwnedMediaUseCase } from './application/use-cases/open-owned-media.use-case';
+import { RenameSpeakerUseCase } from './application/use-cases/rename-speaker.use-case';
 import { RenewTranscriptionLeaseUseCase } from './application/use-cases/renew-transcription-lease.use-case';
 import { ReleaseTranscriptionRunUseCase } from './application/use-cases/release-transcription-run.use-case';
 import { RequestTranscriptionUseCase } from './application/use-cases/request-transcription.use-case';
@@ -196,6 +198,15 @@ const MULTIPART_MAX_FIELDS = 8;
       inject: [TRANSCRIPTION_REPOSITORY, TRANSCRIPTION_EVENT_PUBLISHER, CLOCK],
     },
     {
+      provide: AssignSpeakersUseCase,
+      useFactory: (
+        repository: TranscriptionRepository,
+        publisher: TranscriptionEventPublisher,
+        clock: Clock,
+      ) => new AssignSpeakersUseCase(repository, publisher, clock),
+      inject: [TRANSCRIPTION_REPOSITORY, TRANSCRIPTION_EVENT_PUBLISHER, CLOCK],
+    },
+    {
       provide: RenewTranscriptionLeaseUseCase,
       useFactory: (repository: TranscriptionRepository, clock: Clock, env: Env) =>
         new RenewTranscriptionLeaseUseCase(repository, clock, {
@@ -228,6 +239,15 @@ const MULTIPART_MAX_FIELDS = 8;
         publisher: TranscriptionEventPublisher,
         clock: Clock,
       ) => new CorrectSegmentUseCase(repository, publisher, clock),
+      inject: [TRANSCRIPTION_REPOSITORY, TRANSCRIPTION_EVENT_PUBLISHER, CLOCK],
+    },
+    {
+      provide: RenameSpeakerUseCase,
+      useFactory: (
+        repository: TranscriptionRepository,
+        publisher: TranscriptionEventPublisher,
+        clock: Clock,
+      ) => new RenameSpeakerUseCase(repository, publisher, clock),
       inject: [TRANSCRIPTION_REPOSITORY, TRANSCRIPTION_EVENT_PUBLISHER, CLOCK],
     },
     {

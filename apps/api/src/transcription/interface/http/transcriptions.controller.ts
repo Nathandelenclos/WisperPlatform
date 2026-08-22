@@ -36,6 +36,7 @@ import { ExportTranscriptionUseCase } from '../../application/use-cases/export-t
 import { GetTranscriptionUseCase } from '../../application/use-cases/get-transcription.use-case';
 import { ListTranscriptionsUseCase } from '../../application/use-cases/list-transcriptions.use-case';
 import { OpenOwnedMediaUseCase } from '../../application/use-cases/open-owned-media.use-case';
+import { RenameSpeakerUseCase } from '../../application/use-cases/rename-speaker.use-case';
 import { RequestTranscriptionUseCase } from '../../application/use-cases/request-transcription.use-case';
 import type { TranscriptionView } from '../../application/views';
 import { contentDisposition } from './content-disposition';
@@ -43,6 +44,8 @@ import {
   correctSegmentBodySchema,
   correctSegmentParamsSchema,
   exportQuerySchema,
+  renameSpeakerBodySchema,
+  renameSpeakerParamsSchema,
   requestTranscriptionBodySchema,
   transcriptionIdSchema,
 } from './dto/transcriptions.dto';
@@ -64,6 +67,7 @@ export class TranscriptionsController {
     @Inject(ListTranscriptionsUseCase) private readonly listTranscriptions: ListTranscriptionsUseCase,
     @Inject(GetTranscriptionUseCase) private readonly getTranscription: GetTranscriptionUseCase,
     @Inject(CorrectSegmentUseCase) private readonly correctSegment: CorrectSegmentUseCase,
+    @Inject(RenameSpeakerUseCase) private readonly renameSpeaker: RenameSpeakerUseCase,
     @Inject(ExportTranscriptionUseCase) private readonly exportTranscription: ExportTranscriptionUseCase,
     @Inject(OpenOwnedMediaUseCase) private readonly openOwnedMedia: OpenOwnedMediaUseCase,
     @Inject(TRANSCRIPTION_EVENT_STREAM) private readonly events: TranscriptionEventStream,
@@ -148,6 +152,27 @@ export class TranscriptionsController {
       ownerId: user.id,
       ordinal,
       text,
+    });
+  }
+
+  /**
+   * Nommer un locuteur rend la transcription à jour : le renommage touche toutes ses répliques
+   * d'un coup, l'appelant a besoin de la vue entière, pas d'un accusé de réception.
+   */
+  @Patch(':id/speakers/:index')
+  @HttpCode(HttpStatus.OK)
+  async rename(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param() params: unknown,
+    @Body() body: unknown,
+  ): Promise<TranscriptionView> {
+    const { id, index } = parseHttpInput(renameSpeakerParamsSchema, params);
+    const { name } = parseHttpInput(renameSpeakerBodySchema, body);
+    return this.renameSpeaker.execute({
+      transcriptionId: id,
+      ownerId: user.id,
+      index,
+      name,
     });
   }
 

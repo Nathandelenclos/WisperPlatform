@@ -51,6 +51,7 @@ describe('Scénario : le propriétaire corrige un segment', () => {
       endMs: 1_000,
       text: 'Bonjour',
       corrected: true,
+      speakerIndex: null,
     });
     expect(view.segments[1].corrected).toBe(false);
     expect(platform.publisher.published).toEqual([

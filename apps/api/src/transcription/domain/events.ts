@@ -1,4 +1,5 @@
 import type { SegmentState } from './segment';
+import type { SpeakerState } from './speaker';
 
 /**
  * Événements de domaine produits par l'aggregate `Transcription`. Immuables, sans PII :
@@ -34,6 +35,27 @@ export type TranscriptionEvent =
       transcriptionId: string;
       ownerId: string;
       ordinal: number;
+      occurredAt: Date;
+    }
+  /**
+   * La diarisation a parlé : les locuteurs découverts, et tous les segments avec le locuteur
+   * qu'ils portent désormais — une attribution rebat les cartes de la transcription entière.
+   */
+  | {
+      name: 'transcription.speakers-assigned';
+      transcriptionId: string;
+      ownerId: string;
+      speakers: SpeakerState[];
+      segments: SegmentState[];
+      occurredAt: Date;
+    }
+  /** `speakerName` et non `name` : `name` désigne déjà le type de l'événement. */
+  | {
+      name: 'transcription.speaker-renamed';
+      transcriptionId: string;
+      ownerId: string;
+      index: number;
+      speakerName: string;
       occurredAt: Date;
     };
 

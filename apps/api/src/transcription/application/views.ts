@@ -1,5 +1,6 @@
 import type { SegmentState } from '../domain/segment';
-import type { TranscriptionStatus } from '../domain/transcription';
+import type { SpeakerState } from '../domain/speaker';
+import type { TranscriptionState, TranscriptionStatus } from '../domain/transcription';
 import type { WhisperModel } from '../domain/transcription-settings';
 
 /**
@@ -28,4 +29,26 @@ export type TranscriptionView = {
   completedAt: Date | null;
   failureReason: string | null;
   segments: SegmentState[];
+  speakers: SpeakerState[];
 };
+
+/**
+ * Projection de l'aggregate vers ce que le propriétaire voit. Elle vit ici, en un seul
+ * endroit : deux use cases rendent cette vue, et ils doivent rendre exactement la même.
+ */
+export function toTranscriptionView(state: TranscriptionState): TranscriptionView {
+  return {
+    id: state.id,
+    status: state.status,
+    model: state.model,
+    language: state.language,
+    mediaName: state.mediaOriginalName,
+    mediaContentType: state.mediaContentType,
+    mediaByteSize: state.mediaByteSize,
+    requestedAt: state.requestedAt,
+    completedAt: state.completedAt,
+    failureReason: state.failureReason,
+    segments: state.segments,
+    speakers: state.speakers,
+  };
+}

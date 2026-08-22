@@ -13,6 +13,8 @@ describe('Segment', () => {
     expect(segment.ordinal).toBe(1);
     expect(segment.text).toBe('bonjour à tous');
     expect(segment.corrected).toBe(false);
+    // La diarisation est une passe distincte : un segment naît sans locuteur.
+    expect(segment.speakerIndex).toBeNull();
     expect(segment.range.equals(range)).toBe(true);
   });
 
@@ -43,8 +45,30 @@ describe('Segment', () => {
   });
 
   it('fait l\'aller-retour entre état et instance sans rien perdre', () => {
-    const state = { ordinal: 7, startMs: 1_000, endMs: 4_250, text: 'texte relu', corrected: true };
+    const state = {
+      ordinal: 7,
+      startMs: 1_000,
+      endMs: 4_250,
+      text: 'texte relu',
+      corrected: true,
+      speakerIndex: 2,
+    };
 
     expect(Segment.restore(state).state()).toEqual(state);
+  });
+
+  it('garde le locuteur attribué quand le texte est corrigé', () => {
+    const segment = Segment.transcribed(1, range, 'bonjur').withSpeaker(1);
+
+    expect(segment.withCorrectedText('bonjour').speakerIndex).toBe(1);
+  });
+
+  it('produit une nouvelle instance quand le locuteur change, sans toucher à l\'originale', () => {
+    const original = Segment.transcribed(1, range, 'bonjour').withSpeaker(0);
+
+    const reassigned = original.withSpeaker(null);
+
+    expect(reassigned.speakerIndex).toBeNull();
+    expect(original.speakerIndex).toBe(0);
   });
 });

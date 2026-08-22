@@ -32,6 +32,14 @@ export class TimeRange {
     return this.endMs <= other.startMs;
   }
 
+  /**
+   * Durée commune aux deux intervalles, en millisecondes ; 0 quand ils ne se croisent pas.
+   * C'est la mesure sur laquelle repose l'attribution d'un locuteur à un segment.
+   */
+  overlapMsWith(other: TimeRange): number {
+    return Math.max(0, Math.min(this.endMs, other.endMs) - Math.max(this.startMs, other.startMs));
+  }
+
   equals(other: TimeRange): boolean {
     return this.startMs === other.startMs && this.endMs === other.endMs;
   }
