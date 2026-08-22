@@ -9,6 +9,7 @@ import { ListTranscriptionsUseCase } from '../../src/transcription/application/u
 import { OpenMediaForRunUseCase } from '../../src/transcription/application/use-cases/open-media-for-run.use-case';
 import { OpenOwnedMediaUseCase } from '../../src/transcription/application/use-cases/open-owned-media.use-case';
 import { RenewTranscriptionLeaseUseCase } from '../../src/transcription/application/use-cases/renew-transcription-lease.use-case';
+import { ReleaseTranscriptionRunUseCase } from '../../src/transcription/application/use-cases/release-transcription-run.use-case';
 import { RequestTranscriptionUseCase } from '../../src/transcription/application/use-cases/request-transcription.use-case';
 import { RequeueStalledTranscriptionsUseCase } from '../../src/transcription/application/use-cases/requeue-stalled-transcriptions.use-case';
 import { FakeMediaAccessTokens } from '../doubles/fake-media-access-tokens';
@@ -46,6 +47,7 @@ export type TranscriptionPlatform = {
   repository: InMemoryTranscriptionRepository;
   requestTranscription: RequestTranscriptionUseCase;
   claimNextTranscription: ClaimNextTranscriptionUseCase;
+  releaseTranscriptionRun: ReleaseTranscriptionRunUseCase;
   appendTranscribedSegments: AppendTranscribedSegmentsUseCase;
   renewTranscriptionLease: RenewTranscriptionLeaseUseCase;
   completeTranscription: CompleteTranscriptionUseCase;
@@ -103,6 +105,7 @@ export function aPlatform(startedAt: Date = NOW): TranscriptionPlatform {
       { leaseSeconds: LEASE_SECONDS, reservationSeconds: RESERVATION_SECONDS },
     ),
     appendTranscribedSegments: new AppendTranscribedSegmentsUseCase(repository, publisher, clock),
+    releaseTranscriptionRun: new ReleaseTranscriptionRunUseCase(repository, queue, publisher, clock),
     renewTranscriptionLease: new RenewTranscriptionLeaseUseCase(repository, clock, {
       leaseSeconds: LEASE_SECONDS,
     }),

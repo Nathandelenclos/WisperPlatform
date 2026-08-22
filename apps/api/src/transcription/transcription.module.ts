@@ -40,6 +40,7 @@ import { ListTranscriptionsUseCase } from './application/use-cases/list-transcri
 import { OpenMediaForRunUseCase } from './application/use-cases/open-media-for-run.use-case';
 import { OpenOwnedMediaUseCase } from './application/use-cases/open-owned-media.use-case';
 import { RenewTranscriptionLeaseUseCase } from './application/use-cases/renew-transcription-lease.use-case';
+import { ReleaseTranscriptionRunUseCase } from './application/use-cases/release-transcription-run.use-case';
 import { RequestTranscriptionUseCase } from './application/use-cases/request-transcription.use-case';
 import { RequeueStalledTranscriptionsUseCase } from './application/use-cases/requeue-stalled-transcriptions.use-case';
 import { InMemoryTranscriptionEvents } from './infrastructure/events/in-memory-transcription-events';
@@ -269,6 +270,16 @@ const MULTIPART_MAX_FIELDS = 8;
           logger,
         ),
       inject: [TRANSCRIPTION_REPOSITORY, MEDIA_STORAGE, MEDIA_ACCESS_TOKENS, CLOCK, LOGGER],
+    },
+    {
+      provide: ReleaseTranscriptionRunUseCase,
+      useFactory: (
+        repository: TranscriptionRepository,
+        queue: TranscriptionQueue,
+        publisher: TranscriptionEventPublisher,
+        clock: Clock,
+      ) => new ReleaseTranscriptionRunUseCase(repository, queue, publisher, clock),
+      inject: [TRANSCRIPTION_REPOSITORY, TRANSCRIPTION_QUEUE, TRANSCRIPTION_EVENT_PUBLISHER, CLOCK],
     },
     {
       provide: RequeueStalledTranscriptionsUseCase,

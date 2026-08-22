@@ -300,6 +300,30 @@ export function describeTranscriptionRepositoryContract(
         expect(await reserve(new Date(REQUESTED_AT.getTime() + 31_000))).toBe(uuid('14'));
       });
 
+      it('rend une transcription réclamable dès que sa réservation est levée', async () => {
+        // C'est ce qui rend utile la reddition d'une tentative : sans cette levée, la demande
+        // repasse en attente mais reste invisible jusqu'à la fin de la fenêtre de réservation.
+        await harness.repository.save(aRequest({ id: uuid('14b') }));
+        const reserve = (now: Date): Promise<string | null> =>
+          harness.queue.reserveNextPending({
+            workerId: 'worker-1',
+            models: ['small'],
+            reservationSeconds: 300,
+            now,
+          });
+
+        expect(await reserve(REQUESTED_AT)).toBe(uuid('14b'));
+        expect(await reserve(REQUESTED_AT)).toBeNull();
+
+        await harness.queue.clearReservation(uuid('14b'));
+
+        expect(await reserve(REQUESTED_AT)).toBe(uuid('14b'));
+      });
+
+      it('ignore la levée de réservation d\'une transcription inconnue', async () => {
+        await expect(harness.queue.clearReservation(uuid('fe'))).resolves.toBeUndefined();
+      });
+
       it('ne propose pas une transcription qui n\'est plus en attente', async () => {
         const transcription = aRequest({ id: uuid('15') });
         transcription.startTranscribing({

@@ -2,6 +2,7 @@
 
 import unittest
 
+import wisper_worker
 from whisper_output import SegmentBatcher, parse_segment_line
 
 
@@ -127,3 +128,35 @@ class SegmentBatcherTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ExplainFailureTest(unittest.TestCase):
+    """Traduction de la fin de stderr : « code 1 » ne dit rien, ces raisons-là disent quoi faire."""
+
+    def test_une_saturation_de_memoire_gpu_est_nommee(self):
+        tail = [
+            "torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 20.00 MiB.",
+            "GPU 0 has a total capacity of 3.94 GiB of which 19.75 MiB is free.",
+        ]
+
+        self.assertEqual("model too large for this worker", wisper_worker.explain_failure(1, tail))
+
+    def test_une_carte_trop_ancienne_est_nommee(self):
+        tail = ["RuntimeError: CUDA error: no kernel image is available for execution on the device"]
+
+        self.assertEqual(
+            "model unsupported by this worker's gpu", wisper_worker.explain_failure(1, tail)
+        )
+
+    def test_un_media_indecodable_est_nomme(self):
+        tail = ["ffmpeg: Invalid data found when processing input"]
+
+        self.assertEqual("media could not be decoded", wisper_worker.explain_failure(1, tail))
+
+    def test_une_cause_inconnue_rend_le_code_brut(self):
+        tail = ["Traceback (most recent call last):", "KeyError: 'segments'"]
+
+        self.assertEqual("whisper exited with code 3", wisper_worker.explain_failure(3, tail))
+
+    def test_une_sortie_vide_rend_le_code_brut(self):
+        self.assertEqual("whisper exited with code 1", wisper_worker.explain_failure(1, []))

@@ -297,6 +297,29 @@ export class Transcription {
     });
   }
 
+  /**
+   * Le worker rend la main sans avoir échoué : il s'arrête (déploiement, mise à l'échelle,
+   * arrêt de la machine) et la demande repart en file tout de suite, au lieu d'attendre que
+   * son bail s'éteigne. Ce n'est pas un échec : le run est abandonné, pas cassé, et les
+   * segments de la tentative morte sont jetés par le prochain `startTranscribing`.
+   *
+   * La tentative reste comptée : elle a bien eu lieu, et c'est ce qui empêche une machine qui
+   * redémarre en boucle de faire tourner la même transcription indéfiniment.
+   */
+  releaseRun(p: { runId: string; at: Date }): void {
+    this.assertRunIsInProgress(p.runId, 'rendre la tentative');
+    this.status = 'pending';
+    this.currentRunId = null;
+    this.claimedBy = null;
+    this.leaseExpiresAt = null;
+    this.events.push({
+      name: 'transcription.requeued',
+      transcriptionId: this.id,
+      ownerId: this.ownerId,
+      occurredAt: p.at,
+    });
+  }
+
   correctSegment(p: { ordinal: number; text: string; at: Date }): void {
     if (this.status !== 'completed') {
       throw new TranscriptionNotCorrectableError(

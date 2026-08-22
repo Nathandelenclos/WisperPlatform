@@ -14,6 +14,7 @@ transcrit — seulement des identifiants techniques et des compteurs.
 
 from __future__ import annotations
 
+import collections
 import dataclasses
 import json
 import logging
@@ -52,6 +53,13 @@ CLAIM_FAILURE_THRESHOLD = 5
 CLAIM_BACKOFF_MAX_SECONDS = 60.0
 # Nom neutre du média sur le disque : le nom d'origine ne quitte jamais l'API.
 MEDIA_FILENAME = "media"
+
+# Nombre de lignes de stderr conservées pour expliquer un échec : assez pour une trace Python,
+# trop peu pour retenir un transcript entier.
+STDERR_TAIL_LINES = 40
+
+# Raison interne : l'arrêt vient du worker lui-même, jamais du média ni de l'API.
+STOPPED_REASON = "worker stopped"
 
 LOGGER = logging.getLogger("wisper.worker")
 
@@ -355,6 +363,12 @@ def process_job(config, client, job, stop):
         if reason is None:
             client.complete(run_id, transcription_id)
             log(logging.INFO, "job completed", **fields)
+        elif reason == STOPPED_REASON:
+            # L'arrêt vient de nous, pas du média : la tentative est abandonnée, pas cassée.
+            # La rendre remet la demande en file tout de suite, là où un échec la condamnerait
+            # et où attendre l'extinction du bail coûterait deux minutes à l'utilisateur.
+            client.release(run_id, transcription_id)
+            log(logging.INFO, "job released", **fields)
         else:
             client.fail(run_id, transcription_id, reason)
             log(logging.WARNING, "job failed", reason=reason, **fields)
@@ -476,14 +490,15 @@ def _run_whisper(config, client, job, media_path, workdir, stop, fields):
     # Sans PYTHONUNBUFFERED, stdout est bufferisé par blocs et le streaming n'a pas lieu.
     environment = dict(os.environ, PYTHONUNBUFFERED="1")
     # Liste d'arguments, jamais de shell : ni le modèle ni la langue ne peuvent s'échapper.
-    # stderr reste hérité : les diagnostics de whisper restent dans le flux du conteneur,
-    # jamais dans nos logs structurés ni dans une raison d'échec remontée à l'utilisateur.
+    # stderr est capturé ET réémis : le flux du conteneur garde la trace complète, et la fin de
+    # cette trace sert à expliquer un échec autrement que par « code 1 ».
     process = subprocess.Popen(
         command,
         cwd=workdir,
         env=environment,
         stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         text=True,
         errors="replace",
         bufsize=1,
@@ -492,19 +507,58 @@ def _run_whisper(config, client, job, media_path, workdir, stop, fields):
     lines = queue.Queue()
     reader = threading.Thread(target=_pump, args=(process.stdout, lines), name="wisper-stdout", daemon=True)
     reader.start()
+    diagnostics = collections.deque(maxlen=STDERR_TAIL_LINES)
+    watcher = threading.Thread(
+        target=_pump_stderr, args=(process.stderr, diagnostics), name="wisper-stderr", daemon=True
+    )
+    watcher.start()
     try:
         interrupted = _stream_segments(lines, client, job, stop, fields)
         if interrupted is not None:
             return interrupted
         # stdout est fermé : la sortie du processus est imminente.
         code = process.wait(timeout=TERMINATE_GRACE_SECONDS)
-        return None if code == 0 else "whisper exited with code {}".format(code)
+        if code == 0:
+            return None
+        watcher.join(timeout=TERMINATE_GRACE_SECONDS)
+        return explain_failure(code, diagnostics)
     except subprocess.TimeoutExpired:
         return "whisper did not exit"
     finally:
         _terminate(process)
         reader.join(timeout=TERMINATE_GRACE_SECONDS)
         process.stdout.close()
+        process.stderr.close()
+
+
+def _pump_stderr(stderr, tail):
+    """Réémet les diagnostics de whisper et garde leur fin pour expliquer un échec."""
+    try:
+        for line in stderr:
+            tail.append(line.rstrip("\n"))
+            sys.stderr.write(line)
+    except (ValueError, OSError):
+        pass
+
+
+# Signatures reconnues dans la fin de stderr. Un « code 1 » ne dit rien à l'utilisateur ; ces
+# raisons-là disent quoi changer. L'ordre compte : la première qui correspond gagne.
+FAILURE_SIGNATURES = (
+    ("out of memory", "model too large for this worker"),
+    ("no kernel image is available", "model unsupported by this worker's gpu"),
+    ("cuda", "gpu unavailable on this worker"),
+    ("ffmpeg", "media could not be decoded"),
+    ("no such file or directory", "media could not be read"),
+)
+
+
+def explain_failure(code, diagnostics):
+    """Traduit la fin de stderr en une raison courte, ou rend le code brut à défaut."""
+    haystack = " ".join(diagnostics).lower()
+    for signature, reason in FAILURE_SIGNATURES:
+        if signature in haystack:
+            return reason
+    return "whisper exited with code {}".format(code)
 
 
 def _pump(stdout, lines):
@@ -525,7 +579,7 @@ def _stream_segments(lines, client, job, stop, fields):
     deadline = time.monotonic() + WHISPER_TIMEOUT_SECONDS
     while True:
         if stop.is_set():
-            return "worker stopped"
+            return STOPPED_REASON
         if time.monotonic() >= deadline:
             return "transcription timed out"
         due_in = batcher.seconds_until_due()

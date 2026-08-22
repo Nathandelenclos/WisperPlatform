@@ -14,6 +14,12 @@ export interface TranscriptionQueue {
   }): Promise<string | null>;
 
   /** Identifiants des transcriptions en cours dont le bail est dépassé. */
+  /**
+   * Lève la réservation technique posée par `reserveNextPending`. Rendre une tentative sans
+   * ça laisse la demande invisible pendant la fenêtre de réservation : elle est bien `pending`,
+   * mais aucun worker ne se la voit proposer, ce qui annule tout l'intérêt de la rendre.
+   */
+  clearReservation(transcriptionId: string): Promise<void>;
   findStalled(p: { now: Date; limit: number }): Promise<string[]>;
 }
 

@@ -57,6 +57,14 @@ export class DrizzleTranscriptionQueue implements TranscriptionQueue {
     return reserved.rows[0]?.id ?? null;
   }
 
+  /** Lève la réservation : la ligne redevient immédiatement visible pour la file. */
+  async clearReservation(transcriptionId: string): Promise<void> {
+    await this.db
+      .update(transcriptions)
+      .set({ reservedAt: null, reservedBy: null })
+      .where(eq(transcriptions.id, transcriptionId));
+  }
+
   async findStalled(p: { now: Date; limit: number }): Promise<string[]> {
     const rows = await this.db
       .select({ id: transcriptions.id })

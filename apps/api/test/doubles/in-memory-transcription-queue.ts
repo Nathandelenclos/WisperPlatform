@@ -37,6 +37,14 @@ export class InMemoryTranscriptionQueue implements TranscriptionQueue {
     return next.state.id;
   }
 
+  async clearReservation(transcriptionId: string): Promise<void> {
+    const row = this.store.rows().find((candidate) => candidate.state.id === transcriptionId);
+    if (row !== undefined) {
+      row.reservedAt = null;
+      row.reservedBy = null;
+    }
+  }
+
   async findStalled(p: { now: Date; limit: number }): Promise<string[]> {
     return this.store
       .rows()

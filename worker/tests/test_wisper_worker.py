@@ -55,6 +55,7 @@ class StubApi:
         self.batches = []
         self.completed = []
         self.failed = []
+        self.released = []
         self.heartbeats = 0
         self.media_tokens = []
         self.unauthorized = 0
@@ -92,6 +93,9 @@ class StubApi:
                 self.media_tokens.append(value)
             elif name == "completed":
                 self.completed.append(value)
+                self.settled.set()
+            elif name == "released":
+                self.released.append(value)
                 self.settled.set()
             elif name == "failed":
                 self.failed.append(value)
@@ -157,6 +161,8 @@ def _handler_for(stub):
             if self.path.endswith("/complete"):
                 stub.record("completed", payload["transcriptionId"])
                 return self._reply(204)
+            if self.path.endswith("/release"):
+                stub.record("released", payload["transcriptionId"])
             if self.path.endswith("/fail"):
                 stub.record("failed", payload["reason"])
                 return self._reply(204)
@@ -582,7 +588,10 @@ class SigtermTest(unittest.TestCase):
 
         self.assertEqual(0, process.wait(timeout=30))
         self.assertEqual([], os.listdir(tmp_root), "le répertoire temporaire a survécu au SIGTERM")
-        self.assertEqual(["worker stopped"], stub.failed)
+        # Un arrêt qui vient de nous n'est pas un échec du média : la tentative est rendue,
+        # ce qui remet la demande en file tout de suite au lieu d'attendre l'expiration du bail.
+        self.assertEqual([], stub.failed)
+        self.assertEqual([JOB["transcriptionId"]], stub.released)
         self.assertNotIn(WORKER_TOKEN, process.stdout.read())
 
     def _wait_for(self, condition, message, timeout=30):
@@ -693,6 +702,7 @@ class DeviceResolutionTest(unittest.TestCase):
             def __init__(self, command, **kwargs):
                 captured["command"] = command
                 self.stdout = io.StringIO("")
+                self.stderr = io.StringIO("")
                 self.returncode = 0
 
             def wait(self, timeout=None):

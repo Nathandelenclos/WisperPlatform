@@ -17,6 +17,7 @@ import { AppendTranscribedSegmentsUseCase } from '../../application/use-cases/ap
 import { ClaimNextTranscriptionUseCase } from '../../application/use-cases/claim-next-transcription.use-case';
 import { CompleteTranscriptionUseCase } from '../../application/use-cases/complete-transcription.use-case';
 import { FailTranscriptionUseCase } from '../../application/use-cases/fail-transcription.use-case';
+import { ReleaseTranscriptionRunUseCase } from '../../application/use-cases/release-transcription-run.use-case';
 import { OpenMediaForRunUseCase } from '../../application/use-cases/open-media-for-run.use-case';
 import { RenewTranscriptionLeaseUseCase } from '../../application/use-cases/renew-transcription-lease.use-case';
 import {
@@ -45,6 +46,7 @@ export class WorkerJobsController {
     @Inject(RenewTranscriptionLeaseUseCase) private readonly renewLease: RenewTranscriptionLeaseUseCase,
     @Inject(CompleteTranscriptionUseCase) private readonly completeTranscription: CompleteTranscriptionUseCase,
     @Inject(FailTranscriptionUseCase) private readonly failTranscription: FailTranscriptionUseCase,
+    @Inject(ReleaseTranscriptionRunUseCase) private readonly releaseRun: ReleaseTranscriptionRunUseCase,
   ) {}
 
   /**
@@ -123,6 +125,20 @@ export class WorkerJobsController {
       transcriptionId,
       runId: parseHttpInput(runIdSchema, runId),
       reason,
+    });
+  }
+
+  /**
+   * Le worker s'arrête et rend sa tentative : la demande repart en file immédiatement, au lieu
+   * d'attendre l'extinction de son bail. Ce n'est pas un échec, donc pas de raison à fournir.
+   */
+  @Post('jobs/:runId/release')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async release(@Param('runId') runId: string, @Body() body: unknown): Promise<void> {
+    const { transcriptionId } = parseHttpInput(jobReferenceBodySchema, body);
+    await this.releaseRun.execute({
+      transcriptionId,
+      runId: parseHttpInput(runIdSchema, runId),
     });
   }
 }

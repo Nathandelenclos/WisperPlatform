@@ -114,6 +114,15 @@ class ApiClient:
             {"transcriptionId": transcription_id, "reason": reason},
         )
 
+    def release(self, run_id, transcription_id):
+        """Rend la tentative sans la déclarer en échec : la demande repart en file aussitôt."""
+        self._send(
+            "release",
+            "POST",
+            self._job_path(run_id, "release"),
+            {"transcriptionId": transcription_id},
+        )
+
     @staticmethod
     def _job_path(run_id, action):
         return "/api/worker/jobs/" + urllib.parse.quote(str(run_id), safe="") + "/" + action

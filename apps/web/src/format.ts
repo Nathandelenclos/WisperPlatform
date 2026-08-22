@@ -7,14 +7,17 @@ const dateTimeFormat = new Intl.DateTimeFormat('fr-FR', {
 
 const decimalFormat = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 1 });
 
-/** Position dans le média : `mm:ss.d`, préfixée des heures au-delà d'une heure. */
+/**
+ * Position dans le média : `mm:ss`, préfixée des heures au-delà d'une heure. Pas de
+ * dixièmes : le timecode est un bouton de navigation dans le transcript, et une
+ * précision qu'aucun geste n'exploite n'est que du bruit dans une colonne de chiffres.
+ */
 export function formatTimecode(milliseconds: number): string {
   const totalSeconds = Math.max(0, Math.floor(milliseconds / 1000));
-  const tenths = Math.floor(Math.max(0, milliseconds % 1000) / 100);
   const seconds = totalSeconds % 60;
   const minutes = Math.floor(totalSeconds / 60) % 60;
   const hours = Math.floor(totalSeconds / 3600);
-  const base = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${tenths}`;
+  const base = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
   return hours > 0 ? `${hours}:${base}` : base;
 }
 
