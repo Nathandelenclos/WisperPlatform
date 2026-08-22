@@ -7,6 +7,7 @@ sont injectés. Ce qui est éprouvé ici, c'est ce que le worker décide, pas ce
 import collections
 import logging
 import os
+import struct
 import tempfile
 import unittest
 import wave
@@ -204,15 +205,13 @@ class DecodeTest(unittest.TestCase):
 
         return run
 
-    def test_decode_en_pcm_16k_mono_normalise(self):
-        samples, rate = diarization.decode_pcm(self.media, self.workdir, run=self._ffmpeg())
+    def test_decode_en_pcm_16k_mono(self):
+        frames, rate = diarization.decode_pcm(self.media, self.workdir, run=self._ffmpeg())
 
         self.assertEqual(SAMPLE_RATE, rate)
-        self.assertEqual(3, len(samples))
-        self.assertAlmostEqual(0.0, float(samples[0]))
-        self.assertAlmostEqual(0.5, float(samples[1]))
-        self.assertAlmostEqual(-1.0, float(samples[2]))
-        self.assertEqual("float32", samples.dtype.name)
+        # Trois échantillons 16 bits signés, petit-boutiens : ce que sherpa recevra après
+        # conversion, et ce que la lecture doit rendre sans dépendre de numpy.
+        self.assertEqual(struct.pack("<3h", 0, 16384, -32768), frames)
 
     def test_la_commande_impose_le_mono_16k_et_ne_lit_pas_stdin(self):
         diarization.decode_pcm(self.media, self.workdir, run=self._ffmpeg())
@@ -262,11 +261,13 @@ class FakeEngine:
 
 
 class DiarizerRunTest(unittest.TestCase):
-    def build(self, engine, samples=(0.0, 0.5), rate=SAMPLE_RATE):
+    def build(self, engine, frames=b"\x00\x00\x00\x40", rate=SAMPLE_RATE):
         return Diarizer(
             DiarizationConfig.from_environment(MODELS),
             engine_factory=lambda _config: engine,
-            decode=lambda _media, _workdir: (list(samples), rate),
+            decode=lambda _media, _workdir: (frames, rate),
+            # numpy appartient au moteur réel : ici on suit les trames à la trace.
+            to_samples=lambda frames: frames,
         )
 
     def test_rend_les_tours_du_moteur_en_millisecondes(self):
@@ -293,7 +294,8 @@ class DiarizerRunTest(unittest.TestCase):
         diarizer = Diarizer(
             DiarizationConfig.from_environment(MODELS),
             engine_factory=factory,
-            decode=lambda _media, _workdir: ([0.0], SAMPLE_RATE),
+            decode=lambda _media, _workdir: (b"\x00\x00", SAMPLE_RATE),
+            to_samples=lambda frames: frames,
         )
         diarizer.run("media", "workdir")
         diarizer.run("media", "workdir")

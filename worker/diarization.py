@@ -173,15 +173,19 @@ class Diarizer:
     job. Le worker traite un job à la fois, l'objet n'a donc jamais deux appels concurrents.
     """
 
-    def __init__(self, config, engine_factory=None, decode=None):
+    def __init__(self, config, engine_factory=None, decode=None, to_samples=None):
         self._config = config
         self._engine_factory = engine_factory if engine_factory is not None else build_engine
         self._decode = decode if decode is not None else decode_pcm
+        # Dernière couture : la conversion en flottants est la seule chose ici qui exige
+        # numpy. L'injecter garde le décodage, le ménage et cette boucle éprouvables sur un
+        # Python nu — c'est ce que fait la CI, qui n'installe rien pour le worker.
+        self._to_samples = to_samples if to_samples is not None else _as_float32
         self._engine = None
 
     def run(self, media_path, workdir):
         """Rend les tours de parole du média, en millisecondes, triés par début."""
-        samples, sample_rate = self._decode(media_path, workdir)
+        frames, sample_rate = self._decode(media_path, workdir)
         engine = self._engine
         if engine is None:
             engine = self._engine = self._engine_factory(self._config)
@@ -191,7 +195,19 @@ class Diarizer:
                     engine.sample_rate, sample_rate
                 )
             )
-        return to_turns(engine.process(samples).sort_by_start_time())
+        return to_turns(engine.process(self._to_samples(frames)).sort_by_start_time())
+
+
+def _as_float32(frames):
+    """Convertit des trames PCM 16 bits en flottants normalisés, ce que sherpa attend.
+
+    numpy vit ici et nulle part ailleurs : c'est une dépendance de sherpa-onnx, donc elle
+    est présente partout où le moteur tourne — et absente des tests, qui n'ont pas de
+    moteur. `frombuffer` ne copie pas ; `astype` produit l'unique copie nécessaire.
+    """
+    import numpy
+
+    return numpy.frombuffer(frames, dtype="<i2").astype(numpy.float32) / 32768.0
 
 
 def build_engine(config):
@@ -237,7 +253,7 @@ def to_turns(segments):
 
 
 def decode_pcm(media_path, workdir, run=subprocess.run):
-    """Décode le média en PCM 16 kHz mono et rend `(samples float32, fréquence)`.
+    """Décode le média en PCM 16 kHz mono et rend `(trames 16 bits, fréquence)`.
 
     Le fichier intermédiaire vit dans le répertoire de travail du job — effacé avec lui —
     et est retiré dès la lecture faite, réussite ou échec : un WAV décompressé pèse plus
@@ -286,13 +302,15 @@ def decode_pcm(media_path, workdir, run=subprocess.run):
 
 
 def read_wav(path):
-    import numpy
+    """Rend `(trames PCM 16 bits signées, fréquence)`. Aucune dépendance tierce ici.
 
+    La conversion en flottants appartient à `Diarizer.run`, au plus près de sherpa : c'est
+    lui qui impose numpy, et lui seul. Le décodage, la lecture et le ménage restent donc
+    éprouvables sur un Python nu — c'est ce que fait la CI.
+    """
     with wave.open(path, "rb") as source:
         if source.getsampwidth() != 2 or source.getnchannels() != 1:
             raise DiarizationError("le décodage n'a pas produit du PCM 16 bits mono")
         sample_rate = source.getframerate()
         frames = source.readframes(source.getnframes())
-    # `frombuffer` ne copie pas ; `astype` produit l'unique copie flottante nécessaire.
-    samples = numpy.frombuffer(frames, dtype="<i2").astype(numpy.float32) / 32768.0
-    return samples, sample_rate
+    return frames, sample_rate
