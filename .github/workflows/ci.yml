@@ -51,12 +51,29 @@ jobs:
 
       # Barrière la moins chère du pipeline : elle n'a besoin que du dépôt. `.env` n'est jamais
       # commité, la CI en fabrique un à partir de l'exemple avec des valeurs de remplacement
-      # non secrètes, uniquement pour résoudre puis valider le modèle compose.
+      # non secrètes, uniquement pour résoudre puis valider le modèle compose. L'exemple ne
+      # porte AUCUNE valeur de secret : les deux variables interpolées par le compose
+      # (`${...:?}`) sont donc fournies ici, et nulle part ailleurs.
       - name: Vérifier la configuration du compose
         run: |
           cp .env.example .env
-          printf 'WISPER_WORKER_TOKEN=ci-placeholder\n' >> .env
+          printf 'POSTGRES_PASSWORD=ci-placeholder\nWORKER_SHARED_TOKEN=ci-placeholder\n' >> .env
           docker compose config --quiet
+
+      # Deuxième barrière la moins chère, et la plus urgente : un identifiant divulgué se révoque
+      # en secondes, pas après une heure de builds. Elle ne dépend que du checkout en profondeur
+      # complète et d'un `docker pull` — `gitleaks git` parcourt l'historique, pas l'arbre de
+      # travail, donc le `.env` fabriqué à l'étape précédente ne la perturbe pas. Scan sur tout
+      # l'historique, pas seulement sur le diff : un secret retiré au commit suivant reste
+      # lisible dans les objets git. Image épinglée par digest, exécutée sous l'identité du
+      # runner, dépôt monté en lecture seule, valeurs masquées en sortie.
+      - name: Scan de secrets (Gitleaks)
+        run: |
+          docker run --rm \
+            --user "$(id -u):$(id -g)" \
+            --volume "${GITHUB_WORKSPACE}:/repo:ro" \
+            zricethezav/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f \
+            git /repo --redact --no-banner --exit-code 1
 
       - name: Installer pnpm
         # Version de pnpm lue dans le champ `packageManager` de la racine.
@@ -105,9 +122,12 @@ jobs:
           test "$(docker run --rm --entrypoint id "wisper/web:${IMAGE_TAG}" -u)" = '101'
           test "$(docker run --rm --entrypoint id "wisper/worker:${IMAGE_TAG}" -u)" = '10001'
 
-          # L'API trouve son point d'entrée compilé et ses dépendances de production.
+          # L'API trouve son point d'entrée compilé et ses dépendances de production. Le
+          # `node_modules` livré est amputé de tout ce qui n'est pas production : `better-auth`
+          # est cité explicitement parce que c'est lui qui déclare en pairs optionnels les
+          # outils de build à l'origine des binaires esbuild, et qu'il doit résoudre sans eux.
           docker run --rm "wisper/api:${IMAGE_TAG}" \
-            node -e "require('node:fs').accessSync('dist/main.js'); require('@nestjs/core'); require('drizzle-orm'); require('pg');"
+            node -e "require('node:fs').accessSync('dist/main.js'); require('@nestjs/core'); require('drizzle-orm'); require('pg'); require('better-auth');"
 
           # Le migrateur est bien dans l'image, à l'endroit qu'appelle le service `migrate`.
           docker run --rm "wisper/api:${IMAGE_TAG}" \
@@ -139,8 +159,8 @@ jobs:
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           input: ${{ runner.temp }}/images/api.tar
-          # Hors de l'arbre de travail : la base de vulnérabilités ne pollue pas le dépôt
-          # inspecté par le scan de secrets qui suit.
+          # Hors de l'arbre de travail : la base de vulnérabilités n'a rien à faire dans le
+          # dépôt, ni dans le contexte d'un build ultérieur.
           cache-dir: ${{ runner.temp }}/trivy-cache
           severity: HIGH,CRITICAL
           ignore-unfixed: true
@@ -182,13 +202,3 @@ jobs:
           exit-code: '1'
           format: table
 
-      # Scan de secrets sur tout l'historique, pas seulement sur le diff : un secret retiré au
-      # commit suivant reste lisible dans les objets git. Image épinglée par digest, exécutée
-      # sous l'identité du runner, dépôt monté en lecture seule, valeurs masquées en sortie.
-      - name: Scan de secrets (Gitleaks)
-        run: |
-          docker run --rm \
-            --user "$(id -u):$(id -g)" \
-            --volume "${GITHUB_WORKSPACE}:/repo:ro" \
-            zricethezav/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f \
-            git /repo --redact --no-banner --exit-code 1
