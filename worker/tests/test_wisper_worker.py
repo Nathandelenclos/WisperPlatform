@@ -4,6 +4,7 @@ Aucun GPU, aucun réseau externe : un serveur HTTP local rejoue le contrat worke
 `fake_whisper.py` rejoue la sortie verbose du CLI.
 """
 
+import dataclasses
 import io
 import json
 import os
@@ -16,6 +17,7 @@ import tempfile
 import threading
 import time
 import unittest
+import unittest.mock
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import wisper_worker
@@ -594,3 +596,130 @@ class SigtermTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class DeviceResolutionTest(unittest.TestCase):
+    """Choix du device et du nombre de threads : la partie qui décide, sans GPU sous la main."""
+
+    def _config(self, **overrides):
+        base = {
+            "WISPER_API_URL": "http://api.test",
+            "WISPER_WORKER_TOKEN": "jeton-de-test",
+        }
+        base.update(overrides)
+        return wisper_worker.WorkerConfig.from_environment(base)
+
+    def test_auto_prend_la_carte_quand_elle_est_visible(self):
+        config = wisper_worker.resolve_runtime(self._config(), probe=lambda _bin: True)
+
+        self.assertEqual("cuda", config.resolved_device)
+
+    def test_auto_reste_en_cpu_sans_carte(self):
+        config = wisper_worker.resolve_runtime(self._config(), probe=lambda _bin: False)
+
+        self.assertEqual("cpu", config.resolved_device)
+
+    def test_un_device_explicite_ne_sonde_rien(self):
+        def refuse(_bin):
+            raise AssertionError("aucune sonde ne doit être lancée")
+
+        for asked in ("cpu", "cuda"):
+            config = wisper_worker.resolve_runtime(
+                self._config(WISPER_DEVICE=asked), probe=refuse
+            )
+            self.assertEqual(asked, config.resolved_device)
+
+    def test_un_device_inconnu_est_refuse(self):
+        with self.assertRaises(wisper_worker.ConfigurationError):
+            self._config(WISPER_DEVICE="metal")
+
+    def test_les_threads_suivent_le_quota_du_conteneur(self):
+        config = wisper_worker.resolve_runtime(
+            self._config(), probe=lambda _bin: False, quota=lambda: 2
+        )
+
+        self.assertEqual(2, config.resolved_threads)
+
+    def test_un_nombre_de_threads_explicite_gagne_sur_le_quota(self):
+        config = wisper_worker.resolve_runtime(
+            self._config(WISPER_THREADS="3"), probe=lambda _bin: False, quota=lambda: 8
+        )
+
+        self.assertEqual(3, config.resolved_threads)
+
+    def test_le_quota_cgroup_v2_est_converti_en_coeurs(self):
+        quota = wisper_worker.cpu_quota(read_text=lambda path: "200000 100000")
+
+        self.assertEqual(2, quota)
+
+    def test_un_quota_illimite_rend_les_coeurs_de_la_machine(self):
+        quota = wisper_worker.cpu_quota(read_text=lambda path: "max 100000")
+
+        self.assertEqual(os.cpu_count() or 1, quota)
+
+    def test_un_cgroup_illisible_ne_fait_pas_echouer_le_worker(self):
+        def missing(path):
+            raise OSError("pas de cgroup ici")
+
+        self.assertGreaterEqual(wisper_worker.cpu_quota(read_text=missing), 1)
+
+    def test_la_commande_gpu_active_fp16_et_ne_borne_pas_les_threads(self):
+        command = self._command(device="cuda")
+
+        self.assertIn("--device", command)
+        self.assertEqual("cuda", command[command.index("--device") + 1])
+        self.assertEqual("True", command[command.index("--fp16") + 1])
+        self.assertNotIn("--threads", command)
+
+    def test_la_commande_cpu_desactive_fp16_et_borne_les_threads(self):
+        command = self._command(device="cpu", threads=2)
+
+        self.assertEqual("cpu", command[command.index("--device") + 1])
+        self.assertEqual("False", command[command.index("--fp16") + 1])
+        self.assertEqual("2", command[command.index("--threads") + 1])
+
+    def _command(self, device, threads=1):
+        """Capture la ligne de commande sans lancer whisper."""
+        captured = {}
+
+        class SilentClient:
+            """Aucun segment ne sort de ce faux whisper : le client n'est jamais appelé."""
+
+            def post_segments(self, *args, **kwargs):
+                raise AssertionError("aucun segment attendu")
+
+
+        class FakePopen:
+            def __init__(self, command, **kwargs):
+                captured["command"] = command
+                self.stdout = io.StringIO("")
+                self.returncode = 0
+
+            def wait(self, timeout=None):
+                return 0
+
+            def poll(self):
+                return 0
+
+            def terminate(self):
+                pass
+
+            def kill(self):
+                pass
+
+        config = dataclasses.replace(
+            self._config(), resolved_device=device, resolved_threads=threads
+        )
+        job = {"model": "small", "language": "French", "transcriptionId": "t", "runId": "r"}
+        with tempfile.TemporaryDirectory() as workdir:
+            with unittest.mock.patch.object(wisper_worker.subprocess, "Popen", FakePopen):
+                wisper_worker._run_whisper(
+                    config,
+                    SilentClient(),
+                    job,
+                    os.path.join(workdir, "media"),
+                    workdir,
+                    threading.Event(),
+                    {},
+                )
+        return captured["command"]

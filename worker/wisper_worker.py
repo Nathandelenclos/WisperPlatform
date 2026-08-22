@@ -69,6 +69,12 @@ class WorkerConfig:
     model_dir: str
     models: tuple
     poll_interval_seconds: float
+    device: str
+    threads: int
+    # Résolus une fois au démarrage par `resolve_runtime`, jamais à chaque job : sonder la
+    # carte coûte le démarrage d'un interpréteur.
+    resolved_device: str = "cpu"
+    resolved_threads: int = 1
 
     @staticmethod
     def from_environment(environ):
@@ -86,6 +92,8 @@ class WorkerConfig:
             model_dir=(environ.get("WHISPER_MODEL_DIR") or "").strip(),
             models=_parse_models(environ.get("WISPER_WORKER_MODELS")),
             poll_interval_seconds=_parse_poll_interval(environ.get("POLL_INTERVAL_SECONDS")),
+            device=_parse_device(environ.get("WISPER_DEVICE")),
+            threads=_parse_threads(environ.get("WISPER_THREADS")),
         )
 
 
@@ -99,6 +107,101 @@ def _parse_models(raw):
             "WISPER_WORKER_MODELS n'accepte que : " + ", ".join(WHISPER_MODELS)
         )
     return models
+
+
+DEVICES = ("auto", "cpu", "cuda")
+
+
+def _parse_device(raw):
+    device = (raw or "").strip().lower() or "auto"
+    if device not in DEVICES:
+        raise ConfigurationError("WISPER_DEVICE n'accepte que : " + ", ".join(DEVICES))
+    return device
+
+
+def _parse_threads(raw):
+    """0 = déduire du quota CPU du conteneur."""
+    if raw is None or not raw.strip():
+        return 0
+    try:
+        threads = int(raw)
+    except ValueError:
+        raise ConfigurationError("WISPER_THREADS doit être un entier") from None
+    if threads < 0:
+        raise ConfigurationError("WISPER_THREADS doit être positif ou nul")
+    return threads
+
+
+def cpu_quota(read_text=None):
+    """
+    Nombre de cœurs réellement utilisables, lu dans le cgroup plutôt que sur la machine.
+    Sans cette borne, torch ouvre autant de threads que l'hôte a de cœurs alors que le
+    conteneur n'en a que deux : les threads se disputent le quota et l'inférence RALENTIT.
+    """
+    if read_text is None:
+        def read_text(path):
+            with open(path, "r", encoding="utf-8") as handle:
+                return handle.read()
+    for path, parse in (("/sys/fs/cgroup/cpu.max", _quota_v2), ("/sys/fs/cgroup/cpu/cpu.cfs_quota_us", _quota_v1)):
+        try:
+            quota = parse(read_text, path)
+        except (OSError, ValueError):
+            continue
+        if quota:
+            return quota
+    return os.cpu_count() or 1
+
+
+def _quota_v2(read_text, path):
+    quota, period = read_text(path).split()[:2]
+    if quota == "max":
+        return None
+    return max(1, int(float(quota) / float(period)))
+
+
+def _quota_v1(read_text, path):
+    quota = int(read_text(path).strip())
+    if quota <= 0:
+        return None
+    period = int(read_text("/sys/fs/cgroup/cpu/cpu.cfs_period_us").strip())
+    return max(1, quota // period)
+
+
+def resolve_device(config, probe=None):
+    """
+    `auto` interroge une fois le torch de whisper : c'est lui qui sait si une carte est
+    visible dans le conteneur. Une carte absente n'est pas une erreur, on reste en CPU.
+    """
+    if config.device != "auto":
+        return config.device
+    if probe is None:
+        probe = _probe_cuda
+    return "cuda" if probe(config.whisper_bin) else "cpu"
+
+
+def _probe_cuda(whisper_bin):
+    interpreter = os.path.join(os.path.dirname(os.path.abspath(whisper_bin)), "python")
+    for candidate in (interpreter, sys.executable):
+        try:
+            result = subprocess.run(
+                [candidate, "-c", "import torch;print(int(torch.cuda.is_available()))"],
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+        except (OSError, subprocess.SubprocessError):
+            continue
+        if result.returncode == 0:
+            return result.stdout.strip().endswith("1")
+    return False
+
+
+def resolve_runtime(config, probe=None, quota=None):
+    """Fixe une fois pour toutes le device et le nombre de threads de ce worker."""
+    device = resolve_device(config, probe)
+    threads = config.threads or (quota or cpu_quota)()
+    return dataclasses.replace(config, resolved_device=device, resolved_threads=max(1, threads))
 
 
 def _parse_poll_interval(raw):
@@ -152,7 +255,14 @@ def run_loop(config, client, stop):
     tente de se relever. L'attente passe toujours par `stop.wait`, jamais par `sleep` :
     un arrêt demandé la tranche net, circuit ouvert ou non.
     """
-    log(logging.INFO, "worker started", workerId=config.worker_id, models=list(config.models))
+    log(
+        logging.INFO,
+        "worker started",
+        workerId=config.worker_id,
+        models=list(config.models),
+        device=config.resolved_device,
+        threads=config.resolved_threads,
+    )
     failures = 0
     while not stop.is_set():
         try:
@@ -349,7 +459,18 @@ def _run_whisper(config, client, job, media_path, workdir, stop, fields):
         workdir,
         "--verbose",
         "True",
+        # Device explicite : whisper le déduirait, mais on veut le voir dans le journal et
+        # pouvoir forcer le CPU sur une machine dont la carte est trop juste.
+        "--device",
+        config.resolved_device,
     ]
+    if config.resolved_device == "cuda":
+        # Sur GPU, fp16 divise par deux la mémoire de la carte — c'est ce qui fait tenir
+        # `medium` dans 4 Gio de VRAM. Sur CPU, fp16 n'est pas supporté : le dire évite
+        # l'avertissement et la conversion inutile.
+        command += ["--fp16", "True"]
+    else:
+        command += ["--fp16", "False", "--threads", str(config.resolved_threads)]
     if config.model_dir:
         command += ["--model_dir", config.model_dir]
     # Sans PYTHONUNBUFFERED, stdout est bufferisé par blocs et le streaming n'a pas lieu.
@@ -450,6 +571,7 @@ def main():
     except ConfigurationError as error:
         log(logging.ERROR, "configuration rejected", detail=str(error))
         return 2
+    config = resolve_runtime(config)
     stop = threading.Event()
     for received in (signal.SIGTERM, signal.SIGINT):
         signal.signal(received, lambda *_: stop.set())
