@@ -1,5 +1,7 @@
 node_modules/
 dist/
+# Cache incrémental de tsc : artefact de build, avec chemins absolus et horodatages locaux.
+*.tsbuildinfo
 .env
 .env.*
 !.env.example
