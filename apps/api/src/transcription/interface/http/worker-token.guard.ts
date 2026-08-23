@@ -1,41 +1,36 @@
 import { Inject, Injectable, UnauthorizedException } from '@nestjs/common';
 import type { CanActivate, ExecutionContext } from '@nestjs/common';
-import { createHash, timingSafeEqual } from 'node:crypto';
 import type { IncomingMessage } from 'node:http';
 
-/**
- * Jeton porteur partagé par les workers. Fourni par la racine de composition : la couche
- * interface ne lit jamais la configuration elle-même.
- */
-export const WORKER_ACCESS_TOKEN = Symbol('WorkerAccessToken');
+import { WORKER_IDENTITIES } from '../../application/ports/worker-identities';
+import type { WorkerIdentities } from '../../application/ports/worker-identities';
+import type { ClaimingRequest } from './claimant.decorator';
 
 const BEARER_PREFIX = 'Bearer ';
 
 /**
- * Protège les routes du worker. La comparaison porte sur les empreintes SHA-256 des deux
- * jetons : elles ont toujours la même longueur, ce qui rend `timingSafeEqual` utilisable
- * quelle que soit la valeur présentée, et aucune fuite par la longueur n'est possible.
- * Le jeton présenté n'est jamais journalisé.
+ * Protège les routes du worker et attache à la requête le réclamant résolu : le worker de la
+ * plateforme et la machine d'un utilisateur passent par la même porte, et c'est ici qu'on
+ * apprend lequel parle.
+ *
+ * Un jeton inconnu — mauvais secret partagé, clé inexistante ou clé révoquée — donne le même
+ * 401 avec le même message : rien ne permet de distinguer les trois. Le jeton présenté n'est
+ * jamais journalisé.
  */
 @Injectable()
 export class WorkerTokenGuard implements CanActivate {
-  private readonly expected: Buffer;
+  constructor(@Inject(WORKER_IDENTITIES) private readonly identities: WorkerIdentities) {}
 
-  constructor(@Inject(WORKER_ACCESS_TOKEN) sharedToken: string) {
-    this.expected = createHash('sha256').update(sharedToken, 'utf8').digest();
-  }
-
-  canActivate(context: ExecutionContext): boolean {
-    const request = context.switchToHttp().getRequest<IncomingMessage>();
+  async canActivate(context: ExecutionContext): Promise<boolean> {
+    const request = context.switchToHttp().getRequest<IncomingMessage & ClaimingRequest>();
     const header = request.headers.authorization ?? '';
-    const presented = header.startsWith(BEARER_PREFIX)
-      ? header.slice(BEARER_PREFIX.length)
-      : '';
-    const candidate = createHash('sha256').update(presented, 'utf8').digest();
+    const presented = header.startsWith(BEARER_PREFIX) ? header.slice(BEARER_PREFIX.length) : '';
 
-    if (!timingSafeEqual(candidate, this.expected)) {
+    const claimant = await this.identities.resolve(presented);
+    if (claimant === null) {
       throw new UnauthorizedException('Jeton de worker invalide');
     }
+    request.claimant = claimant;
     return true;
   }
 }

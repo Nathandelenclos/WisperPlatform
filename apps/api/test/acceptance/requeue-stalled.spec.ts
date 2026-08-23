@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
-import { LEASE_SECONDS, MAX_ATTEMPTS, OWNER, aClaimedTranscription, aPlatform } from './platform';
+import {
+  LEASE_SECONDS,
+  MAX_ATTEMPTS,
+  OWNER,
+  SERVICE_CLAIMANT,
+  aClaimedTranscription,
+  aPlatform,
+} from './platform';
 
 describe('Scénario : un worker disparaît et son bail s\'éteint', () => {
   it('remet la demande en file et l\'annonce', async () => {
@@ -30,6 +37,7 @@ describe('Scénario : un worker disparaît et son bail s\'éteint', () => {
     platform.publisher.clear();
 
     const job = await platform.claimNextTranscription.execute({
+      claimant: SERVICE_CLAIMANT,
       workerId: 'worker-2',
       models: ['small'],
     });
@@ -80,6 +88,7 @@ describe('Scénario : les tentatives d\'une transcription sont épuisées', () =
       platform.clock.advanceSeconds(LEASE_SECONDS + 1);
       expect(await platform.requeueStalledTranscriptions.execute()).toEqual({ requeued: 1 });
       const job = await platform.claimNextTranscription.execute({
+        claimant: SERVICE_CLAIMANT,
         workerId: `worker-${attempt + 1}`,
         models: ['small'],
       });
@@ -105,6 +114,7 @@ describe('Scénario : les tentatives d\'une transcription sont épuisées', () =
       platform.clock.advanceSeconds(LEASE_SECONDS + 1);
       await platform.requeueStalledTranscriptions.execute();
       await platform.claimNextTranscription.execute({
+        claimant: SERVICE_CLAIMANT,
         workerId: `worker-${attempt + 1}`,
         models: ['small'],
       });
@@ -113,7 +123,7 @@ describe('Scénario : les tentatives d\'une transcription sont épuisées', () =
     await platform.requeueStalledTranscriptions.execute();
 
     expect(
-      await platform.claimNextTranscription.execute({ workerId: 'worker-9', models: ['small'] }),
+      await platform.claimNextTranscription.execute({ claimant: SERVICE_CLAIMANT, workerId: 'worker-9', models: ['small'] }),
     ).toBeNull();
   });
 });

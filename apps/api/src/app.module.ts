@@ -19,6 +19,7 @@ import {
 import type { DatabaseConnection } from './shared/infrastructure/persistence/database';
 import { REDACTED_FIELDS } from './transcription/infrastructure/logging/pino-logger';
 import { TranscriptionModule } from './transcription/transcription.module';
+import { WorkersModule } from './workers/workers.module';
 
 /** Configuration validée une seule fois, au chargement du module racine. */
 const env = loadEnv();
@@ -112,6 +113,7 @@ class PlatformModule implements OnApplicationShutdown {
     }),
     AuthModule,
     TranscriptionModule,
+    WorkersModule,
   ],
 })
 export class AppModule {}

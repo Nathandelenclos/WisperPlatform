@@ -8,6 +8,7 @@ import {
 } from '../../../shared/infrastructure/persistence/schema';
 import { ConcurrentTranscriptionWriteError } from '../../application/errors';
 import type { TranscriptionRepository } from '../../application/ports/transcription-repository';
+import type { Placement } from '../../domain/placement';
 import type { SegmentState } from '../../domain/segment';
 import type { SpeakerState } from '../../domain/speaker';
 import {
@@ -47,6 +48,7 @@ export class DrizzleTranscriptionRepository implements TranscriptionRepository {
       id: state.id,
       ownerId: state.ownerId,
       status: state.status,
+      placement: state.placement,
       model: state.model,
       language: state.language,
       mediaStorageKey: state.mediaStorageKey,
@@ -86,6 +88,7 @@ export class DrizzleTranscriptionRepository implements TranscriptionRepository {
           .update(transcriptions)
           .set({
             status: row.status,
+            placement: row.placement,
             model: row.model,
             language: row.language,
             mediaStorageKey: row.mediaStorageKey,
@@ -190,6 +193,7 @@ function toState(
     ownerId: row.ownerId,
     // La base garde des `text` : l'aggregate revalide ses propres unions à la reconstitution.
     status: row.status as TranscriptionStatus,
+    placement: row.placement as Placement,
     model: row.model as WhisperModel,
     language: row.language,
     mediaStorageKey: row.mediaStorageKey,

@@ -6,6 +6,7 @@ import {
   LEASE_SECONDS,
   NOW,
   OWNER,
+  SERVICE_CLAIMANT,
   aClaimedTranscription,
   aPlatform,
   type TranscriptionPlatform,
@@ -124,6 +125,7 @@ describe('Scénario : le worker publie les tours de parole', () => {
     platform.clock.advanceSeconds(LEASE_SECONDS + 1);
     await platform.requeueStalledTranscriptions.execute();
     const second = await platform.claimNextTranscription.execute({
+      claimant: SERVICE_CLAIMANT,
       workerId: 'worker-2',
       models: ['small'],
     });

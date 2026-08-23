@@ -6,13 +6,17 @@ import type { Logger } from '../../application/ports/logger';
 
 /**
  * Champs dont la valeur ne doit jamais atteindre un fichier de log : secrets, jetons, et
- * données personnelles — l'email d'un utilisateur, le nom d'origine de son fichier, et le
- * nom qu'il a donné à un locuteur en font partie.
+ * données personnelles — l'email d'un utilisateur, le nom d'origine de son fichier, le nom
+ * qu'il a donné à un locuteur et celui qu'il a donné à sa machine en font partie.
+ *
+ * `secretFingerprint` y figure aussi : une empreinte n'est pas un secret, mais elle identifie
+ * la clé d'une machine, et un journal n'a aucune raison de la porter.
  */
 export const REDACTED_FIELDS: readonly string[] = [
   'password',
   'secret',
   'token',
+  'secretFingerprint',
   'mediaToken',
   'authorization',
   'cookie',
@@ -21,6 +25,7 @@ export const REDACTED_FIELDS: readonly string[] = [
   'mediaName',
   'mediaOriginalName',
   'speakerName',
+  'label',
   'filename',
   'ipAddress',
 ];

@@ -9,6 +9,7 @@ import type {
   TranscriptionCatalog,
   TranscriptionSummary,
 } from '../../application/ports/transcription-catalog';
+import type { Placement } from '../../domain/placement';
 import type { TranscriptionStatus } from '../../domain/transcription';
 import type { WhisperModel } from '../../domain/transcription-settings';
 
@@ -24,6 +25,7 @@ export class DrizzleTranscriptionCatalog implements TranscriptionCatalog {
       .select({
         id: transcriptions.id,
         status: transcriptions.status,
+        placement: transcriptions.placement,
         model: transcriptions.model,
         language: transcriptions.language,
         mediaName: transcriptions.mediaOriginalName,
@@ -47,6 +49,7 @@ export class DrizzleTranscriptionCatalog implements TranscriptionCatalog {
     return rows.map((row) => ({
       id: row.id,
       status: row.status as TranscriptionStatus,
+      placement: row.placement as Placement,
       model: row.model as WhisperModel,
       language: row.language,
       mediaName: row.mediaName,

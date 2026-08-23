@@ -3,6 +3,7 @@ import { and, asc, eq, inArray, lte, sql } from 'drizzle-orm';
 import type { Database } from '../../../shared/infrastructure/persistence/database';
 import { transcriptions } from '../../../shared/infrastructure/persistence/schema';
 import type { TranscriptionQueue } from '../../application/ports/transcription-queue';
+import type { Claimant } from '../../application/ports/worker-identities';
 import type { WhisperModel } from '../../domain/transcription-settings';
 
 /**
@@ -23,8 +24,13 @@ export class DrizzleTranscriptionQueue implements TranscriptionQueue {
    * `reservationSeconds` redevient réservable. C'est ce qui rend une transcription remise en
    * file (bail expiré, donc au moins `leaseSeconds` après la réservation) immédiatement
    * réclamable, sans qu'aucun adaptateur ait à effacer la colonne.
+   *
+   * Le réclamant est traduit en une condition de sélection, jamais en filtrage après coup :
+   * ce qui n'est pas pour lui ne doit même pas être réservé, sinon deux workers se bloquent
+   * mutuellement sur des lignes qu'aucun des deux n'a le droit de prendre.
    */
   async reserveNextPending(p: {
+    claimant: Claimant;
     workerId: string;
     models: readonly WhisperModel[];
     reservationSeconds: number;
@@ -33,6 +39,11 @@ export class DrizzleTranscriptionQueue implements TranscriptionQueue {
     if (p.models.length === 0) return null;
 
     const reservableSince = new Date(p.now.getTime() - p.reservationSeconds * 1000);
+    const scope =
+      p.claimant.kind === 'service'
+        ? sql`${transcriptions.placement} = 'service'`
+        : sql`${transcriptions.placement} = 'owner'
+            and ${transcriptions.ownerId} = ${p.claimant.ownerId}`;
 
     const reserved = await this.db.execute<{ id: string }>(sql`
       update ${transcriptions}
@@ -43,6 +54,7 @@ export class DrizzleTranscriptionQueue implements TranscriptionQueue {
         from ${transcriptions}
         where ${transcriptions.status} = 'pending'
           and ${inArray(transcriptions.model, [...p.models])}
+          and ${scope}
           and (
             ${transcriptions.reservedAt} is null
             or ${transcriptions.reservedAt} <= ${reservableSince}

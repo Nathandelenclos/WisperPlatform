@@ -1,4 +1,5 @@
 import type { TranscriptionQueue } from '../../src/transcription/application/ports/transcription-queue';
+import type { Claimant } from '../../src/transcription/application/ports/worker-identities';
 import type { WhisperModel } from '../../src/transcription/domain/transcription-settings';
 
 import type { InMemoryTranscriptionStore } from './in-memory-transcription-store';
@@ -6,12 +7,14 @@ import type { InMemoryTranscriptionStore } from './in-memory-transcription-store
 /**
  * Réplique du comportement de la file réelle (`for update skip locked` + colonnes de réservation) :
  * une transcription en attente ne part jamais deux fois de suite chez deux workers, seuls les
- * modèles servis sont proposés, et une réservation abandonnée redevient disponible d'elle-même.
+ * modèles servis sont proposés, une réservation abandonnée redevient disponible d'elle-même, et
+ * le réclamant ne voit que ce qui est placé pour lui.
  */
 export class InMemoryTranscriptionQueue implements TranscriptionQueue {
   constructor(private readonly store: InMemoryTranscriptionStore) {}
 
   async reserveNextPending(p: {
+    claimant: Claimant;
     workerId: string;
     models: readonly WhisperModel[];
     reservationSeconds: number;
@@ -24,6 +27,10 @@ export class InMemoryTranscriptionQueue implements TranscriptionQueue {
         (row) =>
           row.state.status === 'pending' &&
           p.models.includes(row.state.model) &&
+          // Même cloisonnement que la condition SQL de l'adaptateur réel.
+          (p.claimant.kind === 'service'
+            ? row.state.placement === 'service'
+            : row.state.placement === 'owner' && row.state.ownerId === p.claimant.ownerId) &&
           (row.reservedAt === null || row.reservedAt.getTime() <= reservationFloor),
       )
       .sort((left, right) => left.state.requestedAt.getTime() - right.state.requestedAt.getTime())

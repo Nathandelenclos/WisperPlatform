@@ -35,6 +35,13 @@ export class UnsupportedModelError extends DomainError {
   }
 }
 
+/** Le placement demandé n'est pas un endroit où la plateforme sait faire calculer. */
+export class UnsupportedPlacementError extends DomainError {
+  constructor(message: string) {
+    super('UNSUPPORTED_PLACEMENT', message);
+  }
+}
+
 /** La langue demandée ne respecte pas la forme attendue (frontière de confiance). */
 export class InvalidLanguageError extends DomainError {
   constructor(message: string) {

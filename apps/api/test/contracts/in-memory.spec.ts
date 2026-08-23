@@ -4,10 +4,12 @@ import { InMemoryTranscriptionCatalog } from '../doubles/in-memory-transcription
 import { InMemoryTranscriptionQueue } from '../doubles/in-memory-transcription-queue';
 import { InMemoryTranscriptionRepository } from '../doubles/in-memory-transcription-repository';
 import { InMemoryTranscriptionStore } from '../doubles/in-memory-transcription-store';
+import { InMemoryWorkerKeyRepository } from '../doubles/in-memory-worker-key-repository';
 
 import { describeMediaAccessTokensContract } from './media-access-tokens.contract';
 import { describeMediaStorageContract } from './media-storage.contract';
 import { describeTranscriptionRepositoryContract } from './transcription-repository.contract';
+import { describeWorkerKeyRepositoryContract } from './worker-key-repository.contract';
 
 describeTranscriptionRepositoryContract('doubles en mémoire', async () => {
   const store = new InMemoryTranscriptionStore();
@@ -30,3 +32,8 @@ describeMediaStorageContract('double en mémoire', async () => {
 });
 
 describeMediaAccessTokensContract('double signé', () => new FakeMediaAccessTokens());
+
+describeWorkerKeyRepositoryContract('double en mémoire', async () => ({
+  repository: new InMemoryWorkerKeyRepository(),
+  cleanup: async () => {},
+}));

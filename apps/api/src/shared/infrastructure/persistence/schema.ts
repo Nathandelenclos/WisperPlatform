@@ -104,6 +104,12 @@ export const transcriptions = pgTable(
       .notNull()
       .references(() => user.id, { onDelete: 'cascade' }),
     status: text('status').notNull(),
+    /**
+     * Où la transcription doit être calculée : `service` (les workers de la plateforme) ou
+     * `owner` (les machines de son propriétaire). Défaut `service`, pour que toute demande
+     * écrite avant cette colonne reste calculée là où elle l'était.
+     */
+    placement: text('placement').notNull().default('service'),
     model: text('model').notNull(),
     language: text('language').notNull(),
     mediaStorageKey: text('media_storage_key').notNull(),
@@ -176,5 +182,31 @@ export const transcriptionSpeakers = pgTable(
       name: 'transcription_speakers_pkey',
       columns: [table.transcriptionId, table.index],
     }),
+  ],
+);
+
+/**
+ * Clés de machine : le secret qu'un utilisateur colle dans la commande de lancement de son
+ * worker. Seule l'empreinte est stockée, jamais le secret. La révocation est une date, pas une
+ * suppression : la trace d'une machine reste lisible après un incident.
+ */
+export const workerKeys = pgTable(
+  'worker_keys',
+  {
+    id: uuid('id').primaryKey(),
+    ownerId: text('owner_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    label: text('label').notNull(),
+    secretFingerprint: text('secret_fingerprint').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+    lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  },
+  (table) => [
+    // L'empreinte est le chemin d'authentification : l'unicité en fait une clé de recherche
+    // sûre, et interdit qu'un même secret ouvre deux comptes.
+    unique('worker_keys_secret_fingerprint_unique').on(table.secretFingerprint),
+    index('worker_keys_owner_id_created_at_idx').on(table.ownerId, table.createdAt.desc()),
   ],
 );

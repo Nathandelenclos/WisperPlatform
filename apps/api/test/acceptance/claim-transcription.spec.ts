@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { MediaAccessDeniedError } from '../../src/transcription/application/errors';
 
-import { LEASE_SECONDS, NOW, OWNER, aPlatform, readAll } from './platform';
+import { LEASE_SECONDS, NOW, OWNER, SERVICE_CLAIMANT, aPlatform, readAll } from './platform';
 
 describe('Scénario : un worker réclame du travail', () => {
   it('remet un seul travail, pose le bail et n\'apprend rien de l\'utilisateur', async () => {
@@ -11,6 +11,7 @@ describe('Scénario : un worker réclame du travail', () => {
     platform.publisher.clear();
 
     const job = await platform.claimNextTranscription.execute({
+      claimant: SERVICE_CLAIMANT,
       workerId: 'worker-1',
       models: ['turbo', 'small'],
     });
@@ -33,10 +34,12 @@ describe('Scénario : un worker réclame du travail', () => {
     await platform.upload();
 
     const first = await platform.claimNextTranscription.execute({
+      claimant: SERVICE_CLAIMANT,
       workerId: 'worker-1',
       models: ['small'],
     });
     const second = await platform.claimNextTranscription.execute({
+      claimant: SERVICE_CLAIMANT,
       workerId: 'worker-2',
       models: ['small'],
     });
@@ -50,7 +53,7 @@ describe('Scénario : un worker réclame du travail', () => {
     await platform.upload({ model: 'large' });
 
     expect(
-      await platform.claimNextTranscription.execute({ workerId: 'worker-1', models: ['tiny'] }),
+      await platform.claimNextTranscription.execute({ claimant: SERVICE_CLAIMANT, workerId: 'worker-1', models: ['tiny'] }),
     ).toBeNull();
   });
 
@@ -58,6 +61,7 @@ describe('Scénario : un worker réclame du travail', () => {
     const platform = aPlatform();
     await platform.upload({ originalName: 'secret.mp3', content: 'octets audio' });
     const job = await platform.claimNextTranscription.execute({
+      claimant: SERVICE_CLAIMANT,
       workerId: 'worker-1',
       models: ['small'],
     });
@@ -76,6 +80,7 @@ describe('Scénario : un worker réclame du travail', () => {
     const platform = aPlatform();
     await platform.upload();
     const job = await platform.claimNextTranscription.execute({
+      claimant: SERVICE_CLAIMANT,
       workerId: 'worker-1',
       models: ['small'],
     });
@@ -92,6 +97,7 @@ describe('Scénario : un worker réclame du travail', () => {
     const platform = aPlatform();
     const transcriptionId = await platform.upload();
     const job = await platform.claimNextTranscription.execute({
+      claimant: SERVICE_CLAIMANT,
       workerId: 'worker-1',
       models: ['small'],
     });
@@ -107,6 +113,7 @@ describe('Scénario : un worker réclame du travail', () => {
     const platform = aPlatform();
     await platform.upload();
     const job = await platform.claimNextTranscription.execute({
+      claimant: SERVICE_CLAIMANT,
       workerId: 'worker-1',
       models: ['small'],
     });

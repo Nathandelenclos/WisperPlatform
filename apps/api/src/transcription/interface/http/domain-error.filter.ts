@@ -6,6 +6,8 @@ import { MediaAccessDeniedError, TranscriptionNotFoundError } from '../../applic
 import { LOGGER } from '../../application/ports/logger';
 import type { Logger } from '../../application/ports/logger';
 import { DomainError } from '../../domain/errors';
+import { WorkerKeyNotFoundError } from '../../../workers/application/errors';
+import { WorkerDomainError } from '../../../workers/domain/errors';
 
 /** Réponse d'erreur unique de l'API. */
 type ErrorResponse = { error: { code: string; message: string } };
@@ -34,6 +36,11 @@ const HTTP_CODES: Readonly<Record<number, string>> = {
  * Traduit les refus métier en codes HTTP et impose la forme `{ error: { code, message } }`
  * à toutes les réponses d'erreur, y compris celles produites par le framework.
  * Une cause inattendue ne franchit jamais la frontière : elle devient un 500 opaque.
+ *
+ * Enregistré en `APP_FILTER`, il est la frontière d'erreur de TOUTE la plateforme : il connaît
+ * donc les bases d'erreur de chaque contexte borné, y compris `workers`. Une base par contexte
+ * est le prix de la règle de dépendance — un domaine n'importe pas celui d'un autre — et un
+ * second filtre attrape-tout serait pire : deux filtres globaux se disputeraient chaque erreur.
  */
 @Catch()
 export class DomainErrorFilter implements ExceptionFilter {
@@ -71,7 +78,10 @@ export class DomainErrorFilter implements ExceptionFilter {
   }
 
   private map(exception: unknown): MappedFailure {
-    if (exception instanceof TranscriptionNotFoundError) {
+    if (
+      exception instanceof TranscriptionNotFoundError ||
+      exception instanceof WorkerKeyNotFoundError
+    ) {
       return {
         status: HttpStatus.NOT_FOUND,
         code: exception.code,
@@ -87,7 +97,7 @@ export class DomainErrorFilter implements ExceptionFilter {
         unexpected: false,
       };
     }
-    if (exception instanceof DomainError) {
+    if (exception instanceof DomainError || exception instanceof WorkerDomainError) {
       return {
         status: HttpStatus.UNPROCESSABLE_ENTITY,
         code: exception.code,

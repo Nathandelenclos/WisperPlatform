@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { StaleRunError } from '../../src/transcription/domain/errors';
 
-import { NOW, OWNER, aClaimedTranscription, aPlatform } from './platform';
+import { NOW, OWNER, SERVICE_CLAIMANT, aClaimedTranscription, aPlatform } from './platform';
 
 describe('Scénario : un worker rend sa tentative en s\'arrêtant', () => {
   it('remet la demande en file tout de suite, sans attendre l\'extinction du bail', async () => {
@@ -29,6 +29,7 @@ describe('Scénario : un worker rend sa tentative en s\'arrêtant', () => {
 
     await platform.releaseTranscriptionRun.execute({ transcriptionId, runId });
     const job = await platform.claimNextTranscription.execute({
+      claimant: SERVICE_CLAIMANT,
       workerId: 'worker-2',
       models: ['small'],
     });
@@ -43,7 +44,7 @@ describe('Scénario : un worker rend sa tentative en s\'arrêtant', () => {
     const platform = aPlatform();
     const { transcriptionId, runId } = await aClaimedTranscription(platform);
     await platform.releaseTranscriptionRun.execute({ transcriptionId, runId });
-    await platform.claimNextTranscription.execute({ workerId: 'worker-2', models: ['small'] });
+    await platform.claimNextTranscription.execute({ claimant: SERVICE_CLAIMANT, workerId: 'worker-2', models: ['small'] });
 
     await expect(
       platform.releaseTranscriptionRun.execute({ transcriptionId, runId }),

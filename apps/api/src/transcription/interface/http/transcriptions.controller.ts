@@ -31,6 +31,7 @@ import type { Logger } from '../../application/ports/logger';
 import type { TranscriptionSummary } from '../../application/ports/transcription-catalog';
 import { TRANSCRIPTION_EVENT_STREAM } from '../../application/ports/transcription-event-publisher';
 import type { TranscriptionEventStream } from '../../application/ports/transcription-event-publisher';
+import { ChangePlacementUseCase } from '../../application/use-cases/change-placement.use-case';
 import { CorrectSegmentUseCase } from '../../application/use-cases/correct-segment.use-case';
 import { ExportTranscriptionUseCase } from '../../application/use-cases/export-transcription.use-case';
 import { GetTranscriptionUseCase } from '../../application/use-cases/get-transcription.use-case';
@@ -41,6 +42,7 @@ import { RequestTranscriptionUseCase } from '../../application/use-cases/request
 import type { TranscriptionView } from '../../application/views';
 import { contentDisposition } from './content-disposition';
 import {
+  changePlacementBodySchema,
   correctSegmentBodySchema,
   correctSegmentParamsSchema,
   exportQuerySchema,
@@ -68,6 +70,7 @@ export class TranscriptionsController {
     @Inject(GetTranscriptionUseCase) private readonly getTranscription: GetTranscriptionUseCase,
     @Inject(CorrectSegmentUseCase) private readonly correctSegment: CorrectSegmentUseCase,
     @Inject(RenameSpeakerUseCase) private readonly renameSpeaker: RenameSpeakerUseCase,
+    @Inject(ChangePlacementUseCase) private readonly changePlacement: ChangePlacementUseCase,
     @Inject(ExportTranscriptionUseCase) private readonly exportTranscription: ExportTranscriptionUseCase,
     @Inject(OpenOwnedMediaUseCase) private readonly openOwnedMedia: OpenOwnedMediaUseCase,
     @Inject(TRANSCRIPTION_EVENT_STREAM) private readonly events: TranscriptionEventStream,
@@ -86,7 +89,7 @@ export class TranscriptionsController {
       throw new BadRequestException('La partie multipart « file » est requise');
     }
     try {
-      const { model, language } = parseHttpInput(requestTranscriptionBodySchema, body);
+      const { model, language, placement } = parseHttpInput(requestTranscriptionBodySchema, body);
       const { transcriptionId } = await this.requestTranscription.execute({
         ownerId: user.id,
         media: {
@@ -97,6 +100,7 @@ export class TranscriptionsController {
         },
         model,
         language,
+        placement,
       });
       return { id: transcriptionId };
     } catch (failure) {
@@ -173,6 +177,26 @@ export class TranscriptionsController {
       ownerId: user.id,
       index,
       name,
+    });
+  }
+
+  /**
+   * Le propriétaire choisit où sa demande sera calculée, et c'est ce qui lui permet de rendre
+   * au service une demande que sa machine laisse en attente. Rend la vue entière : la
+   * bibliothèque affiche le nouveau placement sans relire.
+   */
+  @Patch(':id/placement')
+  @HttpCode(HttpStatus.OK)
+  async place(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() body: unknown,
+  ): Promise<TranscriptionView> {
+    const { placement } = parseHttpInput(changePlacementBodySchema, body);
+    return this.changePlacement.execute({
+      transcriptionId: parseHttpInput(transcriptionIdSchema, id),
+      ownerId: user.id,
+      placement,
     });
   }
 

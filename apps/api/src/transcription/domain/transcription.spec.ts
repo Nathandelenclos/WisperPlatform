@@ -796,6 +796,7 @@ describe('Transcription — aller-retour de persistance', () => {
       id: '33333333-3333-4333-8333-333333333333',
       ownerId: 'owner-b',
       status: 'transcribing',
+      placement: 'owner',
       model: 'medium',
       language: 'French',
       mediaStorageKey: '44444444-4444-4444-8444-444444444444',
@@ -848,5 +849,76 @@ describe('Transcription — aller-retour de persistance', () => {
     const original = aPendingTranscription();
 
     expect(Transcription.restore(original.state()).pullEvents()).toEqual([]);
+  });
+});
+
+// Invariant 9
+describe('Transcription — placement du calcul', () => {
+  it('naît calculée par le service quand personne n\'a choisi', () => {
+    expect(aPendingTranscription().state().placement).toBe('service');
+  });
+
+  it('retient le placement choisi à la demande', () => {
+    const transcription = Transcription.request({
+      id: 'id-2',
+      ownerId: 'owner-a',
+      media: MediaAsset.stored({
+        storageKey: 'key-2',
+        originalName: 'a.mp3',
+        contentType: 'audio/mpeg',
+        byteSize: 10,
+      }),
+      settings: TranscriptionSettings.of('base', 'fr'),
+      requestedAt: REQUESTED_AT,
+      placement: 'owner',
+    });
+
+    expect(transcription.state().placement).toBe('owner');
+  });
+
+  it('bascule une demande en attente et annonce le changement', () => {
+    const transcription = aPendingTranscription();
+
+    transcription.changePlacement({ placement: 'owner', at: SEGMENTS_AT });
+
+    expect(transcription.state().placement).toBe('owner');
+    expect(transcription.pullEvents()).toEqual([
+      {
+        name: 'transcription.placement-changed',
+        transcriptionId: '11111111-1111-4111-8111-111111111111',
+        ownerId: 'owner-a',
+        placement: 'owner',
+        occurredAt: SEGMENTS_AT,
+      },
+    ]);
+  });
+
+  it('ne fait rien, et n\'annonce rien, quand le placement demandé est déjà le bon', () => {
+    const transcription = aPendingTranscription();
+
+    transcription.changePlacement({ placement: 'service', at: SEGMENTS_AT });
+
+    expect(transcription.pullEvents()).toEqual([]);
+  });
+
+  it('refuse de déplacer une tentative en cours', () => {
+    const transcription = aStartedTranscription();
+
+    expect(() =>
+      transcription.changePlacement({ placement: 'owner', at: SEGMENTS_AT }),
+    ).toThrow(IllegalTranscriptionStateError);
+    expect(transcription.state().placement).toBe('service');
+  });
+
+  it('laisse une transcription achevée redemander son placement courant, sans lever', () => {
+    const transcription = aStartedTranscription();
+    transcription.complete({ runId: 'run-1', at: LEASE_UNTIL });
+
+    expect(() =>
+      transcription.changePlacement({ placement: 'service', at: LEASE_UNTIL }),
+    ).not.toThrow();
+    expect(() =>
+      transcription.changePlacement({ placement: 'owner', at: LEASE_UNTIL }),
+    ).toThrow(IllegalTranscriptionStateError);
   });
 });

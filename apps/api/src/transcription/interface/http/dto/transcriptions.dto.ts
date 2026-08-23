@@ -11,9 +11,18 @@ import type { SubtitleFormat } from '../../../domain/subtitle-document';
 
 export const transcriptionIdSchema = z.uuid();
 
+/**
+ * `placement` reste une chaîne ici : c'est une énumération du domaine, comme le modèle et la
+ * langue. L'aggregate la valide et répond 422 ; la frontière ne duplique pas la liste.
+ */
 export const requestTranscriptionBodySchema = z.object({
   model: z.string(),
   language: z.string(),
+  placement: z.string().optional(),
+});
+
+export const changePlacementBodySchema = z.object({
+  placement: z.string(),
 });
 
 export const correctSegmentParamsSchema = z.object({

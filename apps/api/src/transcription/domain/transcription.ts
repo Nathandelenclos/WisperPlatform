@@ -10,6 +10,7 @@ import {
 } from './errors';
 import type { TranscriptionEvent } from './events';
 import { MediaAsset } from './media-asset';
+import { DEFAULT_PLACEMENT, type Placement } from './placement';
 import { Segment, type SegmentState } from './segment';
 import { Speaker, SpeakerName, type SpeakerState } from './speaker';
 import { distinctSpeakers, dominantSpeaker, type SpeakerTurn } from './speaker-turn';
@@ -24,6 +25,8 @@ export type TranscriptionState = {
   id: string;
   ownerId: string;
   status: TranscriptionStatus;
+  /** Où le calcul doit avoir lieu. Voir `Placement` : défaut `service`. */
+  placement: Placement;
   model: WhisperModel;
   language: string;
   mediaStorageKey: string;
@@ -52,6 +55,7 @@ const LEASE_EXPIRED_REASON = 'lease expired';
  */
 export class Transcription {
   private status: TranscriptionStatus;
+  private placementChoice: Placement;
   private attempts: number;
   private currentRunId: string | null;
   private claimedBy: string | null;
@@ -73,6 +77,7 @@ export class Transcription {
     requestedAt: Date,
     state: {
       status: TranscriptionStatus;
+      placement: Placement;
       attempts: number;
       currentRunId: string | null;
       claimedBy: string | null;
@@ -88,6 +93,7 @@ export class Transcription {
     // `Date` qu'il a passée ne doit pas garder une prise sur l'état de l'aggregate.
     this.requestedAtInstant = new Date(requestedAt);
     this.status = state.status;
+    this.placementChoice = state.placement;
     this.attempts = state.attempts;
     this.currentRunId = state.currentRunId;
     this.claimedBy = state.claimedBy;
@@ -105,6 +111,8 @@ export class Transcription {
     media: MediaAsset;
     settings: TranscriptionSettings;
     requestedAt: Date;
+    /** Optionnel : sans choix explicite, la plateforme calcule (voir `DEFAULT_PLACEMENT`). */
+    placement?: Placement;
   }): Transcription {
     const transcription = new Transcription(
       p.id,
@@ -114,6 +122,7 @@ export class Transcription {
       p.requestedAt,
       {
         status: 'pending',
+        placement: p.placement ?? DEFAULT_PLACEMENT,
         attempts: 0,
         currentRunId: null,
         claimedBy: null,
@@ -148,6 +157,7 @@ export class Transcription {
       state.requestedAt,
       {
         status: state.status,
+        placement: state.placement,
         attempts: state.attempts,
         currentRunId: state.currentRunId,
         claimedBy: state.claimedBy,
@@ -335,6 +345,33 @@ export class Transcription {
     });
   }
 
+  /**
+   * Le propriétaire choisit où sa demande sera calculée. Tant qu'aucun worker ne l'a prise,
+   * c'est un simple aiguillage ; une fois démarrée, la déplacer n'a plus de sens — un run vit
+   * sur une machine, pas sur un choix, et le rapatrier voudrait dire jeter son travail.
+   *
+   * Demander le placement déjà en vigueur ne fait rien et ne lève pas : il n'y a rien à
+   * changer, donc rien à refuser, même sur une transcription achevée.
+   */
+  changePlacement(p: { placement: Placement; at: Date }): void {
+    if (this.placementChoice === p.placement) {
+      return;
+    }
+    if (this.status !== 'pending') {
+      throw new IllegalTranscriptionStateError(
+        `une transcription au statut ${this.status} ne change plus de placement`,
+      );
+    }
+    this.placementChoice = p.placement;
+    this.events.push({
+      name: 'transcription.placement-changed',
+      transcriptionId: this.id,
+      ownerId: this.ownerId,
+      placement: p.placement,
+      occurredAt: p.at,
+    });
+  }
+
   correctSegment(p: { ordinal: number; text: string; at: Date }): void {
     if (this.status !== 'completed') {
       throw new TranscriptionNotCorrectableError(
@@ -432,6 +469,7 @@ export class Transcription {
       id: this.id,
       ownerId: this.ownerId,
       status: this.status,
+      placement: this.placementChoice,
       model: this.settings.model,
       language: this.settings.language,
       mediaStorageKey: this.media.storageKey,

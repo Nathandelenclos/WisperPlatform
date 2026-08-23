@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { TranscriptionCatalog } from '../../src/transcription/application/ports/transcription-catalog';
 import type { TranscriptionQueue } from '../../src/transcription/application/ports/transcription-queue';
 import type { TranscriptionRepository } from '../../src/transcription/application/ports/transcription-repository';
+import type { Claimant } from '../../src/transcription/application/ports/worker-identities';
+import type { Placement } from '../../src/transcription/domain/placement';
 import { MediaAsset } from '../../src/transcription/domain/media-asset';
 import { ConcurrentTranscriptionWriteError } from '../../src/transcription/application/errors';
 import { SpeakerTurn } from '../../src/transcription/domain/speaker-turn';
@@ -34,6 +36,12 @@ const LEASE_UNTIL = new Date('2026-04-02T08:05:00.000Z');
 // LEASE_UNTIL = REQUESTED_AT + LEASE_SECONDS : la durée est ce que l'aggregate accepte.
 const LEASE_SECONDS = 300;
 
+
+/** Le réclamant d'un worker de la plateforme. */
+const SERVICE: Claimant = { kind: 'service' };
+/** Le réclamant d'une machine déclarée par le propriétaire A. */
+const MACHINE_OF_A: Claimant = { kind: 'owner', ownerId: CONTRACT_OWNER_A };
+
 function uuid(suffix: string): string {
   return `7c9e6679-0000-4000-8000-${suffix.padStart(12, '0')}`;
 }
@@ -45,6 +53,7 @@ function aRequest(p: {
   requestedAt?: Date;
   originalName?: string;
   byteSize?: number;
+  placement?: Placement;
 }): Transcription {
   const transcription = Transcription.request({
     id: p.id,
@@ -57,6 +66,7 @@ function aRequest(p: {
     }),
     settings: TranscriptionSettings.of(p.model ?? 'small', 'fr'),
     requestedAt: p.requestedAt ?? REQUESTED_AT,
+    placement: p.placement,
   });
   transcription.pullEvents();
   return transcription;
@@ -333,12 +343,14 @@ export function describeTranscriptionRepositoryContract(
 
         const reservations = await Promise.all([
           harness.queue.reserveNextPending({
+            claimant: SERVICE,
             workerId: 'worker-1',
             models: ['small'],
             reservationSeconds: 30,
             now: REQUESTED_AT,
           }),
           harness.queue.reserveNextPending({
+            claimant: SERVICE,
             workerId: 'worker-2',
             models: ['small'],
             reservationSeconds: 30,
@@ -359,6 +371,7 @@ export function describeTranscriptionRepositoryContract(
         );
 
         const first = await harness.queue.reserveNextPending({
+          claimant: SERVICE,
           workerId: 'worker-1',
           models: ['small'],
           reservationSeconds: 30,
@@ -373,6 +386,7 @@ export function describeTranscriptionRepositoryContract(
 
         expect(
           await harness.queue.reserveNextPending({
+            claimant: SERVICE,
             workerId: 'worker-1',
             models: ['tiny', 'base'],
             reservationSeconds: 30,
@@ -381,6 +395,7 @@ export function describeTranscriptionRepositoryContract(
         ).toBeNull();
         expect(
           await harness.queue.reserveNextPending({
+            claimant: SERVICE,
             workerId: 'worker-1',
             models: ['tiny', 'large'],
             reservationSeconds: 30,
@@ -393,6 +408,7 @@ export function describeTranscriptionRepositoryContract(
         await harness.repository.save(aRequest({ id: uuid('14') }));
         const reserve = (now: Date): Promise<string | null> =>
           harness.queue.reserveNextPending({
+            claimant: SERVICE,
             workerId: 'worker-1',
             models: ['small'],
             reservationSeconds: 30,
@@ -410,6 +426,7 @@ export function describeTranscriptionRepositoryContract(
         await harness.repository.save(aRequest({ id: uuid('14b') }));
         const reserve = (now: Date): Promise<string | null> =>
           harness.queue.reserveNextPending({
+            claimant: SERVICE,
             workerId: 'worker-1',
             models: ['small'],
             reservationSeconds: 300,
@@ -440,6 +457,7 @@ export function describeTranscriptionRepositoryContract(
 
         expect(
           await harness.queue.reserveNextPending({
+            claimant: SERVICE,
             workerId: 'worker-2',
             models: ['small'],
             reservationSeconds: 30,
@@ -502,6 +520,87 @@ export function describeTranscriptionRepositoryContract(
 
         expect(stalled).toHaveLength(2);
       });
+
+      it('ne propose au service que les transcriptions placées sur le service', async () => {
+        await harness.repository.save(aRequest({ id: uuid('23'), placement: 'owner' }));
+
+        expect(
+          await harness.queue.reserveNextPending({
+            claimant: SERVICE,
+            workerId: 'worker-du-service',
+            models: ['small'],
+            reservationSeconds: 30,
+            now: REQUESTED_AT,
+          }),
+        ).toBeNull();
+
+        await harness.repository.save(aRequest({ id: uuid('24'), placement: 'service' }));
+
+        expect(
+          await harness.queue.reserveNextPending({
+            claimant: SERVICE,
+            workerId: 'worker-du-service',
+            models: ['small'],
+            reservationSeconds: 30,
+            now: REQUESTED_AT,
+          }),
+        ).toBe(uuid('24'));
+      });
+
+      it('ne propose à une machine que les transcriptions placées sur les machines de SON propriétaire', async () => {
+        // Placée sur le service : ce n'est pas le travail des machines, même celles du bon
+        // propriétaire.
+        await harness.repository.save(aRequest({ id: uuid('25'), placement: 'service' }));
+        // Placée sur les machines d'un AUTRE propriétaire.
+        await harness.repository.save(
+          aRequest({ id: uuid('26'), ownerId: CONTRACT_OWNER_B, placement: 'owner' }),
+        );
+        const reserve = (): Promise<string | null> =>
+          harness.queue.reserveNextPending({
+            claimant: MACHINE_OF_A,
+            workerId: 'machine-de-a',
+            models: ['small'],
+            reservationSeconds: 30,
+            now: REQUESTED_AT,
+          });
+
+        expect(await reserve()).toBeNull();
+
+        await harness.repository.save(aRequest({ id: uuid('27'), placement: 'owner' }));
+
+        expect(await reserve()).toBe(uuid('27'));
+      });
+
+      it('rend réclamable par le service une demande basculée vers lui', async () => {
+        const transcription = aRequest({ id: uuid('28'), placement: 'owner' });
+        await harness.repository.save(transcription);
+        const reserveForService = (): Promise<string | null> =>
+          harness.queue.reserveNextPending({
+            claimant: SERVICE,
+            workerId: 'worker-du-service',
+            models: ['small'],
+            reservationSeconds: 30,
+            now: REQUESTED_AT,
+          });
+
+        expect(await reserveForService()).toBeNull();
+
+        const reloaded = await harness.repository.findById(uuid('28'));
+        if (reloaded === null) throw new Error('aggregate introuvable');
+        reloaded.changePlacement({ placement: 'service', at: REQUESTED_AT });
+        await harness.repository.save(reloaded);
+
+        expect(await reserveForService()).toBe(uuid('28'));
+      });
+
+      it('relit le placement écrit, service comme machine', async () => {
+        await harness.repository.save(aRequest({ id: uuid('29'), placement: 'owner' }));
+        await harness.repository.save(aRequest({ id: uuid('29a') }));
+
+        expect((await harness.repository.findById(uuid('29')))?.state().placement).toBe('owner');
+        // Sans choix explicite, le service calcule : c'est aussi le défaut de la colonne.
+        expect((await harness.repository.findById(uuid('29a')))?.state().placement).toBe('service');
+      });
     });
 
     describe('modèle de lecture du propriétaire', () => {
@@ -545,6 +644,7 @@ export function describeTranscriptionRepositoryContract(
         expect(summaries[1]).toEqual({
           id: uuid('30'),
           status: 'completed',
+          placement: 'service',
           model: 'small',
           language: 'fr',
           mediaName: 'ancien.mp3',

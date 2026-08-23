@@ -8,6 +8,8 @@ import { ENV } from '../shared/infrastructure/config/env';
 import type { Env } from '../shared/infrastructure/config/env';
 import { DATABASE } from '../shared/infrastructure/persistence/database';
 import type { Database } from '../shared/infrastructure/persistence/database';
+import { AuthenticateWorkerKeyUseCase } from '../workers/application/use-cases/authenticate-worker-key.use-case';
+import { WorkersModule } from '../workers/workers.module';
 import { CLOCK } from './application/ports/clock';
 import type { Clock } from './application/ports/clock';
 import { ID_GENERATOR } from './application/ports/id-generator';
@@ -29,8 +31,10 @@ import { TRANSCRIPTION_QUEUE } from './application/ports/transcription-queue';
 import type { TranscriptionQueue } from './application/ports/transcription-queue';
 import { TRANSCRIPTION_REPOSITORY } from './application/ports/transcription-repository';
 import type { TranscriptionRepository } from './application/ports/transcription-repository';
+import { WORKER_IDENTITIES } from './application/ports/worker-identities';
 import { AppendTranscribedSegmentsUseCase } from './application/use-cases/append-transcribed-segments.use-case';
 import { AssignSpeakersUseCase } from './application/use-cases/assign-speakers.use-case';
+import { ChangePlacementUseCase } from './application/use-cases/change-placement.use-case';
 import { ClaimNextTranscriptionUseCase } from './application/use-cases/claim-next-transcription.use-case';
 import { CompleteTranscriptionUseCase } from './application/use-cases/complete-transcription.use-case';
 import { CorrectSegmentUseCase } from './application/use-cases/correct-segment.use-case';
@@ -52,11 +56,12 @@ import { DrizzleTranscriptionCatalog } from './infrastructure/persistence/drizzl
 import { DrizzleTranscriptionQueue } from './infrastructure/persistence/drizzle-transcription-queue';
 import { DrizzleTranscriptionRepository } from './infrastructure/persistence/drizzle-transcription.repository';
 import { HmacMediaAccessTokens } from './infrastructure/security/hmac-media-access-tokens';
+import { WorkerKeyIdentities } from './infrastructure/security/worker-key-identities';
 import { FilesystemMediaStorage } from './infrastructure/storage/filesystem-media-storage';
 import { SystemClock } from './infrastructure/time/system-clock';
 import { DomainErrorFilter } from './interface/http/domain-error.filter';
 import { TranscriptionsController } from './interface/http/transcriptions.controller';
-import { WORKER_ACCESS_TOKEN, WorkerTokenGuard } from './interface/http/worker-token.guard';
+import { WorkerTokenGuard } from './interface/http/worker-token.guard';
 import { WorkerJobsController } from './interface/http/worker-jobs.controller';
 import { StalledTranscriptionsScheduler } from './interface/scheduling/stalled-transcriptions-scheduler';
 
@@ -83,6 +88,9 @@ const MULTIPART_MAX_FIELDS = 8;
 @Module({
   imports: [
     AuthModule,
+    // Le contexte `workers` est l'autorité sur les clés de machine : c'est lui qui dit à qui
+    // appartient celle qu'un worker présente.
+    WorkersModule,
     MulterModule.registerAsync({
       useFactory: (env: Env) => ({
         dest: join(env.MEDIA_STORE_DIR, INCOMING_SUBDIRECTORY),
@@ -131,9 +139,10 @@ const MULTIPART_MAX_FIELDS = 8;
     { provide: ID_GENERATOR, useFactory: () => new UuidIdGenerator() },
     { provide: LOGGER, useFactory: (env: Env) => createPinoLogger(env), inject: [ENV] },
     {
-      provide: WORKER_ACCESS_TOKEN,
-      useFactory: (env: Env) => env.WORKER_SHARED_TOKEN,
-      inject: [ENV],
+      provide: WORKER_IDENTITIES,
+      useFactory: (env: Env, workerKeys: AuthenticateWorkerKeyUseCase) =>
+        new WorkerKeyIdentities(env.WORKER_SHARED_TOKEN, workerKeys),
+      inject: [ENV, AuthenticateWorkerKeyUseCase],
     },
 
     // --- Cas d'utilisation
@@ -248,6 +257,15 @@ const MULTIPART_MAX_FIELDS = 8;
         publisher: TranscriptionEventPublisher,
         clock: Clock,
       ) => new RenameSpeakerUseCase(repository, publisher, clock),
+      inject: [TRANSCRIPTION_REPOSITORY, TRANSCRIPTION_EVENT_PUBLISHER, CLOCK],
+    },
+    {
+      provide: ChangePlacementUseCase,
+      useFactory: (
+        repository: TranscriptionRepository,
+        publisher: TranscriptionEventPublisher,
+        clock: Clock,
+      ) => new ChangePlacementUseCase(repository, publisher, clock),
       inject: [TRANSCRIPTION_REPOSITORY, TRANSCRIPTION_EVENT_PUBLISHER, CLOCK],
     },
     {

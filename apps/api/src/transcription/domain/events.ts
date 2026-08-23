@@ -1,3 +1,4 @@
+import type { Placement } from './placement';
 import type { SegmentState } from './segment';
 import type { SpeakerState } from './speaker';
 
@@ -35,6 +36,17 @@ export type TranscriptionEvent =
       transcriptionId: string;
       ownerId: string;
       ordinal: number;
+      occurredAt: Date;
+    }
+  /**
+   * Le propriétaire a choisi où sa demande serait calculée. Aucun worker n'y a encore touché :
+   * c'est un aiguillage, pas un déplacement de travail en cours.
+   */
+  | {
+      name: 'transcription.placement-changed';
+      transcriptionId: string;
+      ownerId: string;
+      placement: Placement;
       occurredAt: Date;
     }
   /**

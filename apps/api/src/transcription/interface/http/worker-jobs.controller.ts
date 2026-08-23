@@ -13,6 +13,7 @@ import {
 } from '@nestjs/common';
 import type { ServerResponse } from 'node:http';
 
+import type { Claimant } from '../../application/ports/worker-identities';
 import { AppendTranscribedSegmentsUseCase } from '../../application/use-cases/append-transcribed-segments.use-case';
 import { AssignSpeakersUseCase } from '../../application/use-cases/assign-speakers.use-case';
 import { ClaimNextTranscriptionUseCase } from '../../application/use-cases/claim-next-transcription.use-case';
@@ -21,6 +22,7 @@ import { FailTranscriptionUseCase } from '../../application/use-cases/fail-trans
 import { ReleaseTranscriptionRunUseCase } from '../../application/use-cases/release-transcription-run.use-case';
 import { OpenMediaForRunUseCase } from '../../application/use-cases/open-media-for-run.use-case';
 import { RenewTranscriptionLeaseUseCase } from '../../application/use-cases/renew-transcription-lease.use-case';
+import { CurrentClaimant } from './claimant.decorator';
 import {
   appendSegmentsBodySchema,
   assignSpeakersBodySchema,
@@ -57,9 +59,13 @@ export class WorkerJobsController {
    * ce qu'un statut fixé par décorateur ne permet pas d'exprimer.
    */
   @Post('jobs/claim')
-  async claim(@Body() body: unknown, @Res() response: ServerResponse): Promise<void> {
+  async claim(
+    @CurrentClaimant() claimant: Claimant,
+    @Body() body: unknown,
+    @Res() response: ServerResponse,
+  ): Promise<void> {
     const { workerId, models } = parseHttpInput(claimJobBodySchema, body);
-    const job = await this.claimNextTranscription.execute({ workerId, models });
+    const job = await this.claimNextTranscription.execute({ claimant, workerId, models });
 
     if (job === null) {
       response.statusCode = HttpStatus.NO_CONTENT;

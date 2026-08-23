@@ -54,6 +54,24 @@ describe('PinoLogger', () => {
     expect(JSON.parse(line).email).toBe('[redacted]');
   });
 
+  it('caviarde le secret d\'une clé de machine, son empreinte et son libellé', () => {
+    const sink = captureLines();
+    const logger = createPinoLogger({ NODE_ENV: 'production' }, { write: sink.write });
+
+    logger.info('clé de machine déclarée', {
+      secret: 'aléa-de-256-bits',
+      secretFingerprint: 'e'.repeat(64),
+      label: 'Portable de Nathan',
+      workerKey: { secret: 'aléa-imbriqué' },
+    });
+
+    const line = sink.lines[0];
+    expect(line).not.toContain('aléa-de-256-bits');
+    expect(line).not.toContain('e'.repeat(64));
+    expect(line).not.toContain('Portable de Nathan');
+    expect(line).not.toContain('aléa-imbriqué');
+  });
+
   it('tait le diagnostic en production et le laisse passer ailleurs', () => {
     const production = captureLines();
     createPinoLogger({ NODE_ENV: 'production' }, { write: production.write }).debug('diagnostic');

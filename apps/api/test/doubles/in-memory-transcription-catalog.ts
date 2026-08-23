@@ -16,6 +16,7 @@ export class InMemoryTranscriptionCatalog implements TranscriptionCatalog {
       .map((state) => ({
         id: state.id,
         status: state.status,
+        placement: state.placement,
         model: state.model,
         language: state.language,
         mediaName: state.mediaOriginalName,

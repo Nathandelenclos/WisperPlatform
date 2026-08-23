@@ -6,9 +6,15 @@ import type { MediaAccessTokens } from '../ports/media-access-tokens';
 import type { TranscriptionEventPublisher } from '../ports/transcription-event-publisher';
 import type { TranscriptionQueue } from '../ports/transcription-queue';
 import type { TranscriptionRepository } from '../ports/transcription-repository';
+import type { Claimant } from '../ports/worker-identities';
 import type { ClaimedJobView } from '../views';
 
-export type ClaimNextTranscriptionCommand = { workerId: string; models: string[] };
+export type ClaimNextTranscriptionCommand = {
+  /** Pour qui ce worker travaille : la file ne lui proposera rien d'autre. */
+  claimant: Claimant;
+  workerId: string;
+  models: string[];
+};
 
 export class ClaimNextTranscriptionUseCase {
   constructor(
@@ -31,6 +37,7 @@ export class ClaimNextTranscriptionUseCase {
 
     const now = this.clock.now();
     const reservedId = await this.queue.reserveNextPending({
+      claimant: command.claimant,
       workerId: command.workerId,
       models,
       reservationSeconds: this.options.reservationSeconds,

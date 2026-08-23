@@ -1,3 +1,4 @@
+import type { Placement } from '../../domain/placement';
 import type { TranscriptionStatus } from '../../domain/transcription';
 import type { WhisperModel } from '../../domain/transcription-settings';
 
@@ -9,6 +10,8 @@ import type { WhisperModel } from '../../domain/transcription-settings';
 export type TranscriptionSummary = {
   id: string;
   status: TranscriptionStatus;
+  /** La bibliothèque doit pouvoir dire « en attente de votre machine ». */
+  placement: Placement;
   model: WhisperModel;
   language: string;
   mediaName: string;

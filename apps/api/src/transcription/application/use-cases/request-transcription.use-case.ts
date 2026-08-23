@@ -1,4 +1,5 @@
 import { MediaAsset } from '../../domain/media-asset';
+import { DEFAULT_PLACEMENT, toPlacement } from '../../domain/placement';
 import { Transcription } from '../../domain/transcription';
 import { TranscriptionSettings } from '../../domain/transcription-settings';
 import type { Clock } from '../ports/clock';
@@ -12,6 +13,8 @@ export type RequestTranscriptionCommand = {
   media: { tempPath: string; originalName: string; contentType: string; byteSize: number };
   model: string;
   language: string;
+  /** Omis, le calcul revient au service : voir `DEFAULT_PLACEMENT`. */
+  placement?: string;
 };
 
 export class RequestTranscriptionUseCase {
@@ -26,6 +29,8 @@ export class RequestTranscriptionUseCase {
   async execute(command: RequestTranscriptionCommand): Promise<{ transcriptionId: string }> {
     // On valide avant de toucher au magasin : un média n'est rangé que pour une demande recevable.
     const settings = TranscriptionSettings.of(command.model, command.language);
+    const placement =
+      command.placement === undefined ? DEFAULT_PLACEMENT : toPlacement(command.placement);
     const storageKey = this.idGenerator.next();
     const media = MediaAsset.stored({
       storageKey,
@@ -42,6 +47,7 @@ export class RequestTranscriptionUseCase {
       media,
       settings,
       requestedAt: this.clock.now(),
+      placement,
     });
     await this.repository.save(transcription);
     await this.publisher.publish(transcription.pullEvents());

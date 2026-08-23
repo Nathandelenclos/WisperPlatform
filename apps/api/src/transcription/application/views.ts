@@ -1,3 +1,4 @@
+import type { Placement } from '../domain/placement';
 import type { SegmentState } from '../domain/segment';
 import type { SpeakerState } from '../domain/speaker';
 import type { TranscriptionState, TranscriptionStatus } from '../domain/transcription';
@@ -20,6 +21,7 @@ export type ClaimedJobView = {
 export type TranscriptionView = {
   id: string;
   status: TranscriptionStatus;
+  placement: Placement;
   model: WhisperModel;
   language: string;
   mediaName: string;
@@ -40,6 +42,7 @@ export function toTranscriptionView(state: TranscriptionState): TranscriptionVie
   return {
     id: state.id,
     status: state.status,
+    placement: state.placement,
     model: state.model,
     language: state.language,
     mediaName: state.mediaOriginalName,

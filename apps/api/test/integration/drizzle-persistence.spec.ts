@@ -14,6 +14,7 @@ import {
   transcriptionSpeakers,
   transcriptions,
   user,
+  workerKeys,
 } from '../../src/shared/infrastructure/persistence/schema';
 import { DrizzleTranscriptionCatalog } from '../../src/transcription/infrastructure/persistence/drizzle-transcription-catalog';
 import { DrizzleTranscriptionQueue } from '../../src/transcription/infrastructure/persistence/drizzle-transcription-queue';
@@ -21,11 +22,13 @@ import { DrizzleTranscriptionRepository } from '../../src/transcription/infrastr
 import { MediaAsset } from '../../src/transcription/domain/media-asset';
 import { Transcription } from '../../src/transcription/domain/transcription';
 import { TranscriptionSettings } from '../../src/transcription/domain/transcription-settings';
+import { DrizzleWorkerKeyRepository } from '../../src/workers/infrastructure/persistence/drizzle-worker-key.repository';
 import {
   CONTRACT_OWNER_A,
   CONTRACT_OWNER_B,
   describeTranscriptionRepositoryContract,
 } from '../contracts/transcription-repository.contract';
+import { describeWorkerKeyRepositoryContract } from '../contracts/worker-key-repository.contract';
 
 // Même image que le compose, digest figé : la persistance doit être vérifiée contre
 // exactement le Postgres qui tourne en production, sans dérive entre deux exécutions.
@@ -110,6 +113,16 @@ describeTranscriptionRepositoryContract('drizzle sur Postgres', async () => {
   };
 });
 
+describeWorkerKeyRepositoryContract('drizzle sur Postgres', async () => {
+  const { connection } = await postgres();
+  return {
+    repository: new DrizzleWorkerKeyRepository(connection.db),
+    cleanup: async () => {
+      await connection.db.execute(sql`truncate table ${workerKeys} cascade`);
+    },
+  };
+});
+
 describe('réservation concurrente sur Postgres', () => {
   it("ne rend une transcription en attente qu'à un seul des workers en concurrence", async () => {
     const { connection } = await postgres();
@@ -140,6 +153,7 @@ describe('réservation concurrente sur Postgres', () => {
     const outcomes = await Promise.all(
       ['worker-a', 'worker-b', 'worker-c', 'worker-d'].map((workerId) =>
         queue.reserveNextPending({
+          claimant: { kind: 'service' },
           workerId,
           models: ['small'],
           reservationSeconds: 60,
