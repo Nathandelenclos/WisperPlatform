@@ -238,10 +238,16 @@ jobs:
           format: table
 
   # --- Worker image, and its publication ----------------------------------------------------
-  # Its own job for two reasons. It is the long pole — the build downloads torch and two ONNX
-  # models, several gigabytes — so it must not delay anything else. And it is the only image
-  # that gets published, which is a write: the permission stays scoped to this job rather than
-  # being handed to the whole workflow.
+  # Its own job for two reasons. It carries by far the most expensive work in this pipeline —
+  # measured on a real run: 84 s to build (torch plus two ONNX models) and 72 s to push three
+  # gigabytes to the registry, against 11 to 45 s for every other job. And it is the only image
+  # that gets published, which is a write: the permission stays scoped here rather than being
+  # handed to the whole workflow.
+  #
+  # It also skips itself when nothing that ends up in the image changed. That is where the time
+  # actually is: a commit touching only the API, the front or the documentation used to pay 2 min
+  # 30 for an image byte-identical to the one already published. `latest` keeps pointing at the
+  # last image built from the current worker sources, which is exactly what it should point at.
   worker-image:
     name: Image — worker
     runs-on: ubuntu-24.04
@@ -256,21 +262,60 @@ jobs:
       VCS_REF: ${{ github.sha }}
 
     steps:
+      # Full history: the change detection below diffs this commit against a base, which a
+      # depth-one checkout cannot see.
       - name: Check out the sources
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          fetch-depth: 0
           persist-credentials: false
 
-      # Same reason as the other image jobs: compose resolves the whole model before building.
+      # The image content depends on the worker sources, its Dockerfile, and the build arguments
+      # the compose file passes. Nothing else can change it, so nothing else justifies rebuilding
+      # three gigabytes.
+      - name: Detect changes to the worker image inputs
+        id: inputs
+        run: |
+          set -euo pipefail
+          case "${{ github.event_name }}" in
+            pull_request)
+              base="${{ github.event.pull_request.base.sha }}"
+              ;;
+            *)
+              # First push of a branch reports the null sha as `before`: treat it as "everything
+              # changed" rather than diffing against a commit that does not exist.
+              base="${{ github.event.before }}"
+              ;;
+          esac
+          if [ -z "${base}" ] || [ "${base}" = '0000000000000000000000000000000000000000' ] \
+            || ! git cat-file -e "${base}^{commit}" 2>/dev/null; then
+            echo "changed=true" >> "${GITHUB_OUTPUT}"
+            echo 'No usable base commit: building the image.'
+            exit 0
+          fi
+          if git diff --name-only "${base}" "${GITHUB_SHA}" \
+            -- worker docker-compose.yml .github/workflows/ci.yml | grep -q .; then
+            echo "changed=true" >> "${GITHUB_OUTPUT}"
+            echo 'Worker image inputs changed: building.'
+          else
+            echo "changed=false" >> "${GITHUB_OUTPUT}"
+            echo 'No change to the worker image inputs: skipping build, scan and publication.'
+          fi
+
+      # Everything below runs only when the image would actually differ. Same reason as the other
+      # image jobs for the placeholders: compose resolves the whole model before building.
       - name: Write compose placeholders
+        if: steps.inputs.outputs.changed == 'true'
         run: |
           cp .env.example .env
           printf 'POSTGRES_PASSWORD=ci-placeholder\nWORKER_SHARED_TOKEN=ci-placeholder\n' >> .env
 
       - name: Build the image
+        if: steps.inputs.outputs.changed == 'true'
         run: docker compose build worker
 
       - name: Prove the image starts
+        if: steps.inputs.outputs.changed == 'true'
         run: |
           set -euo pipefail
           test "$(docker run --rm --entrypoint id "wisper/worker:${IMAGE_TAG}" -u)" = '10001'
@@ -282,12 +327,14 @@ jobs:
             -c "import sherpa_onnx, os; [os.stat(p) for p in ('/opt/diarization/segmentation.onnx', '/opt/diarization/embedding.onnx')]"
 
       - name: Export the image
+        if: steps.inputs.outputs.changed == 'true'
         run: |
           set -euo pipefail
           mkdir -p "${RUNNER_TEMP}/images"
           docker save "wisper/worker:${IMAGE_TAG}" -o "${RUNNER_TEMP}/images/worker.tar"
 
       - name: Scan the image (Trivy)
+        if: steps.inputs.outputs.changed == 'true'
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           input: ${{ runner.temp }}/images/worker.tar
@@ -301,13 +348,14 @@ jobs:
       # The archive is several gigabytes and the runner disk also holds the build stages and the
       # Trivy database: it goes as soon as it has been scanned.
       - name: Drop the archive
+        if: steps.inputs.outputs.changed == 'true'
         run: rm -f "${RUNNER_TEMP}/images/worker.tar"
 
       # This is the image a volunteer runs in one command, without cloning anything or building
       # three gigabytes. Published after the scan, never before, and only from the default
       # branch: a `latest` built from a pull request would carry code nobody merged.
       - name: Publish the image to GHCR
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        if: steps.inputs.outputs.changed == 'true' && github.ref == 'refs/heads/main' && github.event_name == 'push'
         env:
           # GHCR refuses an uppercase letter in a reference, and the repository owner has one.
           REGISTRY_IMAGE: ghcr.io/${{ github.repository_owner }}/wisper-worker
