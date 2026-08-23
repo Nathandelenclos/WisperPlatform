@@ -76,13 +76,10 @@ A worker needs an API URL and a token. It downloads each media file with a short
 transcribes it, publishes the segments, and keeps nothing.
 
 ```bash
-git clone https://github.com/Nathandelenclos/WisperPlatform.git
-cd WisperPlatform
-docker build -t wisper-worker ./worker
 docker run --rm \
   -e WISPER_API_URL=https://transcription.example.org \
   -e WISPER_WORKER_TOKEN=<token> \
-  wisper-worker
+  ghcr.io/nathandelenclos/wisper-worker:latest
 ```
 
 There are two kinds of tokens: the instance's shared secret (`WORKER_SHARED_TOKEN`, for the
@@ -90,7 +87,7 @@ platform's own workers) and a **machine key** a user creates under "My machines"
 only claim its owner's work, and only what that owner explicitly placed on their machine: it grants
 strictly less than the shared secret, and it is revoked without restarting anything.
 
-The worker image is not published to a registry — it is built from this repository.
+The image is published by CI on every push to the default branch, after the vulnerability scan passes. It is ~3 GiB — mostly torch and the whisper model runtime — so the first pull takes a while. Build it yourself with `docker build -t wisper-worker ./worker` if you would rather not trust a registry.
 
 ## What it does not do
 

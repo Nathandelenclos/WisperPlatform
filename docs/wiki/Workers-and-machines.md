@@ -7,16 +7,19 @@ afterwards, and it never learns who the user is or what the file was called.
 ## Run one
 
 ```bash
-git clone https://github.com/Nathandelenclos/WisperPlatform.git
-cd WisperPlatform
-docker build -t wisper-worker ./worker
 docker run --rm \
   -e WISPER_API_URL=https://transcription.example.org \
   -e WISPER_WORKER_TOKEN=<token> \
-  wisper-worker
+  ghcr.io/nathandelenclos/wisper-worker:latest
 ```
 
-The image is built from the repository, not pulled from a registry.
+The image is published by CI on every push to the default branch, after its vulnerability scan
+passes, tagged `latest` and with the commit sha. It weighs ~3 GiB — torch and the whisper runtime —
+so the first pull takes a while; afterwards `docker run` starts in seconds. Building it yourself
+stays possible: `docker build -t wisper-worker ./worker`.
+
+Pin the sha tag rather than `latest` if you want a worker that does not change under you:
+`ghcr.io/nathandelenclos/wisper-worker:<commit-sha>`.
 
 Useful knobs, all documented in `.env.example`:
 
