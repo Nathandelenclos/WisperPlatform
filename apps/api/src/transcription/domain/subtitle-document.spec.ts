@@ -118,6 +118,17 @@ describe('renderSubtitles', () => {
     );
   });
 
+  it('échappe aussi le texte du segment, qui partage la ligne avec la balise', () => {
+    // Le texte est corrigeable par le propriétaire : une correction contenant `</v>` ne doit
+    // pas interagir avec le balisage qu'on vient d'introduire dans ce format.
+    const forged = Segment.transcribed(1, TimeRange.fromMilliseconds(0, 1_000), '</v>fin & <i>');
+
+    expect(renderSubtitles([forged], 'vtt', [])).toContain('&lt;/v&gt;fin &amp; &lt;i&gt;');
+    // SRT et texte brut ne portent aucun balisage : le texte y reste tel qu'il a été écrit.
+    expect(renderSubtitles([forged], 'srt', [])).toContain('</v>fin & <i>');
+    expect(renderSubtitles([forged], 'txt', [])).toBe('</v>fin & <i>\n');
+  });
+
   it('laisse sans préfixe un segment que la diarisation n\'a pas attribué', () => {
     const speakers = [Speaker.discovered(0).withName(SpeakerName.of('Marc'))];
 

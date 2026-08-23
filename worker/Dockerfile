@@ -59,7 +59,7 @@ RUN apt-get update \
     && mkdir -p /opt/diarization \
     && curl -fsSL --retry 3 -o /tmp/segmentation.tar.bz2 "${SEGMENTATION_URL}" \
     && echo "${SEGMENTATION_ARCHIVE_SHA256}  /tmp/segmentation.tar.bz2" | sha256sum -c - \
-    && python -c "import tarfile; tarfile.open('/tmp/segmentation.tar.bz2').extract('sherpa-onnx-pyannote-segmentation-3-0/model.onnx', '/tmp')" \
+    && python -c "import tarfile; tarfile.open('/tmp/segmentation.tar.bz2').extract('sherpa-onnx-pyannote-segmentation-3-0/model.onnx', '/tmp', filter='data')" \
     && mv /tmp/sherpa-onnx-pyannote-segmentation-3-0/model.onnx /opt/diarization/segmentation.onnx \
     && echo "${SEGMENTATION_MODEL_SHA256}  /opt/diarization/segmentation.onnx" | sha256sum -c - \
     && curl -fsSL --retry 3 -o /opt/diarization/embedding.onnx "${EMBEDDING_URL}" \

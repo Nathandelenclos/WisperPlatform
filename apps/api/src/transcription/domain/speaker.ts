@@ -28,8 +28,15 @@ export class SpeakerName {
         `le nom d'un locuteur ne dépasse pas ${MAX_NAME_LENGTH} caractères`,
       );
     }
-    if (/[\r\n]/.test(trimmed)) {
-      throw new InvalidSpeakerNameError('le nom d\'un locuteur tient sur une seule ligne');
+    // Une ligne est une unité de sens dans un fichier de sous-titres, mais `\r\n` n'est
+    // pas la seule façon de la couper : U+2028, U+2029 et NEL séparent des lignes chez
+    // beaucoup de lecteurs, un NUL tronque un libellé chez ceux écrits en C, et U+202E
+    // inverse l'affichage du reste de la ligne. Un nom de personne n'en contient jamais :
+    // on refuse les catégories entières plutôt que d'énumérer les nuisances.
+    if (/[\p{Cc}\p{Cf}\u2028\u2029]/u.test(trimmed)) {
+      throw new InvalidSpeakerNameError(
+        'le nom d\'un locuteur tient sur une seule ligne, sans caractère de contrôle',
+      );
     }
     return new SpeakerName(trimmed);
   }
@@ -40,6 +47,21 @@ export class SpeakerName {
    */
   static restored(value: string): SpeakerName {
     return new SpeakerName(value);
+  }
+}
+
+/**
+ * L'indice d'un locuteur : le rang que le clustering de la diarisation lui a donné.
+ *
+ * Domicile unique de l'invariant. Il était recopié dans chaque porte du domaine, donc
+ * chaque nouvelle porte le recopiait ou l'oubliait — `Segment.withSpeaker` l'avait oublié,
+ * et un indice négatif y passait jusqu'au rendu d'un export, qui levait au lieu de se rendre.
+ */
+export function assertSpeakerIndex(index: number): void {
+  if (!Number.isInteger(index) || index < 0) {
+    throw new InvalidSpeakerError(
+      `l'indice d'un locuteur est un entier positif ou nul, reçu ${index}`,
+    );
   }
 }
 
@@ -58,11 +80,7 @@ export class Speaker {
 
   /** Locuteur tel que la diarisation le livre : un indice, pas encore de nom. */
   static discovered(index: number): Speaker {
-    if (!Number.isInteger(index) || index < 0) {
-      throw new InvalidSpeakerError(
-        `l'indice d'un locuteur est un entier positif ou nul, reçu ${index}`,
-      );
-    }
+    assertSpeakerIndex(index);
     return new Speaker(index, null);
   }
 

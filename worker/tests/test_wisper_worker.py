@@ -539,6 +539,14 @@ class WorkerLoopTest(unittest.TestCase):
         self.assertEqual(2, len(self.stub.segments))
         self.assertEqual([], os.listdir(self.tmp_root))
 
+    def test_a_failed_whisper_run_never_gets_diarized(self):
+        # Diariser un run qui part en échec, c'est du calcul jeté et, sur un run déjà remis
+        # en file, une rafale de 422 : la passe doit rester derrière la réussite de whisper.
+        self.run_worker({"FAKE_WHISPER_FAIL": "1"}, diarizer=FakeDiarizer(TURNS))
+
+        self.assertEqual(["whisper exited with code 3"], self.stub.failed)
+        self.assertEqual([], self.stub.speakers)
+
     def test_logs_are_json_and_carry_no_secret_nor_transcript(self):
         self.run_worker()
 

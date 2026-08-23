@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { InvalidSegmentTextError } from './errors';
+import { InvalidSegmentTextError, InvalidSpeakerError } from './errors';
 import { Segment } from './segment';
 import { TimeRange } from './time-range';
 
@@ -70,5 +70,14 @@ describe('Segment', () => {
 
     expect(reassigned.speakerIndex).toBeNull();
     expect(original.speakerIndex).toBe(0);
+  });
+
+  it('refuse un indice de locuteur qui n\'est pas un entier positif ou nul', () => {
+    // Cette porte-là ne gardait rien : un indice invalide traversait le domaine et faisait
+    // lever le rendu d'un export, qui promet pourtant de se rendre en toutes circonstances.
+    const segment = Segment.transcribed(1, range, 'bonjour');
+
+    expect(() => segment.withSpeaker(-1)).toThrow(InvalidSpeakerError);
+    expect(() => segment.withSpeaker(1.5)).toThrow(InvalidSpeakerError);
   });
 });

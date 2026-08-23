@@ -14,7 +14,7 @@ describe('SpeakerTurn', () => {
   it('porte l\'intervalle et l\'indice du locuteur', () => {
     const speakerTurn = turn(0, 500, 3);
 
-    expect(speakerTurn.speaker).toBe(3);
+    expect(speakerTurn.speakerIndex).toBe(3);
     expect(speakerTurn.range.startMs).toBe(0);
     expect(speakerTurn.range.endMs).toBe(500);
   });

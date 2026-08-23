@@ -38,11 +38,14 @@ function labelOf(segment: Segment, labels: ReadonlyMap<number, string>): string 
 }
 
 /**
- * L'annotation d'une balise de voix WebVTT se termine au premier `>` : sans échappement, un
- * nom qui en contient casserait la structure du fichier.
+ * Le VTT porte du balisage — une balise de voix se termine au premier `>` — donc tout ce qui
+ * finit sur la ligne de charge utile s'échappe : le nom du locuteur comme le texte du
+ * segment. Échapper l'un et pas l'autre laissait un `</v>` frappé dans une correction
+ * interagir avec la structure du fichier. SRT et texte brut n'ont pas de balisage : rien à
+ * échapper là-bas.
  */
-function escapeVoiceName(name: string): string {
-  return name.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+function escapeVttText(value: string): string {
+  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 /** Rend les segments dans un format de sous-titres téléchargeable. */
@@ -74,7 +77,7 @@ export function renderSubtitles(
             return (
               `${formatTimestamp(segment.range.startMs, '.')} --> ` +
               `${formatTimestamp(segment.range.endMs, '.')}\n` +
-              `${label === null ? '' : `<v ${escapeVoiceName(label)}>`}${segment.text}\n`
+              `${label === null ? '' : `<v ${escapeVttText(label)}>`}${escapeVttText(segment.text)}\n`
             );
           })
           .join('\n')

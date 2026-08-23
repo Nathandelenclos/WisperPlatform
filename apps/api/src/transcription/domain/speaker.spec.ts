@@ -26,6 +26,17 @@ describe('SpeakerName', () => {
     expect(() => SpeakerName.of('Marc\r\nDupont')).toThrow(InvalidSpeakerNameError);
   });
 
+  it('refuse les coupures de ligne et les caractères de contrôle que `\\n` ne couvre pas', () => {
+    // Chacun est une nuisance réelle en aval : U+2028 et NEL coupent la ligne chez beaucoup
+    // de lecteurs de sous-titres, le NUL tronque le libellé chez ceux écrits en C, et
+    // U+202E inverse l'affichage du reste de la ligne.
+    for (const forged of ['Marc\u2028Dupont', 'Marc\u0085Dupont', 'Marc\0', '\u202EMarc']) {
+      expect(() => SpeakerName.of(forged)).toThrow(InvalidSpeakerNameError);
+    }
+    // Un vrai nom, lui, passe : accents, apostrophe, trait d'union.
+    expect(SpeakerName.of('Marc-André O\u2019Brien').value).toBe('Marc-André O\u2019Brien');
+  });
+
   it('relit un nom stocké sans le revalider', () => {
     // Un nom écrit sous une règle plus large ne doit pas rendre son aggregate irrécupérable.
     expect(SpeakerName.restored('a'.repeat(80)).value).toHaveLength(80);

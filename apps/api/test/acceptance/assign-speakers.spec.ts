@@ -100,6 +100,21 @@ describe('Scénario : le worker publie les tours de parole', () => {
 
     const second = await platform.getTranscription.execute({ transcriptionId, ownerId: OWNER });
     expect(second).toEqual(first);
+    // Le rejeu republie : ce qui rend l'opération sûre n'est pas le silence, c'est que
+    // l'événement porte l'état complet et non un delta. Un abonné qui l'applique deux fois
+    // obtient donc la même vue. C'est ce contrat-là qui est épinglé — un événement qui
+    // deviendrait incrémental casserait le client à chaque nouvelle tentative du worker.
+    const republished = platform.publisher.published.filter(
+      (event) => event.name === 'transcription.speakers-assigned',
+    );
+    expect(republished).toHaveLength(1);
+    expect(republished[0]).toMatchObject({
+      speakers: [
+        { index: 0, name: null },
+        { index: 1, name: null },
+      ],
+      segments: second.segments,
+    });
   });
 
   it('refuse une publication qui vient d\'une tentative remplacée', async () => {

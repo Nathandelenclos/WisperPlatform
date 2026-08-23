@@ -43,6 +43,14 @@ MIN_DURATION_OFF = 0.5
 FFMPEG_BIN = "ffmpeg"
 # Décoder n'est pas transcrire : au-delà, ffmpeg est bloqué, pas lent.
 DECODE_TIMEOUT_SECONDS = 30 * 60
+# Plafond de durée décodée. La passe matérialise tout le signal en mémoire — environ
+# 10 octets par échantillon au pic, soit ~576 Mio par heure d'audio. Le noyau tue un
+# conteneur qui dépasse sa borne mémoire par SIGKILL, que rien ne rattrape en Python : ni
+# le garde de la passe, ni celui du job. Un transcript déjà produit serait perdu, alors
+# qu'il aboutissait avant cette passe. Le plafond est donc calé sur le plus PETIT worker de
+# la flotte (3 Gio pour le worker GPU), pas sur le plus grand, et un dépassement devient un
+# échec rattrapable : la diarisation est sautée, la transcription se conclut.
+MAX_DECODED_SECONDS = 4 * 60 * 60
 
 REQUIRED_MODULES = ("sherpa_onnx", "numpy")
 
@@ -80,7 +88,7 @@ class DiarizationConfig:
                 environ, "WISPER_DIARIZATION_EMBEDDING_MODEL", DEFAULT_EMBEDDING_MODEL
             ),
             threads=_positive_int(environ, "WISPER_DIARIZATION_THREADS", DEFAULT_THREADS),
-            max_speakers=_positive_int(
+            max_speakers=_speaker_count(
                 environ, "WISPER_DIARIZATION_MAX_SPEAKERS", AUTOMATIC_SPEAKERS
             ),
             cluster_threshold=_positive_float(
@@ -111,6 +119,29 @@ def _positive_int(environ, name, default):
         raise Unavailable("{} doit être un entier".format(name)) from None
     if value < 1:
         raise Unavailable("{} doit être supérieur ou égal à 1".format(name))
+    return value
+
+
+def _speaker_count(environ, name, default):
+    """Un nombre de locuteurs : un entier >= 1, ou la sentinelle automatique.
+
+    `AUTOMATIC_SPEAKERS` est la valeur que ce module désigne comme « laisse le clustering
+    décider » : la refuser éteindrait toute la diarisation chez l'exploitant qui l'écrit
+    précisément pour rendre ce choix explicite, et une ligne info serait le seul indice.
+    """
+    raw = _raw(environ, name)
+    if raw is None:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        raise Unavailable("{} doit être un entier".format(name)) from None
+    if value != AUTOMATIC_SPEAKERS and value < 1:
+        raise Unavailable(
+            "{} doit valoir {} (automatique) ou un entier supérieur ou égal à 1".format(
+                name, AUTOMATIC_SPEAKERS
+            )
+        )
     return value
 
 
@@ -203,11 +234,17 @@ def _as_float32(frames):
 
     numpy vit ici et nulle part ailleurs : c'est une dépendance de sherpa-onnx, donc elle
     est présente partout où le moteur tourne — et absente des tests, qui n'ont pas de
-    moteur. `frombuffer` ne copie pas ; `astype` produit l'unique copie nécessaire.
+    moteur.
+
+    `frombuffer` ne copie pas, `astype` produit l'unique copie, et la normalisation se fait
+    EN PLACE : écrire `astype(...) / 32768.0` allouerait un second tableau flottant pendant
+    que le premier vit encore, soit un pic de 10 octets par échantillon au lieu de 6.
     """
     import numpy
 
-    return numpy.frombuffer(frames, dtype="<i2").astype(numpy.float32) / 32768.0
+    samples = numpy.frombuffer(frames, dtype="<i2").astype(numpy.float32)
+    samples /= 32768.0
+    return samples
 
 
 def build_engine(config):
@@ -275,6 +312,10 @@ def decode_pcm(media_path, workdir, run=subprocess.run):
                 "-i",
                 media_path,
                 "-vn",
+                # Ceinture : ffmpeg s'arrête au plafond, le WAV ne peut pas être plus long
+                # que ce que la mémoire du worker tient.
+                "-t",
+                str(MAX_DECODED_SECONDS),
                 "-ac",
                 "1",
                 "-ar",
@@ -312,5 +353,15 @@ def read_wav(path):
         if source.getsampwidth() != 2 or source.getnchannels() != 1:
             raise DiarizationError("le décodage n'a pas produit du PCM 16 bits mono")
         sample_rate = source.getframerate()
-        frames = source.readframes(source.getnframes())
+        frame_count = source.getnframes()
+        # Bretelles : ffmpeg a peut-être ignoré `-t`, ou le fichier ne vient pas de lui.
+        # Le refus arrive AVANT d'allouer, seul moment où il peut encore être un échec
+        # rattrapable plutôt qu'un SIGKILL du noyau.
+        if frame_count > MAX_DECODED_SECONDS * max(1, sample_rate):
+            raise DiarizationError(
+                "média trop long pour être diarisé : {} s décodées, plafond {} s".format(
+                    frame_count // max(1, sample_rate), MAX_DECODED_SECONDS
+                )
+            )
+        frames = source.readframes(frame_count)
     return frames, sample_rate

@@ -67,6 +67,17 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(3, config.max_speakers)
         self.assertEqual(0.7, config.cluster_threshold)
 
+    def test_la_sentinelle_automatique_est_une_valeur_acceptable(self):
+        # -1 est ce que le module désigne comme « laisse le clustering décider » : l'écrire
+        # explicitement dans son .env ne doit pas éteindre la diarisation en silence.
+        diarizer = load(
+            dict(MODELS, WISPER_DIARIZATION_MAX_SPEAKERS="-1"),
+            exists=present,
+            find_module=installed,
+        )
+
+        self.assertIsNotNone(diarizer)
+
     def test_une_valeur_illisible_rend_la_capacite_absente_sans_exception(self):
         for variable, value in (
             ("WISPER_DIARIZATION_THREADS", "deux"),
@@ -222,6 +233,29 @@ class DecodeTest(unittest.TestCase):
         self.assertEqual(str(SAMPLE_RATE), command[command.index("-ar") + 1])
         self.assertEqual(self.media, command[command.index("-i") + 1])
         self.assertEqual("pcm_s16le", command[command.index("-c:a") + 1])
+
+    def test_la_commande_borne_la_duree_decodee(self):
+        diarization.decode_pcm(self.media, self.workdir, run=self._ffmpeg())
+
+        command = self.commands[0]
+        self.assertEqual(str(diarization.MAX_DECODED_SECONDS), command[command.index("-t") + 1])
+
+    def test_un_wav_plus_long_que_le_plafond_est_refuse_avant_toute_allocation(self):
+        # Ce refus est ce qui sépare un échec rattrapable — la diarisation est sautée, le
+        # transcript se conclut — d'un SIGKILL du noyau, que rien ne rattrape.
+        long_wav = os.path.join(self.workdir, "long.wav")
+        with wave.open(long_wav, "wb") as sink:
+            sink.setnchannels(1)
+            sink.setsampwidth(2)
+            # Une seconde de trames, mais une fréquence déclarée d'un échantillon par
+            # seconde : le fichier prétend durer plus que le plafond sans peser lourd.
+            sink.setframerate(1)
+            sink.writeframes(b"\x00\x00" * (diarization.MAX_DECODED_SECONDS + 1))
+
+        with self.assertRaises(DiarizationError) as raised:
+            diarization.read_wav(long_wav)
+
+        self.assertIn(str(diarization.MAX_DECODED_SECONDS), str(raised.exception))
 
     def test_le_fichier_temporaire_est_efface_meme_en_cas_d_echec(self):
         def explode(command, **_kwargs):

@@ -5,9 +5,9 @@ import { correlationStorage } from '../../../shared/infrastructure/logging/corre
 import type { Logger } from '../../application/ports/logger';
 
 /**
- * Champs dont la valeur ne doit jamais atteindre un fichier de log, quelle que soit la
- * profondeur à laquelle ils apparaissent : secrets, jetons, et données personnelles
- * (l'email d'un utilisateur et le nom d'origine de son fichier en font partie).
+ * Champs dont la valeur ne doit jamais atteindre un fichier de log : secrets, jetons, et
+ * données personnelles — l'email d'un utilisateur, le nom d'origine de son fichier, et le
+ * nom qu'il a donné à un locuteur en font partie.
  */
 export const REDACTED_FIELDS: readonly string[] = [
   'password',
@@ -20,11 +20,24 @@ export const REDACTED_FIELDS: readonly string[] = [
   'originalName',
   'mediaName',
   'mediaOriginalName',
+  'speakerName',
   'filename',
   'ipAddress',
 ];
 
-const REDACTION_PATHS = REDACTED_FIELDS.flatMap((field) => [field, `*.${field}`]);
+/**
+ * Profondeurs couvertes : la racine, un niveau, deux niveaux, et les éléments d'un tableau.
+ * Le commentaire précédent promettait « quelle que soit la profondeur » — pino ne sait pas
+ * faire, ses chemins ne sont pas récursifs. Mieux vaut une portée dite exactement qu'une
+ * garantie à laquelle on se fie à tort : les structures du domaine tiennent dans ces quatre
+ * formes, un champ sensible plus profond ne serait PAS caviardé.
+ */
+const REDACTION_PATHS = REDACTED_FIELDS.flatMap((field) => [
+  field,
+  `*.${field}`,
+  `*.*.${field}`,
+  `*[*].${field}`,
+]);
 
 /**
  * Adaptateur du port `Logger` : une ligne JSON par message, niveaux respectés,

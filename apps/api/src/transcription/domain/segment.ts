@@ -1,4 +1,5 @@
 import { InvalidSegmentTextError } from './errors';
+import { assertSpeakerIndex } from './speaker';
 import { TimeRange } from './time-range';
 
 /** Forme sérialisable d'un segment, telle que persistée et telle qu'exposée dans les vues. */
@@ -60,6 +61,7 @@ export class Segment {
 
   /** Attribution de la passe de diarisation ; `null` quand aucun tour ne recouvre le segment. */
   withSpeaker(speakerIndex: number | null): Segment {
+    if (speakerIndex !== null) assertSpeakerIndex(speakerIndex);
     return new Segment(this.ordinal, this.range, this.text, this.corrected, speakerIndex);
   }
 

@@ -16,6 +16,16 @@ const MAX_SEGMENTS_PER_BATCH = 1_000;
  */
 const MAX_SPEAKER_TURNS = 10_000;
 
+/**
+ * Plafond d'horodatage : bien au-delà de tout média que la plateforme accepte (24 h), et en
+ * deçà de la précision entière du flottant. Sans lui, `endMs` était le seul champ de la
+ * frontière worker sans borne supérieure, ce que le préambule de ce fichier promet pourtant.
+ */
+const MAX_TIMESTAMP_MS = 24 * 60 * 60 * 1_000;
+
+/** Un segment de parole, pas un roman collé dans un champ de texte. */
+const MAX_SEGMENT_TEXT_LENGTH = 10_000;
+
 export const runIdSchema = z.uuid();
 
 export const mediaTokenSchema = z.string().min(1).max(1_024);
@@ -31,9 +41,9 @@ export const appendSegmentsBodySchema = z.object({
   segments: z
     .array(
       z.object({
-        startMs: z.number().int(),
-        endMs: z.number().int(),
-        text: z.string(),
+        startMs: z.number().int().min(0).max(MAX_TIMESTAMP_MS),
+        endMs: z.number().int().min(0).max(MAX_TIMESTAMP_MS),
+        text: z.string().max(MAX_SEGMENT_TEXT_LENGTH),
       }),
     )
     .max(MAX_SEGMENTS_PER_BATCH),
@@ -53,8 +63,8 @@ export const assignSpeakersBodySchema = z.object({
   turns: z
     .array(
       z.object({
-        startMs: z.number().int().min(0),
-        endMs: z.number().int(),
+        startMs: z.number().int().min(0).max(MAX_TIMESTAMP_MS),
+        endMs: z.number().int().min(0).max(MAX_TIMESTAMP_MS),
         speaker: z.number().int().min(0),
       }),
     )

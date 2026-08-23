@@ -147,25 +147,36 @@ export class DrizzleTranscriptionRepository implements TranscriptionRepository {
     });
   }
 
+  /**
+   * Trois tables pour un aggregate : la lecture est transactionnelle comme l'écriture.
+   * Trois `select` indépendants pouvaient rendre un aggregate déchiré — un en-tête d'une
+   * version, des segments et des locuteurs d'une autre — si une écriture commitait entre
+   * deux d'entre eux. Le verrou optimiste rattrapait le cas sur un chemin d'écriture ;
+   * une lecture seule, elle, servait la vue mélangée au propriétaire sans rien détecter.
+   */
   async findById(id: string): Promise<Transcription | null> {
-    const [row] = await this.db.select().from(transcriptions).where(eq(transcriptions.id, id));
-    if (!row) return null;
+    const loaded = await this.db.transaction(async (tx) => {
+      const [row] = await tx.select().from(transcriptions).where(eq(transcriptions.id, id));
+      if (!row) return null;
 
-    const segmentRows = await this.db
-      .select()
-      .from(transcriptionSegments)
-      .where(eq(transcriptionSegments.transcriptionId, id))
-      .orderBy(asc(transcriptionSegments.ordinal));
+      const segmentRows = await tx
+        .select()
+        .from(transcriptionSegments)
+        .where(eq(transcriptionSegments.transcriptionId, id))
+        .orderBy(asc(transcriptionSegments.ordinal));
 
-    const speakerRows = await this.db
-      .select()
-      .from(transcriptionSpeakers)
-      .where(eq(transcriptionSpeakers.transcriptionId, id))
-      .orderBy(asc(transcriptionSpeakers.index));
+      const speakerRows = await tx
+        .select()
+        .from(transcriptionSpeakers)
+        .where(eq(transcriptionSpeakers.transcriptionId, id))
+        .orderBy(asc(transcriptionSpeakers.index));
 
-    const transcription = Transcription.restore(toState(row, segmentRows, speakerRows));
-    this.loadedVersions.set(transcription, row.version);
-    return transcription;
+      return { row, transcription: Transcription.restore(toState(row, segmentRows, speakerRows)) };
+    });
+    if (loaded === null) return null;
+
+    this.loadedVersions.set(loaded.transcription, loaded.row.version);
+    return loaded.transcription;
   }
 }
 

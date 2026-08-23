@@ -1,4 +1,4 @@
-import { InvalidSpeakerError } from './errors';
+import { assertSpeakerIndex } from './speaker';
 import { TimeRange } from './time-range';
 
 /**
@@ -11,18 +11,14 @@ import { TimeRange } from './time-range';
 export class SpeakerTurn {
   private constructor(
     readonly range: TimeRange,
-    readonly speaker: number,
+    readonly speakerIndex: number,
   ) {
     Object.freeze(this);
   }
 
-  static of(range: TimeRange, speaker: number): SpeakerTurn {
-    if (!Number.isInteger(speaker) || speaker < 0) {
-      throw new InvalidSpeakerError(
-        `l'indice d'un locuteur est un entier positif ou nul, reçu ${speaker}`,
-      );
-    }
-    return new SpeakerTurn(range, speaker);
+  static of(range: TimeRange, speakerIndex: number): SpeakerTurn {
+    assertSpeakerIndex(speakerIndex);
+    return new SpeakerTurn(range, speakerIndex);
   }
 }
 
@@ -36,11 +32,18 @@ export class SpeakerTurn {
  * par le plus petit indice — arbitraire, mais fixé. Aucun recouvrement : pas de locuteur.
  */
 export function dominantSpeaker(turns: readonly SpeakerTurn[], range: TimeRange): number | null {
+  // ponytail: attribution quadratique — chaque segment croise tous les tours. Plafond
+  // connu : 10 000 tours (borne du schéma HTTP) fois le nombre de segments, calculé dans
+  // un seul tick. Tenable aux volumes réels d'une réunion ; au-delà, trier les deux suites
+  // par début et les balayer conjointement rend le même résultat en O(n+m).
   const overlapBySpeaker = new Map<number, number>();
   for (const turn of turns) {
     const overlapMs = turn.range.overlapMsWith(range);
     if (overlapMs === 0) continue;
-    overlapBySpeaker.set(turn.speaker, (overlapBySpeaker.get(turn.speaker) ?? 0) + overlapMs);
+    overlapBySpeaker.set(
+      turn.speakerIndex,
+      (overlapBySpeaker.get(turn.speakerIndex) ?? 0) + overlapMs,
+    );
   }
 
   let dominant: number | null = null;
@@ -60,5 +63,5 @@ export function dominantSpeaker(turns: readonly SpeakerTurn[], range: TimeRange)
 
 /** Les locuteurs que la diarisation a découverts, indices distincts triés par ordre croissant. */
 export function distinctSpeakers(turns: readonly SpeakerTurn[]): number[] {
-  return [...new Set(turns.map((turn) => turn.speaker))].sort((a, b) => a - b);
+  return [...new Set(turns.map((turn) => turn.speakerIndex))].sort((a, b) => a - b);
 }
