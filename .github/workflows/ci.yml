@@ -1,11 +1,15 @@
-# Intégration continue WisperPlatform.
+# WisperPlatform continuous integration.
 #
-# Un seul job, ordonné du moins cher au plus cher : chaque étape n'est atteinte que si les
-# précédentes passent. Aucune étape n'est « autorisée à échouer » : tout ce qui est présenté
-# comme une barrière bloque réellement la fusion.
+# Four kinds of work, run in parallel because they need nothing from each other: repository
+# guards, code checks, integration tests, and one job per image. Before this split everything
+# ran in a single job, so a documentation typo waited behind a torch download; now the wall
+# clock is the slowest job, not the sum of all of them.
 #
-# Les images sont construites UNE seule fois (`docker compose build`) puis réutilisées telles
-# quelles par le scan et par les vérifications de démarrage : on scanne ce qu'on livre.
+# Every job here is a gate: none is allowed to fail, none carries `continue-on-error`. A check
+# that is tolerated when red is not a check.
+#
+# Each image is built exactly once, in the job that scans it — and, for the worker, publishes
+# it. Rebuilding between the scan and the push would mean shipping something nobody scanned.
 
 name: CI
 
@@ -14,62 +18,51 @@ on:
     branches: [main]
   pull_request:
 
-# Une exécution obsolète de la même référence est annulée : on ne paie pas deux fois le même
-# commit intermédiaire. Exception sur la branche par défaut : deux fusions rapprochées y
-# partagent la référence, et annuler la première laisserait un commit livrable non vérifié.
+# A stale run of the same ref is cancelled: we do not pay twice for the same intermediate
+# commit. Not on the default branch, where two close merges share the ref and cancelling the
+# first would leave a shippable commit unverified.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
-# Droits minimaux : le seul écrit possible est la publication de l'image worker sur GHCR, et
-# seulement depuis la branche par défaut (voir l'étape « Publier »). Rien n'écrit dans le dépôt.
+# Least privilege by default. The single job that needs to write anything — publishing the
+# worker image — asks for `packages: write` for itself and nothing else.
 permissions:
   contents: read
-  packages: write
 
 jobs:
-  verify:
-    name: Vérifier le commit
-    # Image de runner épinglée : le pipeline dépend de `docker`, `git` et `python3` fournis par
-    # le socle, qui dériveraient silencieusement derrière `ubuntu-latest`.
+  # --- Repository guards ---------------------------------------------------------------------
+  # The cheapest barriers, and the most urgent: a leaked credential is revoked in seconds, not
+  # after an hour of builds. They need the repository and nothing else — no Node, no pnpm.
+  guards:
+    name: Repository guards
     runs-on: ubuntu-24.04
-    # Le build de l'image worker télécharge torch (plusieurs Gio) : c'est le poste le plus long
-    # du pipeline, et la raison pour laquelle ce délai est large.
-    timeout-minutes: 60
-
-    env:
-      # Tag immuable dérivé du commit : l'image scannée est traçable jusqu'à sa source.
-      IMAGE_TAG: ${{ github.sha }}
-      VCS_REF: ${{ github.sha }}
+    timeout-minutes: 10
 
     steps:
-      # L'historique complet est requis par le scan de secrets ; aucun identifiant n'est
-      # laissé dans le checkout, aucune étape ne pousse quoi que ce soit.
-      - name: Récupérer les sources
+      # Full history is required by the secret scan. No credentials are left in the checkout
+      # and no step here pushes anything.
+      - name: Check out the sources
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
 
-      # Barrière la moins chère du pipeline : elle n'a besoin que du dépôt. `.env` n'est jamais
-      # commité, la CI en fabrique un à partir de l'exemple avec des valeurs de remplacement
-      # non secrètes, uniquement pour résoudre puis valider le modèle compose. L'exemple ne
-      # porte AUCUNE valeur de secret : les deux variables interpolées par le compose
-      # (`${...:?}`) sont donc fournies ici, et nulle part ailleurs.
-      - name: Vérifier la configuration du compose
+      # `.env` is never committed. CI builds one from the example with non-secret placeholders,
+      # only to resolve and validate the compose model. The example carries no secret value, so
+      # the two variables the compose file interpolates with `${...:?}` are supplied here and
+      # nowhere else.
+      - name: Validate the compose model
         run: |
           cp .env.example .env
           printf 'POSTGRES_PASSWORD=ci-placeholder\nWORKER_SHARED_TOKEN=ci-placeholder\n' >> .env
           docker compose config --quiet
 
-      # Deuxième barrière la moins chère, et la plus urgente : un identifiant divulgué se révoque
-      # en secondes, pas après une heure de builds. Elle ne dépend que du checkout en profondeur
-      # complète et d'un `docker pull` — `gitleaks git` parcourt l'historique, pas l'arbre de
-      # travail, donc le `.env` fabriqué à l'étape précédente ne la perturbe pas. Scan sur tout
-      # l'historique, pas seulement sur le diff : un secret retiré au commit suivant reste
-      # lisible dans les objets git. Image épinglée par digest, exécutée sous l'identité du
-      # runner, dépôt monté en lecture seule, valeurs masquées en sortie.
-      - name: Scan de secrets (Gitleaks)
+      # The whole history, not just the diff: a secret removed in the next commit stays readable
+      # in the git objects. `gitleaks git` walks history rather than the working tree, so the
+      # `.env` written above does not disturb it. Image pinned by digest, run as the runner's own
+      # user, repository mounted read-only, values redacted in the output.
+      - name: Scan for secrets (Gitleaks)
         run: |
           docker run --rm \
             --user "$(id -u):$(id -g)" \
@@ -77,92 +70,166 @@ jobs:
             zricethezav/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f \
             git /repo --redact --no-banner --exit-code 1
 
-      - name: Installer pnpm
-        # Version de pnpm lue dans le champ `packageManager` de la racine.
+  # --- Code checks --------------------------------------------------------------------------
+  # Types, the dependency rule, and everything that runs on in-memory doubles. No container,
+  # no I/O: this is the job that should answer in a couple of minutes.
+  code:
+    name: Types and tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out the sources
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install pnpm
+        # The pnpm version comes from the root `packageManager` field.
         uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
 
-      - name: Installer Node
+      - name: Install Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '24'
-          # Clé de cache dérivée du lockfile, jamais de la branche : le cache accélère, il ne
-          # corrige rien — un pipeline à cache vide doit passer à l'identique.
+          # Cache key derived from the lockfile, never from the branch: a cache speeds things
+          # up, it never fixes anything — a run with a cold cache must pass identically.
           cache: pnpm
 
-      - name: Installer les dépendances
+      - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Typage
+      - name: Typecheck
         run: pnpm typecheck
 
-      - name: Règle de dépendance (dependency-cruiser)
+      - name: Dependency rule (dependency-cruiser)
         run: pnpm lint:arch
 
-      - name: Tests unitaires et d'acceptation
-        # Doubles en mémoire uniquement : aucune I/O, aucun conteneur.
+      - name: Unit and acceptance tests
+        # In-memory doubles only: no I/O, no container.
         run: pnpm --filter @wisper/api exec vitest run --exclude 'test/integration/**'
 
-      - name: Tests du worker
-        # Bibliothèque standard uniquement : quelques secondes, aucune I/O.
+      - name: Worker tests
+        # Standard library only: a few seconds, no I/O, no third-party package installed.
         run: python3 -m unittest discover -s worker/tests -t .
 
-      - name: Tests d'intégration
-        # Postgres jetable monté par testcontainers : état initial connu, détruit à la fin,
-        # jamais de base partagée entre exécutions.
+  # --- Integration tests ---------------------------------------------------------------------
+  # Separate job because it is the only one that needs a real database, and because it has no
+  # reason to wait behind an image build.
+  integration:
+    name: Integration tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out the sources
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+
+      - name: Install Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Integration tests
+        # A throwaway Postgres started by testcontainers: known initial state, destroyed at the
+        # end, never a database shared between runs.
         run: pnpm --filter @wisper/api exec vitest run test/integration
 
-      - name: Construire les images (une seule fois)
-        run: docker compose build
+  # --- Application images -------------------------------------------------------------------
+  # API and web, in parallel, one job each: build once, prove it starts, scan it. Neither is
+  # published — whoever deploys the platform builds them from source.
+  #
+  # Threshold decided in advance: HIGH and CRITICAL with a fix available fail the pipeline.
+  # Vulnerabilities with no available fix are not blocking, otherwise the gate would be red
+  # permanently and therefore switched off; those are handled by periodically rebuilding the
+  # images on an updated base.
+  images:
+    name: Image — ${{ matrix.name }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
 
-      # Démarrage réellement exercé : identité non root effective, artefact présent à l'endroit
-      # attendu par la commande de l'image, et dépendances de production résolvables.
-      - name: Vérifier le démarrage des images
+    strategy:
+      # One failing image must not hide the state of the other.
+      fail-fast: false
+      matrix:
+        include:
+          - name: api
+            service: wisper-api
+            image: wisper/api
+            # Effective identity, compiled entry point present, and production dependencies
+            # resolvable. The shipped `node_modules` is stripped of everything non-production:
+            # `better-auth` is named explicitly because it is the package that declares the
+            # build tooling behind the esbuild binaries as optional peers, and it has to resolve
+            # without them.
+            expected_uid: '1000'
+            boot: |
+              docker run --rm "${IMAGE}" \
+                node -e "require('node:fs').accessSync('dist/main.js'); require('@nestjs/core'); require('drizzle-orm'); require('pg'); require('better-auth');"
+              docker run --rm "${IMAGE}" \
+                node --check dist/shared/infrastructure/persistence/migrate.js
+          - name: web
+            service: web
+            image: wisper/web
+            expected_uid: '101'
+            # nginx validates its own configuration, proxy and SPA fallback included.
+            boot: |
+              docker run --rm "${IMAGE}" nginx -t -c /etc/nginx/nginx.conf
+
+    env:
+      # Immutable tag derived from the commit: the image that gets scanned is traceable to its
+      # source.
+      IMAGE_TAG: ${{ github.sha }}
+      VCS_REF: ${{ github.sha }}
+
+    steps:
+      - name: Check out the sources
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # `docker compose build` resolves the whole model, including the `${...:?}` variables of
+      # services it is not building: without them it refuses before reaching the Dockerfile.
+      # Non-secret placeholders, used to resolve the model and nothing else.
+      - name: Write compose placeholders
+        run: |
+          cp .env.example .env
+          printf 'POSTGRES_PASSWORD=ci-placeholder\nWORKER_SHARED_TOKEN=ci-placeholder\n' >> .env
+
+      - name: Build the image
+        run: docker compose build ${{ matrix.service }}
+
+      - name: Prove the image starts
+        env:
+          IMAGE: ${{ matrix.image }}:${{ github.sha }}
+          EXPECTED_UID: ${{ matrix.expected_uid }}
         run: |
           set -euo pipefail
+          test "$(docker run --rm --entrypoint id "${IMAGE}" -u)" = "${EXPECTED_UID}"
+          ${{ matrix.boot }}
 
-          test "$(docker run --rm --entrypoint id "wisper/api:${IMAGE_TAG}" -u)" = '1000'
-          test "$(docker run --rm --entrypoint id "wisper/web:${IMAGE_TAG}" -u)" = '101'
-          test "$(docker run --rm --entrypoint id "wisper/worker:${IMAGE_TAG}" -u)" = '10001'
-
-          # L'API trouve son point d'entrée compilé et ses dépendances de production. Le
-          # `node_modules` livré est amputé de tout ce qui n'est pas production : `better-auth`
-          # est cité explicitement parce que c'est lui qui déclare en pairs optionnels les
-          # outils de build à l'origine des binaires esbuild, et qu'il doit résoudre sans eux.
-          docker run --rm "wisper/api:${IMAGE_TAG}" \
-            node -e "require('node:fs').accessSync('dist/main.js'); require('@nestjs/core'); require('drizzle-orm'); require('pg'); require('better-auth');"
-
-          # Le migrateur est bien dans l'image, à l'endroit qu'appelle le service `migrate`.
-          docker run --rm "wisper/api:${IMAGE_TAG}" \
-            node --check dist/shared/infrastructure/persistence/migrate.js
-
-          # Le worker dispose d'un whisper fonctionnel (torch importé) et de ffmpeg.
-          docker run --rm "wisper/worker:${IMAGE_TAG}" whisper --help > /dev/null
-          docker run --rm "wisper/worker:${IMAGE_TAG}" ffmpeg -version > /dev/null
-
-          # nginx valide sa configuration, proxy et repli SPA compris.
-          docker run --rm "wisper/web:${IMAGE_TAG}" nginx -t -c /etc/nginx/nginx.conf
-
-      # Chaque image est exportée en archive : Trivy la scanne sans qu'on lui monte le socket
-      # Docker, qui lui donnerait un accès root à l'hôte. Les archives sont produites une à une
-      # et supprimées après leur scan : celle du worker pèse à elle seule ~3 Gio, et le disque
-      # du runner héberge déjà les étages de build, le magasin pnpm et la base Trivy.
-      #
-      # Seuil décidé à l'avance : HIGH et CRITICAL corrigeables en amont font échouer le
-      # pipeline. Les vulnérabilités sans correctif disponible ne sont pas bloquantes — sinon la
-      # barrière serait rouge en permanence et donc désactivée ; elles se traitent par le
-      # rebuild périodique des images sur une base à jour.
-      - name: Exporter l'image API
+      # The image is exported to an archive so Trivy scans it without being handed the Docker
+      # socket, which would give it root on the host.
+      - name: Export the image
         run: |
           set -euo pipefail
           mkdir -p "${RUNNER_TEMP}/images"
-          docker save "wisper/api:${IMAGE_TAG}" -o "${RUNNER_TEMP}/images/api.tar"
+          docker save "${{ matrix.image }}:${{ github.sha }}" -o "${RUNNER_TEMP}/images/image.tar"
 
-      - name: Scan Trivy — image API
+      - name: Scan the image (Trivy)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
-          input: ${{ runner.temp }}/images/api.tar
-          # Hors de l'arbre de travail : la base de vulnérabilités n'a rien à faire dans le
-          # dépôt, ni dans le contexte d'un build ultérieur.
+          input: ${{ runner.temp }}/images/image.tar
+          # Outside the working tree: the vulnerability database has no business in the
+          # repository, nor in the context of a later build.
           cache-dir: ${{ runner.temp }}/trivy-cache
           severity: HIGH,CRITICAL
           ignore-unfixed: true
@@ -170,30 +237,57 @@ jobs:
           exit-code: '1'
           format: table
 
-      - name: Exporter l'image web
-        run: |
-          set -euo pipefail
-          rm -f "${RUNNER_TEMP}/images/api.tar"
-          docker save "wisper/web:${IMAGE_TAG}" -o "${RUNNER_TEMP}/images/web.tar"
+  # --- Worker image, and its publication ----------------------------------------------------
+  # Its own job for two reasons. It is the long pole — the build downloads torch and two ONNX
+  # models, several gigabytes — so it must not delay anything else. And it is the only image
+  # that gets published, which is a write: the permission stays scoped to this job rather than
+  # being handed to the whole workflow.
+  worker-image:
+    name: Image — worker
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
 
-      - name: Scan Trivy — image web
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+    permissions:
+      contents: read
+      packages: write
+
+    env:
+      IMAGE_TAG: ${{ github.sha }}
+      VCS_REF: ${{ github.sha }}
+
+    steps:
+      - name: Check out the sources
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          input: ${{ runner.temp }}/images/web.tar
-          cache-dir: ${{ runner.temp }}/trivy-cache
-          severity: HIGH,CRITICAL
-          ignore-unfixed: true
-          vuln-type: os,library
-          exit-code: '1'
-          format: table
+          persist-credentials: false
 
-      - name: Exporter l'image worker
+      # Same reason as the other image jobs: compose resolves the whole model before building.
+      - name: Write compose placeholders
+        run: |
+          cp .env.example .env
+          printf 'POSTGRES_PASSWORD=ci-placeholder\nWORKER_SHARED_TOKEN=ci-placeholder\n' >> .env
+
+      - name: Build the image
+        run: docker compose build worker
+
+      - name: Prove the image starts
         run: |
           set -euo pipefail
-          rm -f "${RUNNER_TEMP}/images/web.tar"
+          test "$(docker run --rm --entrypoint id "wisper/worker:${IMAGE_TAG}" -u)" = '10001'
+          # A working whisper (torch imported), ffmpeg, and the diarisation stack with its
+          # weights where the module looks for them.
+          docker run --rm "wisper/worker:${IMAGE_TAG}" whisper --help > /dev/null
+          docker run --rm "wisper/worker:${IMAGE_TAG}" ffmpeg -version > /dev/null
+          docker run --rm --entrypoint /opt/whisper/bin/python "wisper/worker:${IMAGE_TAG}" \
+            -c "import sherpa_onnx, os; [os.stat(p) for p in ('/opt/diarization/segmentation.onnx', '/opt/diarization/embedding.onnx')]"
+
+      - name: Export the image
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/images"
           docker save "wisper/worker:${IMAGE_TAG}" -o "${RUNNER_TEMP}/images/worker.tar"
 
-      - name: Scan Trivy — image worker
+      - name: Scan the image (Trivy)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           input: ${{ runner.temp }}/images/worker.tar
@@ -204,31 +298,35 @@ jobs:
           exit-code: '1'
           format: table
 
-      # Publication de l'image worker, et d'elle seule : c'est celle qu'un bénévole doit pouvoir
-      # lancer en une ligne, sans cloner ni construire trois gigaoctets. L'API et le front, eux,
-      # sont déployés depuis les sources par l'hôte : les publier n'aiderait personne.
-      #
-      # Après le scan, jamais avant : on ne publie pas une image dont on ignore les CVE. Et
-      # seulement sur la branche par défaut — une image poussée depuis une PR porterait le tag
-      # `latest` d'un code que personne n'a fusionné.
-      - name: Publier l'image worker sur GHCR
+      # The archive is several gigabytes and the runner disk also holds the build stages and the
+      # Trivy database: it goes as soon as it has been scanned.
+      - name: Drop the archive
+        run: rm -f "${RUNNER_TEMP}/images/worker.tar"
+
+      # This is the image a volunteer runs in one command, without cloning anything or building
+      # three gigabytes. Published after the scan, never before, and only from the default
+      # branch: a `latest` built from a pull request would carry code nobody merged.
+      - name: Publish the image to GHCR
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         env:
-          # Le nom du paquet est en minuscules : GHCR refuse une majuscule dans une référence,
-          # et le propriétaire du dépôt en porte une.
+          # GHCR refuses an uppercase letter in a reference, and the repository owner has one.
           REGISTRY_IMAGE: ghcr.io/${{ github.repository_owner }}/wisper-worker
         run: |
           set -euo pipefail
           image="$(printf '%s' "${REGISTRY_IMAGE}" | tr '[:upper:]' '[:lower:]')"
-          # Le jeton du run, jamais un secret de compte : sa portée s'arrête à ce dépôt et il
-          # expire avec le job. Passé par l'entrée standard pour qu'il ne traverse pas argv.
+          # The run's own token, never an account secret: its scope stops at this repository and
+          # it expires with the job. Passed over stdin so it never reaches argv.
           printf '%s' "${{ secrets.GITHUB_TOKEN }}" \
             | docker login ghcr.io --username "${{ github.actor }}" --password-stdin
-          # Deux tags : `latest` pour la commande d'une ligne, et le sha pour qu'un incident
-          # soit traçable jusqu'au commit qui l'a produit.
+          # Two tags: `latest` for the one-line command, and the commit sha so an incident is
+          # traceable to the code that produced it.
           docker tag "wisper/worker:${IMAGE_TAG}" "${image}:latest"
           docker tag "wisper/worker:${IMAGE_TAG}" "${image}:${GITHUB_SHA}"
           docker push "${image}:latest"
           docker push "${image}:${GITHUB_SHA}"
+          # The digest is what a deployment should reference: a tag is a human alias, a digest
+          # is an identity. Recorded in the run summary so it survives the logs.
+          digest="$(docker image inspect --format '{{index .RepoDigests 0}}' "${image}:latest" 2>/dev/null || true)"
+          printf '### Worker image published\n\n- `%s:latest`\n- `%s:%s`\n- digest: `%s`\n' \
+            "${image}" "${image}" "${GITHUB_SHA}" "${digest:-unknown}" >> "${GITHUB_STEP_SUMMARY}"
           docker logout ghcr.io
-
