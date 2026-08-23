@@ -21,9 +21,11 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
-# Droits minimaux : rien n'est publié, rien n'est écrit côté dépôt.
+# Droits minimaux : le seul écrit possible est la publication de l'image worker sur GHCR, et
+# seulement depuis la branche par défaut (voir l'étape « Publier »). Rien n'écrit dans le dépôt.
 permissions:
   contents: read
+  packages: write
 
 jobs:
   verify:
@@ -201,4 +203,32 @@ jobs:
           vuln-type: os,library
           exit-code: '1'
           format: table
+
+      # Publication de l'image worker, et d'elle seule : c'est celle qu'un bénévole doit pouvoir
+      # lancer en une ligne, sans cloner ni construire trois gigaoctets. L'API et le front, eux,
+      # sont déployés depuis les sources par l'hôte : les publier n'aiderait personne.
+      #
+      # Après le scan, jamais avant : on ne publie pas une image dont on ignore les CVE. Et
+      # seulement sur la branche par défaut — une image poussée depuis une PR porterait le tag
+      # `latest` d'un code que personne n'a fusionné.
+      - name: Publier l'image worker sur GHCR
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        env:
+          # Le nom du paquet est en minuscules : GHCR refuse une majuscule dans une référence,
+          # et le propriétaire du dépôt en porte une.
+          REGISTRY_IMAGE: ghcr.io/${{ github.repository_owner }}/wisper-worker
+        run: |
+          set -euo pipefail
+          image="$(printf '%s' "${REGISTRY_IMAGE}" | tr '[:upper:]' '[:lower:]')"
+          # Le jeton du run, jamais un secret de compte : sa portée s'arrête à ce dépôt et il
+          # expire avec le job. Passé par l'entrée standard pour qu'il ne traverse pas argv.
+          printf '%s' "${{ secrets.GITHUB_TOKEN }}" \
+            | docker login ghcr.io --username "${{ github.actor }}" --password-stdin
+          # Deux tags : `latest` pour la commande d'une ligne, et le sha pour qu'un incident
+          # soit traçable jusqu'au commit qui l'a produit.
+          docker tag "wisper/worker:${IMAGE_TAG}" "${image}:latest"
+          docker tag "wisper/worker:${IMAGE_TAG}" "${image}:${GITHUB_SHA}"
+          docker push "${image}:latest"
+          docker push "${image}:${GITHUB_SHA}"
+          docker logout ghcr.io
 
