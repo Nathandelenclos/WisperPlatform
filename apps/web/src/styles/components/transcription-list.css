@@ -118,6 +118,15 @@
   font-variant-numeric: tabular-nums;
 }
 
+/*
+ * Le placement sort du lot des méta-données : c'est lui qui explique pourquoi une ligne
+ * n'avance pas. L'encre pleine suffit à le détacher du gris des autres.
+ */
+.library__meta-item--placement {
+  color: var(--text);
+  font-weight: var(--weight-medium);
+}
+
 .library__failure {
   color: var(--status-failed);
   font-size: var(--text-xs);

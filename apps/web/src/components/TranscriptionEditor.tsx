@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactEventHandler } from 'react';
 import {
   TRANSCRIPTION_LANGUAGES,
+  type Placement,
   type Segment,
   type SubtitleFormat,
   type TranscriptionStatus,
@@ -22,12 +23,18 @@ type Picture = 'unknown' | 'present' | 'absent';
  * Une transcription peut durer des minutes : l'écran dit toujours où en est le travail, et
  * le nombre de segments arrivés est la seule mesure honnête de son avancement.
  */
-function describeProgress(status: TranscriptionStatus, count: number): string {
+function describeProgress(
+  status: TranscriptionStatus,
+  count: number,
+  placement: Placement,
+): string {
   const counted = `${count} ${count === 1 ? 'segment' : 'segments'}`;
   const transcribed = count === 1 ? 'transcrit' : 'transcrits';
   switch (status) {
     case 'pending':
-      return "En file d'attente : la transcription démarrera dès qu'un worker sera libre.";
+      return placement === 'owner'
+        ? "En attente de votre machine : la transcription démarrera dès qu'une des vôtres tournera."
+        : "En file d'attente : la transcription démarrera dès qu'un worker sera libre.";
     case 'transcribing':
       return `${counted} ${transcribed} — la suite arrive au fil de l'eau.`;
     case 'completed':
@@ -54,6 +61,10 @@ type TranscriptionEditorProps = {
   renamingSpeakerIndex: number | null;
   renameErrorMessage: string | null;
   onRenameSpeaker: (rename: { index: number; name: string }) => void;
+  /** Bascule de placement en cours : le geste de reprise en main est occupé. */
+  movingToService: boolean;
+  placementErrorMessage: string | null;
+  onMoveToService: () => void;
 };
 
 /**
@@ -72,6 +83,9 @@ export function TranscriptionEditor({
   renamingSpeakerIndex,
   renameErrorMessage,
   onRenameSpeaker,
+  movingToService,
+  placementErrorMessage,
+  onMoveToService,
 }: TranscriptionEditorProps) {
   const mediaRef = useRef<HTMLMediaElement | null>(null);
   const listRef = useRef<HTMLOListElement | null>(null);
@@ -89,7 +103,7 @@ export function TranscriptionEditor({
   // segment qui l'ouvre : un locuteur peut avoir vingt tours, un seul champ à la fois.
   const [openTurn, setOpenTurn] = useState<number | null>(null);
 
-  const { segments, speakers, status } = transcription;
+  const { segments, speakers, status, placement } = transcription;
   const isVideo = transcription.mediaContentType.startsWith('video/');
   // Un conteneur vidéo peut n'avoir aucune image exploitable — un `.mov` enregistré au micro,
   // par exemple. Afficher un rectangle noir mentirait sur ce que contient le fichier.
@@ -105,6 +119,9 @@ export function TranscriptionEditor({
     TRANSCRIPTION_LANGUAGES.find((candidate) => candidate.value === transcription.language)
       ?.label ?? transcription.language;
   const spokenMs = segments.at(-1)?.endMs ?? null;
+  // Une demande réservée aux machines du propriétaire et qui n'a pas démarré : c'est le
+  // seul cas où il a une décision à reprendre, et il doit pouvoir la reprendre à la main.
+  const stuckOnOwnMachine = status === 'pending' && placement === 'owner';
 
   /** Une région live ne se répète pas d'elle-même : le jeton force la relecture. */
   const announce = useCallback((text: string) => {
@@ -241,6 +258,13 @@ export function TranscriptionEditor({
             <dt>Déposé</dt>
             <dd>{formatDateTime(transcription.requestedAt)}</dd>
           </div>
+          {/* Fait montré seulement s'il sort de l'ordinaire : « service » est le défaut. */}
+          {placement === 'owner' ? (
+            <div className="transcript__fact">
+              <dt>Calcul</dt>
+              <dd>Votre machine</dd>
+            </div>
+          ) : null}
           {spokenMs === null ? null : (
             <div className="transcript__fact">
               <dt>Parole</dt>
@@ -294,6 +318,37 @@ export function TranscriptionEditor({
         </Notice>
       ) : null}
 
+      {/*
+        Réservée aux machines du propriétaire : elle peut attendre indéfiniment, et rien ne
+        la déplacera tout seul. L'écran dit l'attente réelle et offre la seule sortie qui
+        existe — confier le calcul au service. La décision reste la sienne.
+      */}
+      {stuckOnOwnMachine ? (
+        <Notice
+          tone="info"
+          title="En attente de votre machine"
+          action={
+            <Button
+              variant="secondary"
+              size="sm"
+              loading={movingToService}
+              onClick={onMoveToService}
+            >
+              Confier au service
+            </Button>
+          }
+        >
+          Cette transcription est réservée à vos machines : elle démarrera dès que l'une
+          d'elles tournera, et attendra aussi longtemps qu'il le faudra.
+        </Notice>
+      ) : null}
+
+      {placementErrorMessage === null ? null : (
+        <Notice tone="error" title="Transcription non déplacée">
+          {placementErrorMessage}
+        </Notice>
+      )}
+
       {errorMessage === null ? null : <Notice tone="error">{errorMessage}</Notice>}
 
       {streamLost ? (
@@ -339,7 +394,7 @@ export function TranscriptionEditor({
       </div>
 
       <p className="transcript__progress" role="status">
-        {describeProgress(status, segments.length)}
+        {describeProgress(status, segments.length, placement)}
       </p>
 
       {segments.length === 0 && status === 'completed' ? (

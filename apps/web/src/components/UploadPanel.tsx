@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { WhisperModel } from '../api/transcriptions';
+import { DEFAULT_PLACEMENT, type Placement, type WhisperModel } from '../api/transcriptions';
 import { formatByteSize } from '../format';
 import { Button, Field, FileDrop, Notice, Select } from './primitives';
 
@@ -17,6 +17,23 @@ const MODEL_HINTS: Record<WhisperModel, string> = {
   turbo: 'Presque la fidélité de « large », pour une fraction du temps.',
 };
 
+/**
+ * Ce que le placement change pour l'utilisateur, dit en conséquence et non en mécanique :
+ * ce qui l'intéresse, c'est quand sa transcription démarrera.
+ */
+const PLACEMENT_CHOICES: readonly { value: Placement; label: string; hint: string }[] = [
+  {
+    value: 'service',
+    label: 'Sur les serveurs du service',
+    hint: 'Démarre dès qu\u2019un worker se libère.',
+  },
+  {
+    value: 'owner',
+    label: 'Sur ma machine',
+    hint: "Ne démarrera que lorsqu'une de vos machines tournera. Elle attendra sans limite de temps, et vous pourrez la confier au service à tout moment.",
+  },
+];
+
 type UploadPanelProps = {
   models: readonly WhisperModel[];
   languages: readonly { value: string; label: string }[];
@@ -31,8 +48,18 @@ type UploadPanelProps = {
   errorMessage: string | null;
   /** Identifiant de la dernière transcription acceptée : remet la zone de dépôt à zéro. */
   acceptedId: string | null;
+  /**
+   * Le propriétaire a au moins une machine en état de servir. Sinon il n'a rien à
+   * arbitrer : le choix ne s'affiche pas, une option morte n'est que du bruit.
+   */
+  placementAvailable: boolean;
   onFileChange: (file: File | null) => void;
-  onSubmit: (request: { file: File; model: WhisperModel; language: string }) => void;
+  onSubmit: (request: {
+    file: File;
+    model: WhisperModel;
+    language: string;
+    placement: Placement;
+  }) => void;
 };
 
 /**
@@ -50,11 +77,13 @@ export function UploadPanel({
   submitting,
   errorMessage,
   acceptedId,
+  placementAvailable,
   onFileChange,
   onSubmit,
 }: UploadPanelProps) {
   const [model, setModel] = useState<WhisperModel>(defaultModel);
   const [language, setLanguage] = useState(defaultLanguage);
+  const [placement, setPlacement] = useState<Placement>(DEFAULT_PLACEMENT);
 
   const blocked = file === null || sizeError !== null;
 
@@ -80,7 +109,7 @@ export function UploadPanel({
         onSubmit={(submitEvent) => {
           submitEvent.preventDefault();
           if (file === null || sizeError !== null || submitting) return;
-          onSubmit({ file, model, language });
+          onSubmit({ file, model, language, placement });
         }}
       >
         <FileDrop
@@ -102,8 +131,11 @@ export function UploadPanel({
         */}
         {file === null ? (
           <p className="upload-panel__submit-hint">
-            Réglages : modèle {model}, {languages.find((candidate) => candidate.value === language)?.label ?? language}.
-            Ils s'ouvrent dès qu'un fichier est choisi.
+            Réglages : modèle {model}, {languages.find((candidate) => candidate.value === language)?.label ?? language}
+            {placementAvailable
+              ? `, calcul ${placement === 'owner' ? 'sur votre machine' : 'sur le service'}`
+              : ''}
+            . Ils s'ouvrent dès qu'un fichier est choisi.
           </p>
         ) : (
           <>
@@ -151,6 +183,34 @@ export function UploadPanel({
                 </Select>
               )}
             </Field>
+
+            {/*
+              Le placement ne s'affiche que si l'utilisateur a une machine : sans elle,
+              il n'y a rien à arbitrer. Deux options exclusives et brèves : des boutons
+              radio, pas une liste déroulante — les deux conséquences se lisent d'un coup.
+            */}
+            {placementAvailable ? (
+              <fieldset className="upload-panel__placement">
+                <legend className="upload-panel__placement-legend">Où calculer</legend>
+                {PLACEMENT_CHOICES.map((choice) => (
+                  <label className="upload-panel__choice" key={choice.value}>
+                    <input
+                      className="upload-panel__choice-input"
+                      type="radio"
+                      name="placement"
+                      value={choice.value}
+                      checked={placement === choice.value}
+                      disabled={submitting}
+                      onChange={() => setPlacement(choice.value)}
+                    />
+                    <span className="upload-panel__choice-text">
+                      <span className="upload-panel__choice-label">{choice.label}</span>
+                      <span className="upload-panel__choice-hint">{choice.hint}</span>
+                    </span>
+                  </label>
+                ))}
+              </fieldset>
+            ) : null}
           </>
         )}
 

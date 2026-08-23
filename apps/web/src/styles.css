@@ -15,6 +15,7 @@
 @import "./styles/components/app-shell.css";
 @import "./styles/components/upload-panel.css";
 @import "./styles/components/transcription-list.css";
+@import "./styles/components/machines.css";
 @import "./styles/components/sign-in.css";
 
 @import "./styles/components/transcript.css";

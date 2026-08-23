@@ -133,6 +133,20 @@ export function TranscriptionList({
                       </span>
                     ) : null}
                     <span className="library__meta-item">{describeSegments(item)}</span>
+                    {/*
+                      Le placement ne se dit que s'il sort de l'ordinaire : une ligne qui
+                      attend une machine du propriétaire n'attend pas la même chose que les
+                      autres, et sans ça la bibliothèque annoncerait la même attente pour
+                      deux situations différentes.
+                    */}
+                    {item.placement === 'owner' ? (
+                      <span className="library__meta-item library__meta-item--placement">
+                        <VisuallyHidden>Calcul </VisuallyHidden>
+                        {item.status === 'pending'
+                          ? 'en attente de votre machine'
+                          : 'votre machine'}
+                      </span>
+                    ) : null}
                   </span>
 
                   {item.failureReason === null ? null : (

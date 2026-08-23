@@ -18,6 +18,7 @@ import {
 } from './api/transcriptions';
 import { useSession } from './auth/client';
 import { MIN_PASSWORD_LENGTH } from './auth/session';
+import { MachinesPanel } from './components/MachinesPanel';
 import { NoSelection } from './components/NoSelection';
 import { Button, Notice, Skeleton } from './components/primitives';
 import { SignInPanel } from './components/SignInPanel';
@@ -30,12 +31,14 @@ import { useAuthCommand, useGoogleSignIn, useSignOut } from './hooks/use-auth';
 import { useSignInOptions } from './hooks/use-sign-in-options';
 import { useTranscriptionEvents, type StreamState } from './hooks/use-transcription-events';
 import {
+  useChangePlacement,
   useCorrectSegment,
   useRenameSpeaker,
   useRequestTranscription,
   useTranscription,
   useTranscriptionList,
 } from './hooks/use-transcriptions';
+import { useCreateWorkerKey, useRevokeWorkerKey, useWorkerKeys } from './hooks/use-worker-keys';
 
 function describeFailure(error: unknown): string | null {
   if (error === null || error === undefined) return null;
@@ -106,6 +109,7 @@ function SelectedTranscription({
   const detail = useTranscription(transcriptionId, { degraded: stream === 'lost' });
   const correction = useCorrectSegment(transcriptionId);
   const rename = useRenameSpeaker(transcriptionId);
+  const placement = useChangePlacement(transcriptionId);
   const status = detail.data?.status;
   const readableId = detail.data?.id;
 
@@ -168,6 +172,9 @@ function SelectedTranscription({
       renamingSpeakerIndex={renamingSpeakerIndex}
       renameErrorMessage={describeFailure(rename.error)}
       onRenameSpeaker={(request) => rename.mutate(request)}
+      movingToService={placement.isPending}
+      placementErrorMessage={describeFailure(placement.error)}
+      onMoveToService={() => placement.mutate('service')}
     />
   );
 }
@@ -191,6 +198,15 @@ function Workspace({
   const detailRef = useRef<HTMLElement>(null);
   const library = useTranscriptionList();
   const upload = useRequestTranscription();
+  const machines = useWorkerKeys();
+  const createMachine = useCreateWorkerKey();
+  const revokeMachine = useRevokeWorkerKey();
+
+  /**
+   * Une machine révoquée ne servira plus : elle ne compte pas pour décider si l'utilisateur
+   * a quelque chose à arbitrer au dépôt. Sans machine vivante, le choix n'apparaît pas.
+   */
+  const hasLiveMachine = (machines.data ?? []).some((machine) => machine.revokedAt === null);
 
   // Règle de taille du média : elle appartient au contrat de l'API, pas au formulaire.
   const sizeError =
@@ -255,6 +271,7 @@ function Workspace({
               submitting={upload.isPending}
               errorMessage={describeFailure(upload.error)}
               acceptedId={acceptedId}
+              placementAvailable={hasLiveMachine}
               onFileChange={setFile}
               onSubmit={(request) =>
                 upload.mutate(request, {
@@ -275,6 +292,21 @@ function Workspace({
               loading={library.isPending}
               errorMessage={describeFailure(library.error)}
               onSelect={openTranscription}
+            />
+
+            <MachinesPanel
+              machines={machines.data ?? []}
+              loading={machines.isPending}
+              listError={describeFailure(machines.error)}
+              origin={window.location.origin}
+              creating={createMachine.isPending}
+              createError={describeFailure(createMachine.error)}
+              created={createMachine.data ?? null}
+              onCreate={(request) => createMachine.mutate(request)}
+              onDismissSecret={() => createMachine.reset()}
+              revokingId={revokeMachine.isPending ? (revokeMachine.variables?.id ?? null) : null}
+              revokeError={describeFailure(revokeMachine.error)}
+              onRevoke={(id) => revokeMachine.mutate({ id })}
             />
           </div>
 

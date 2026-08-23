@@ -44,6 +44,64 @@
   gap: var(--space-2);
 }
 
+/*
+ * Choix du placement. Un `fieldset` sans bordure ni fond : le groupe est dit par sa légende
+ * et tenu par sa proximité, pas par un cadre de plus dans un panneau déjà encadré.
+ */
+.upload-panel__placement {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  border: 0;
+  padding: 0;
+}
+
+.upload-panel__placement-legend {
+  padding: 0;
+  padding-block-end: var(--space-2);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+}
+
+/*
+ * Toute l'option est cliquable, pas seulement le rond : la cible d'un bouton radio nu est
+ * sous les 24px que demande WCAG 2.2, et la conséquence se lit dans le même geste.
+ */
+.upload-panel__choice {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--space-3);
+  align-items: start;
+  cursor: pointer;
+}
+
+.upload-panel__choice-input {
+  /* Aligné sur la première ligne du libellé, quelle que soit la taille du texte. */
+  margin-block-start: calc(var(--space-1) / 2);
+  accent-color: var(--accent);
+}
+
+.upload-panel__choice-text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.upload-panel__choice-label {
+  font-size: var(--text-sm);
+}
+
+/* La conséquence, pas la mécanique : c'est elle qui décide, donc elle reste lisible. */
+.upload-panel__choice-hint {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.upload-panel__choice:has(input:disabled) {
+  cursor: default;
+  color: var(--text-muted);
+}
+
 .upload-panel__submit-hint {
   font-size: var(--text-xs);
   color: var(--text-muted);

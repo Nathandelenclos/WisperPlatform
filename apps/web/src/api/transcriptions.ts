@@ -31,6 +31,15 @@ export const MEDIA_MAX_BYTES = 2_147_483_648;
 
 export type TranscriptionStatus = 'pending' | 'transcribing' | 'completed' | 'failed';
 
+/**
+ * Où le calcul a lieu : sur les workers de la plateforme (`service`) ou sur les machines
+ * du propriétaire (`owner`). Aucun croisement côté API — une demande placée sur `owner`
+ * attend une machine de son propriétaire, aussi longtemps qu'il le faut.
+ */
+export type Placement = 'service' | 'owner';
+
+export const DEFAULT_PLACEMENT: Placement = 'service';
+
 export type Segment = {
   ordinal: number;
   startMs: number;
@@ -63,6 +72,7 @@ export type TranscriptionSummary = {
   requestedAt: string;
   completedAt: string | null;
   failureReason: string | null;
+  placement: Placement;
 };
 
 /** Vue de détail, segments inclus. */
@@ -77,6 +87,7 @@ export type TranscriptionView = {
   requestedAt: string;
   completedAt: string | null;
   failureReason: string | null;
+  placement: Placement;
   segments: Segment[];
   /** Locuteurs découverts. Vide quand la diarisation n'a pas eu lieu. */
   speakers: Speaker[];
@@ -142,11 +153,13 @@ export async function requestTranscription(p: {
   file: File;
   model: WhisperModel;
   language: string;
+  placement: Placement;
 }): Promise<{ id: string }> {
   const form = new FormData();
   form.append('file', p.file);
   form.append('model', p.model);
   form.append('language', p.language);
+  form.append('placement', p.placement);
   return requestJson<{ id: string }>('/api/transcriptions', {
     method: 'POST',
     body: form,
@@ -204,6 +217,24 @@ export async function renameSpeaker(p: {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: p.name }),
+    },
+  );
+}
+
+/**
+ * Déplace une transcription qui n'a pas démarré. Comme le renommage, l'API répond avec la
+ * vue de détail complète : elle a pu changer de statut entre-temps, et c'est elle qui sait.
+ */
+export async function changePlacement(p: {
+  transcriptionId: string;
+  placement: Placement;
+}): Promise<TranscriptionView> {
+  return requestJson<TranscriptionView>(
+    `/api/transcriptions/${encodeURIComponent(p.transcriptionId)}/placement`,
+    {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ placement: p.placement }),
     },
   );
 }

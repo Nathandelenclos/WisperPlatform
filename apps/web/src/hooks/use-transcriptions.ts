@@ -1,10 +1,12 @@
 import { skipToken, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  changePlacement,
   correctSegment,
   getTranscription,
   listTranscriptions,
   renameSpeaker,
   requestTranscription,
+  type Placement,
   type TranscriptionView,
 } from '../api/transcriptions';
 
@@ -87,6 +89,22 @@ export function useRenameSpeaker(transcriptionId: string) {
       renameSpeaker({ transcriptionId, ...rename }),
     onSuccess: (view) => {
       queryClient.setQueryData<TranscriptionView>(transcriptionKeys.detail(transcriptionId), view);
+    },
+  });
+}
+
+/**
+ * Confie une transcription en attente à l'autre côté. La vue de détail renvoyée fait
+ * autorité ; la bibliothèque est réinterrogée parce que le résumé porte lui aussi le
+ * placement — sans ça, la ligne continuerait d'annoncer une attente qui n'a plus lieu.
+ */
+export function useChangePlacement(transcriptionId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (placement: Placement) => changePlacement({ transcriptionId, placement }),
+    onSuccess: (view) => {
+      queryClient.setQueryData<TranscriptionView>(transcriptionKeys.detail(transcriptionId), view);
+      void queryClient.invalidateQueries({ queryKey: transcriptionKeys.list });
     },
   });
 }
