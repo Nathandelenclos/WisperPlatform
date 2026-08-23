@@ -7,6 +7,7 @@ import {
   type ErrorInfo,
   type ReactNode,
 } from 'react';
+import { ApiError } from './api/http';
 import {
   DEFAULT_LANGUAGE,
   DEFAULT_MODEL,
@@ -17,7 +18,7 @@ import {
   type SubtitleFormat,
 } from './api/transcriptions';
 import { useSession } from './auth/client';
-import { MIN_PASSWORD_LENGTH } from './auth/session';
+import { AuthError, MIN_PASSWORD_LENGTH, type AuthFailureCode } from './auth/session';
 import { MachinesPanel } from './components/MachinesPanel';
 import { NoSelection } from './components/NoSelection';
 import { Button, Notice, Skeleton } from './components/primitives';
@@ -26,7 +27,6 @@ import { TopBar } from './components/TopBar';
 import { TranscriptionEditor } from './components/TranscriptionEditor';
 import { TranscriptionList } from './components/TranscriptionList';
 import { UploadPanel } from './components/UploadPanel';
-import { formatByteSize } from './format';
 import { useAuthCommand, useGoogleSignIn, useSignOut } from './hooks/use-auth';
 import { useSignInOptions } from './hooks/use-sign-in-options';
 import { useTranscriptionEvents, type StreamState } from './hooks/use-transcription-events';
@@ -39,18 +39,43 @@ import {
   useTranscriptionList,
 } from './hooks/use-transcriptions';
 import { useCreateWorkerKey, useRevokeWorkerKey, useWorkerKeys } from './hooks/use-worker-keys';
+import { useTranslation, type MessageKey, type Translate } from './i18n';
 
-function describeFailure(error: unknown): string | null {
-  if (error === null || error === undefined) return null;
-  return error instanceof Error ? error.message : 'Une erreur inattendue est survenue.';
-}
-
-type DetailBoundaryProps = { children: ReactNode; onRetry: () => void };
+const AUTH_MESSAGES: Record<AuthFailureCode, MessageKey> = {
+  unreachable: 'error.authUnreachable',
+  'invalid-credentials': 'error.invalidCredentials',
+  'sign-up-refused': 'error.signUpRefused',
+  failed: 'error.authFailed',
+};
 
 /**
- * Garde-fou de rendu du panneau de transcription : un éditeur qui casse ne doit emporter
- * ni la coquille ni la bibliothèque. Le reste de l'écran continue de servir, et l'erreur
- * propose une reprise au lieu d'un écran blanc.
+ * Failures that never reached the API: nothing in them was written by a server, so the
+ * interface says them in the reader's language. Anything the API did answer keeps its own
+ * message — the server is the one who knows what it refused.
+ */
+const TRANSPORT_MESSAGES: Partial<Record<string, MessageKey>> = {
+  network_unreachable: 'error.networkUnreachable',
+  request_timeout: 'error.requestTimeout',
+};
+
+function describeFailure(error: unknown, t: Translate): string | null {
+  if (error === null || error === undefined) return null;
+  if (error instanceof AuthError) {
+    return t(AUTH_MESSAGES[error.code], { min: MIN_PASSWORD_LENGTH });
+  }
+  if (error instanceof ApiError) {
+    const known = TRANSPORT_MESSAGES[error.code];
+    if (known !== undefined) return t(known);
+  }
+  return error instanceof Error ? error.message : t('error.unexpected');
+}
+
+type DetailBoundaryProps = { children: ReactNode; onRetry: () => void; t: Translate };
+
+/**
+ * Render guard of the transcription panel: an editor that breaks must carry away neither the
+ * shell nor the library. The rest of the screen goes on serving, and the error offers a way to
+ * resume instead of a blank page.
  */
 class DetailBoundary extends Component<DetailBoundaryProps, { failed: boolean }> {
   constructor(props: DetailBoundaryProps) {
@@ -63,25 +88,25 @@ class DetailBoundary extends Component<DetailBoundaryProps, { failed: boolean }>
   }
 
   override componentDidCatch(error: Error, info: ErrorInfo) {
-    // Pas de service tiers ici : la console du navigateur est le seul journal disponible.
-    console.error('Rendu de la transcription interrompu.', error, info);
+    // No third-party service here: the browser console is the only log available.
+    console.error('Transcription rendering interrupted.', error, info);
   }
 
   override render() {
     if (!this.state.failed) return this.props.children;
+    const { t } = this.props;
     return (
       <div className="panel detail-status">
         <Notice
           tone="error"
-          title="Affichage interrompu"
+          title={t('detail.crashTitle')}
           action={
             <Button variant="secondary" onClick={this.props.onRetry}>
-              Réessayer
+              {t('action.retry')}
             </Button>
           }
         >
-          Cette transcription n'a pas pu s'afficher. Réessayez, ou ouvrez-en une autre depuis la
-          bibliothèque.
+          {t('detail.crashBody')}
         </Notice>
       </div>
     );
@@ -89,23 +114,24 @@ class DetailBoundary extends Component<DetailBoundaryProps, { failed: boolean }>
 }
 
 /**
- * Détail de la transcription sélectionnée : requête, flux d'événements et correction.
- * L'éditeur, lui, ne reçoit que des données et des callbacks.
+ * Detail of the selected transcription: query, event stream and correction. The editor itself
+ * receives nothing but data and callbacks.
  */
 function SelectedTranscription({
   transcriptionId,
   onReadable,
 }: {
   transcriptionId: string;
-  /** Appelé une fois par transcription, quand il y a enfin quelque chose à lire. */
+  /** Called once per transcription, when there is finally something to read. */
   onReadable: () => void;
 }) {
+  const { t } = useTranslation();
   const [stream, setStream] = useState<StreamState>('connecting');
-  // Jeton de reprise : l'incrémenter rouvre le flux, c'est le bouton « Reconnecter ».
+  // Resume token: incrementing it reopens the stream — it is the “Reconnect” button.
   const [resumeToken, setResumeToken] = useState(0);
 
-  // Flux perdu : le détail est rappelé périodiquement, faute de mieux, pour que la vue
-  // finisse quand même par voir la fin de la transcription.
+  // Stream lost: the detail is polled periodically, for want of anything better, so that the
+  // view still ends up seeing the end of the transcription.
   const detail = useTranscription(transcriptionId, { degraded: stream === 'lost' });
   const correction = useCorrectSegment(transcriptionId);
   const rename = useRenameSpeaker(transcriptionId);
@@ -113,8 +139,8 @@ function SelectedTranscription({
   const status = detail.data?.status;
   const readableId = detail.data?.id;
 
-  // L'identifiant chargé ne bouge plus pendant le flux : la vue ne se déplace donc qu'une
-  // fois, à l'ouverture, et jamais sous les yeux de quelqu'un qui corrige.
+  // The loaded id no longer moves during the stream: the view therefore shifts only once, on
+  // opening, and never under the eyes of someone who is correcting.
   useEffect(() => {
     if (readableId !== undefined) onReadable();
   }, [readableId]);
@@ -127,16 +153,16 @@ function SelectedTranscription({
   });
 
   if (detail.data === undefined) {
-    const failure = describeFailure(detail.error);
+    const failure = describeFailure(detail.error, t);
     if (failure !== null) {
       return (
         <div className="panel detail-status">
           <Notice
             tone="error"
-            title="Transcription illisible"
+            title={t('detail.unreadableTitle')}
             action={
               <Button variant="secondary" onClick={() => void detail.refetch()}>
-                Réessayer
+                {t('action.retry')}
               </Button>
             }
           >
@@ -145,11 +171,11 @@ function SelectedTranscription({
         </div>
       );
     }
-    // La place est réservée dès maintenant : le contenu qui arrive ne pousse rien.
+    // The space is reserved right now: the content that lands pushes nothing.
     return (
       <div className="panel detail-status">
         <p className="detail-status__text" role="status">
-          Ouverture de la transcription…
+          {t('detail.opening')}
         </p>
         <Skeleton lines={6} />
       </div>
@@ -165,21 +191,21 @@ function SelectedTranscription({
       mediaUrl={transcriptionUrls.media(transcriptionId)}
       buildExportUrl={(format: SubtitleFormat) => transcriptionUrls.export(transcriptionId, format)}
       savingOrdinal={savingOrdinal}
-      errorMessage={describeFailure(correction.error)}
+      errorMessage={describeFailure(correction.error, t)}
       streamLost={stream === 'lost'}
       onRetryStream={() => setResumeToken((token) => token + 1)}
       onCorrectSegment={(request) => correction.mutate(request)}
       renamingSpeakerIndex={renamingSpeakerIndex}
-      renameErrorMessage={describeFailure(rename.error)}
+      renameErrorMessage={describeFailure(rename.error, t)}
       onRenameSpeaker={(request) => rename.mutate(request)}
       movingToService={placement.isPending}
-      placementErrorMessage={describeFailure(placement.error)}
+      placementErrorMessage={describeFailure(placement.error, t)}
       onMoveToService={() => placement.mutate('service')}
     />
   );
 }
 
-/** Espace de travail d'un utilisateur connecté : dépôt, bibliothèque, éditeur. */
+/** Workspace of a signed-in user: upload, library, editor. */
 function Workspace({
   displayName,
   signingOut,
@@ -191,6 +217,7 @@ function Workspace({
   signOutError: string | null;
   onSignOut: () => void;
 }) {
+  const { t, format } = useTranslation();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [acceptedId, setAcceptedId] = useState<string | null>(null);
   const [file, setFile] = useState<File | null>(null);
@@ -203,29 +230,32 @@ function Workspace({
   const revokeMachine = useRevokeWorkerKey();
 
   /**
-   * Une machine révoquée ne servira plus : elle ne compte pas pour décider si l'utilisateur
-   * a quelque chose à arbitrer au dépôt. Sans machine vivante, le choix n'apparaît pas.
+   * A revoked machine will serve no more: it does not count when deciding whether the user has
+   * anything to arbitrate at upload time. With no live machine, the choice does not appear.
    */
   const hasLiveMachine = (machines.data ?? []).some((machine) => machine.revokedAt === null);
 
-  // Règle de taille du média : elle appartient au contrat de l'API, pas au formulaire.
+  // Media size rule: it belongs to the API contract, not to the form.
   const sizeError =
     file !== null && file.size > MEDIA_MAX_BYTES
-      ? `Fichier trop volumineux : ${formatByteSize(file.size)} pour ${formatByteSize(MEDIA_MAX_BYTES)} autorisés.`
+      ? t('upload.tooLarge', {
+          size: format.byteSize(file.size),
+          max: format.byteSize(MEDIA_MAX_BYTES),
+        })
       : null;
 
   /**
-   * Ouvre une transcription. Le déplacement de la vue, lui, attend que le panneau ait
-   * quelque chose à montrer : viser pendant le clic, c'est viser un panneau encore vide,
-   * et sur une colonne unique l'utilisateur reste devant la liste qu'il vient de quitter.
+   * Opens a transcription. The movement of the view, in contrast, waits until the panel has
+   * something to show: aiming during the click means aiming at a still-empty panel, and in a
+   * single column the user stays in front of the list they have just left.
    */
   const openTranscription = (transcriptionId: string) => {
     setSelectedId(transcriptionId);
   };
 
   /**
-   * Le focus porte l'annonce au lecteur d'écran ; `scrollIntoView` amène le haut du
-   * panneau, là où `focus()` seul se contente du bord de l'écran.
+   * The focus carries the announcement to the screen reader; `scrollIntoView` brings the top of
+   * the panel, where `focus()` alone settles for the edge of the screen.
    */
   const revealDetail = useCallback(() => {
     const detail = detailRef.current;
@@ -237,7 +267,7 @@ function Workspace({
   return (
     <>
       <a className="skip-link" href="#workspace">
-        Aller au contenu principal
+        {t('app.skipToContent')}
       </a>
 
       <TopBar
@@ -248,15 +278,15 @@ function Workspace({
       />
 
       {/*
-        Conteneur de requête : c'est la largeur réellement disponible qui décide d'une ou
-        de deux colonnes, pas celle de la fenêtre. Un texte agrandi replie donc l'atelier
-        comme le ferait un écran étroit, au lieu de comprimer la colonne de lecture.
+        Container query: it is the width actually available that decides between one and two
+        columns, not the width of the window. Enlarged text therefore folds the workspace the
+        way a narrow screen would, instead of squeezing the reading column.
       */}
       <main
         className="workspace"
         id="workspace"
         tabIndex={-1}
-        aria-label="Atelier de transcription"
+        aria-label={t('app.workspaceLabel')}
       >
         <div className="workspace__grid">
           <div className="workspace__aside">
@@ -269,14 +299,14 @@ function Workspace({
               file={file}
               sizeError={sizeError}
               submitting={upload.isPending}
-              errorMessage={describeFailure(upload.error)}
+              errorMessage={describeFailure(upload.error, t)}
               acceptedId={acceptedId}
               placementAvailable={hasLiveMachine}
               onFileChange={setFile}
               onSubmit={(request) =>
                 upload.mutate(request, {
                   onSuccess: (accepted) => {
-                    // On ouvre aussitôt la transcription : les segments y arrivent en direct.
+                    // The transcription is opened at once: its segments land there live.
                     setAcceptedId(accepted.id);
                     setFile(null);
                     openTranscription(accepted.id);
@@ -287,25 +317,24 @@ function Workspace({
 
             <TranscriptionList
               items={library.data ?? []}
-              languages={TRANSCRIPTION_LANGUAGES}
               selectedId={selectedId}
               loading={library.isPending}
-              errorMessage={describeFailure(library.error)}
+              errorMessage={describeFailure(library.error, t)}
               onSelect={openTranscription}
             />
 
             <MachinesPanel
               machines={machines.data ?? []}
               loading={machines.isPending}
-              listError={describeFailure(machines.error)}
+              listError={describeFailure(machines.error, t)}
               origin={window.location.origin}
               creating={createMachine.isPending}
-              createError={describeFailure(createMachine.error)}
+              createError={describeFailure(createMachine.error, t)}
               created={createMachine.data ?? null}
               onCreate={(request) => createMachine.mutate(request)}
               onDismissSecret={() => createMachine.reset()}
               revokingId={revokeMachine.isPending ? (revokeMachine.variables?.id ?? null) : null}
-              revokeError={describeFailure(revokeMachine.error)}
+              revokeError={describeFailure(revokeMachine.error, t)}
               onRevoke={(id) => revokeMachine.mutate({ id })}
             />
           </div>
@@ -314,11 +343,12 @@ function Workspace({
             className="workspace__detail"
             ref={detailRef}
             tabIndex={-1}
-            aria-label="Transcription ouverte"
+            aria-label={t('app.detailLabel')}
           >
             <DetailBoundary
               key={`${selectedId ?? 'none'}:${retryToken}`}
               onRetry={() => setRetryToken((token) => token + 1)}
+              t={t}
             >
               {selectedId === null ? (
                 <NoSelection />
@@ -334,6 +364,7 @@ function Workspace({
 }
 
 export function App() {
+  const { t } = useTranslation();
   const session = useSession();
   const authCommand = useAuthCommand();
   const googleSignIn = useGoogleSignIn();
@@ -343,7 +374,7 @@ export function App() {
   if (session.isPending) {
     return (
       <main className="boot">
-        <p role="status">Ouverture de votre session…</p>
+        <p role="status">{t('app.openingSession')}</p>
       </main>
     );
   }
@@ -354,8 +385,8 @@ export function App() {
       <SignInPanel
         onSubmit={(command) => authCommand.mutate(command)}
         submitting={authCommand.isPending}
-        // Les deux voies écrivent dans la même région : on ne montre jamais deux refus.
-        errorMessage={describeFailure(authCommand.error ?? googleSignIn.error)}
+        // Both routes write into the same region: two refusals are never shown at once.
+        errorMessage={describeFailure(authCommand.error ?? googleSignIn.error, t)}
         minPasswordLength={MIN_PASSWORD_LENGTH}
         googleAvailable={signInOptions.data?.google === true}
         onGoogle={() => googleSignIn.mutate()}
@@ -368,7 +399,7 @@ export function App() {
     <Workspace
       displayName={account.user.name === '' ? account.user.email : account.user.name}
       signingOut={signOutCommand.isPending}
-      signOutError={describeFailure(signOutCommand.error)}
+      signOutError={describeFailure(signOutCommand.error, t)}
       onSignOut={() => signOutCommand.mutate()}
     />
   );

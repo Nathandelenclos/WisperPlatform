@@ -1,13 +1,16 @@
+import { useTranslation } from '../i18n';
 import { EmptyState } from './primitives';
 
 /**
- * Panneau principal tant qu'aucune transcription n'est ouverte. Il ne se contente pas de
- * constater le vide : il nomme les gestes possibles et propose le premier d'entre eux.
+ * Main panel as long as no transcription is open. It does not merely state the emptiness: it
+ * names the possible gestures and offers the first of them.
  *
- * L'icône hérite sa couleur du texte (`currentColor`) et n'a pas à se cacher elle-même :
- * `EmptyState` la sort déjà de l'arbre d'accessibilité.
+ * The icon inherits its colour from the text (`currentColor`) and has no need to hide itself:
+ * `EmptyState` already takes it out of the accessibility tree.
  */
 export function NoSelection() {
+  const { t } = useTranslation();
+
   return (
     <EmptyState
       icon={
@@ -18,11 +21,11 @@ export function NoSelection() {
           <rect x="17" y="8" width="2.5" height="8" rx="1.25" />
         </svg>
       }
-      title="Aucune transcription ouverte"
-      description="Choisissez une transcription dans la bibliothèque pour lire le média, corriger le texte et l'exporter."
+      title={t('noSelection.title')}
+      description={t('noSelection.description')}
       action={
         <a className="text-link" href="#upload-panel">
-          Déposer un média
+          {t('noSelection.action')}
         </a>
       }
     />

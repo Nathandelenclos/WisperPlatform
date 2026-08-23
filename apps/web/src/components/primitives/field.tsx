@@ -20,13 +20,13 @@ type FieldProps = {
 };
 
 /**
- * Enveloppe d'un champ : label **au-dessus** (jamais à gauche, jamais un placeholder à sa
- * place — un placeholder disparaît à la frappe et le contexte avec lui), aide et erreur
- * reliées au contrôle par `aria-describedby`.
+ * Wrapper of a field: label **above** (never to the left, never a placeholder in its place — a
+ * placeholder disappears on the first keystroke and takes the context with it), hint and error
+ * tied to the control by `aria-describedby`.
  *
- * La zone d'erreur est rendue en permanence, vide au repos : une région live créée en même
- * temps que son contenu n'est pas annoncée, et sa hauteur réservée évite que l'apparition du
- * message ne pousse le reste du formulaire.
+ * The error area is rendered permanently, empty at rest: a live region created at the same
+ * time as its content is not announced, and its reserved height keeps the appearance of the
+ * message from pushing the rest of the form.
  */
 export function Field({ id, label, hint, error, children }: FieldProps): ReactElement {
   const hintId = `${id}-hint`;
@@ -60,7 +60,7 @@ export function Field({ id, label, hint, error, children }: FieldProps): ReactEl
   );
 }
 
-/** Champ texte. Le style d'erreur suit `aria-invalid`, posé par `Field`. */
+/** Text field. The error styling follows `aria-invalid`, set by `Field`. */
 export function TextInput({
   className,
   ...rest
@@ -69,9 +69,8 @@ export function TextInput({
 }
 
 /**
- * Liste déroulante native : elle apporte gratuitement le clavier, la recherche à la frappe et
- * la roulette du téléphone. Le chevron n'est qu'un signifiant, l'`appearance` d'origine est
- * neutralisée dans `field.css`.
+ * Native dropdown: it brings the keyboard, type-ahead search and the phone wheel for free. The
+ * chevron is only a signifier, the original `appearance` is neutralised in `field.css`.
  */
 export function Select({
   className,

@@ -1,13 +1,18 @@
 import type { SubtitleFormat } from '../api/transcriptions';
+import { useTranslation, type MessageKey } from '../i18n';
 
 /**
- * Trois formats, trois usages. Le sigle seul ne dit pas quoi choisir : « SRT » ou « VTT »
- * ne veut rien dire pour qui n'a jamais monté une vidéo, donc chaque format porte son usage.
+ * Three formats, three uses. The acronym alone does not say what to choose: “SRT” or “VTT”
+ * means nothing to someone who has never edited a video, so each format carries its use.
+ *
+ * A `null` label means the acronym is the label: SRT and VTT are format names, the same in
+ * every language, and putting them in the catalogue would only invite someone to translate
+ * them.
  */
-const EXPORTS: readonly { format: SubtitleFormat; label: string; use: string }[] = [
-  { format: 'srt', label: 'SRT', use: 'Sous-titres, pour un lecteur ou un logiciel de montage' },
-  { format: 'vtt', label: 'VTT', use: 'Sous-titres, pour un lecteur vidéo sur le web' },
-  { format: 'txt', label: 'Texte brut', use: 'Le texte seul, sans timecode, à copier-coller' },
+const EXPORTS: readonly { format: SubtitleFormat; label: MessageKey | null; use: MessageKey }[] = [
+  { format: 'srt', label: null, use: 'export.srtUse' },
+  { format: 'vtt', label: null, use: 'export.vttUse' },
+  { format: 'txt', label: 'export.txtLabel', use: 'export.txtUse' },
 ];
 
 type ExportMenuProps = {
@@ -15,23 +20,24 @@ type ExportMenuProps = {
 };
 
 /**
- * Export du transcript.
+ * Transcript export.
  *
- * Ce n'est volontairement pas un menu déroulant. Un menu coûterait une ouverture au clavier,
- * une touche d'échappement et un piège de focus — or un piège de focus dans une fenêtre non
- * modale est précisément ce que le critère 2.1.2 (pas de piège au clavier) proscrit. Et les
- * trois usages, repliés derrière un déclencheur, ne seraient plus lisibles au moment du
- * choix. Trois options nommées et visibles dans un groupe étiqueté : un Tab par option,
- * aucune ouverture, aucune mémoire à mobiliser — trois choix ne méritent pas d'être repliés.
+ * Deliberately not a dropdown menu. A menu would cost a keyboard opening, an escape key and a
+ * focus trap — and a focus trap in a non-modal window is precisely what criterion 2.1.2 (no
+ * keyboard trap) forbids. And the three uses, folded behind a trigger, would no longer be
+ * readable at the moment of the choice. Three named, visible options in a labelled group: one
+ * Tab per option, no opening, no memory to mobilise — three choices do not deserve folding.
  *
- * Chaque option est un `<a download>` : la cible est une URL que le navigateur télécharge,
- * pas une action de l'application — c'est le rôle du lien, pas celui d'un bouton.
+ * Each option is an `<a download>`: the target is a URL the browser downloads, not an action of
+ * the application — that is the role of a link, not of a button.
  */
 export function ExportMenu({ buildUrl }: ExportMenuProps) {
+  const { t } = useTranslation();
+
   return (
     <div className="export-menu" role="group" aria-labelledby="export-menu-title">
       <h3 className="export-menu__title" id="export-menu-title">
-        Exporter
+        {t('export.title')}
       </h3>
 
       <ul className="export-menu__list">
@@ -39,7 +45,7 @@ export function ExportMenu({ buildUrl }: ExportMenuProps) {
           <li key={option.format}>
             <a className="export-option" href={buildUrl(option.format)} download>
               <span className="export-option__label">
-                {/* Décorative : le format est déjà écrit à côté. */}
+                {/* Decorative: the format is already written next to it. */}
                 <svg
                   className="export-option__icon"
                   viewBox="0 0 16 16"
@@ -55,9 +61,9 @@ export function ExportMenu({ buildUrl }: ExportMenuProps) {
                     strokeLinejoin="round"
                   />
                 </svg>
-                {option.label}
+                {option.label === null ? option.format.toUpperCase() : t(option.label)}
               </span>
-              <span className="export-option__use">{option.use}</span>
+              <span className="export-option__use">{t(option.use)}</span>
             </a>
           </li>
         ))}

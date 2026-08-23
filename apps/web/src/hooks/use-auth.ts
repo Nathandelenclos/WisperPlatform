@@ -1,14 +1,14 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { signInWithGoogle, signOut, submitAuthCommand } from '../auth/session';
 
-/** Connexion ou inscription : une seule commande, donc un seul état d'envoi. */
+/** Sign-in or sign-up: a single command, hence a single submitting state. */
 export function useAuthCommand() {
   return useMutation({ mutationFn: submitAuthCommand });
 }
 
 /**
- * Connexion Google. Le succès quitte la page : l'état d'envoi ne sert qu'à couvrir l'aller,
- * et seul un échec avant la redirection revient ici.
+ * Google sign-in. Success leaves the page: the submitting state only covers the outbound
+ * trip, and only a failure before the redirect comes back here.
  */
 export function useGoogleSignIn() {
   return useMutation({ mutationFn: signInWithGoogle });
@@ -19,7 +19,7 @@ export function useSignOut() {
   return useMutation({
     mutationFn: signOut,
     onSuccess: () => {
-      // Aucune donnée du compte précédent ne doit survivre à la déconnexion.
+      // No data from the previous account may survive the sign-out.
       queryClient.clear();
     },
   });

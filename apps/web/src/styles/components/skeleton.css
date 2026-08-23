@@ -1,6 +1,6 @@
 /*
- * Squelette de chargement. Sa vraie fonction n'est pas de faire joli mais de **réserver la
- * place** : le contenu qui arrive ne pousse alors rien.
+ * Loading skeleton. Its real job is not to look nice but to **reserve the space**: the content
+ * that lands then pushes nothing.
  */
 
 .skeleton {
@@ -14,11 +14,11 @@
   block-size: calc(var(--text-base) * var(--leading-base));
   border-radius: var(--radius-sm);
   background: var(--surface-sunken);
-  /* Battement lent (huit fois le temps de base) : plus vif, il capterait l'attention. */
+  /* Slow beat (eight times the base duration): any brisker, it would capture attention. */
   animation: skeleton-pulse calc(var(--motion-base) * 8) var(--ease-out) infinite alternate;
 }
 
-/* Les lignes n'ont pas toutes la même longueur, sinon on lit une grille, pas du texte. */
+/* The lines are not all the same length, otherwise one reads a grid, not text. */
 .skeleton__line:nth-child(3n + 2) {
   inline-size: calc(100% - var(--space-6));
 }
@@ -33,7 +33,7 @@
   }
 }
 
-/* Moins de mouvement demandé : le battement disparaît, la place reste réservée. */
+/* Less motion asked for: the beat disappears, the space stays reserved. */
 @media (prefers-reduced-motion: reduce) {
   .skeleton__line {
     animation: none;

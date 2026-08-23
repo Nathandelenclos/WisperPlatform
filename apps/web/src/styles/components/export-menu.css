@@ -1,6 +1,6 @@
 /*
- * Export du transcript. Ce n'est pas un menu déroulant : trois options nommées, visibles,
- * avec leur usage. Rien à ouvrir, rien à mémoriser, aucun piège de focus à construire.
+ * Transcript export. This is not a dropdown menu: three named, visible options, each with its
+ * use. Nothing to open, nothing to memorise, no focus trap to build.
  */
 
 .export-menu {
@@ -23,8 +23,8 @@
 }
 
 /*
- * Une option est un lien de téléchargement : bloc cliquable, bordure de contrôle au survol
- * et au focus, et deux lignes — le format, puis ce à quoi il sert.
+ * An option is a download link: clickable block, control border on hover and on focus, and two
+ * lines — the format, then what it is for.
  */
 .export-option {
   display: flex;
@@ -54,7 +54,7 @@
   font-weight: var(--weight-semibold);
 }
 
-/* La flèche descendante dit « ceci télécharge » ; le mot dit lequel. */
+/* The downward arrow says “this downloads”; the word says which one. */
 .export-option__icon {
   flex: none;
   inline-size: 1em;

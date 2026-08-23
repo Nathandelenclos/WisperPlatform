@@ -1,6 +1,6 @@
 /*
- * Pastilles de statut. La couleur reste enfermée dans la pastille ; elle ne porte jamais seule
- * l'information, doublée par le libellé et par la forme de l'icône.
+ * Status pills. The colour stays locked inside the pill; it never carries the information on
+ * its own, being doubled by the label and by the shape of the icon.
  */
 
 .status-pill {
@@ -25,7 +25,7 @@
   font-size: var(--text-xs);
 }
 
-/* L'icône porte du sens : elle hérite de la couleur du texte, donc du même rapport de contraste. */
+/* The icon carries meaning: it inherits the text colour, hence the same contrast ratio. */
 .status-pill__icon {
   flex: none;
   inline-size: var(--space-3);

@@ -1,10 +1,10 @@
 /*
- * Mes machines : déclarer un worker à soi, savoir s'il tourne, le révoquer.
+ * My machines: declare a worker of one's own, know whether it is running, revoke it.
  *
- * Panneau d'atelier comme les autres — une colonne, à 320px comme à 20rem. Deux singularités :
- * une carte de clé secrète qui n'apparaît qu'une fois et prend visuellement toute la place
- * tant qu'elle est là, et des blocs de texte techniques qui doivent pouvoir se couper
- * n'importe où (une clé et une commande docker n'ont pas d'espaces exploitables).
+ * A workspace panel like the others — one column, at 320px as at 20rem. Two peculiarities: a
+ * secret-key card that appears only once and visually takes all the room while it is there,
+ * and blocks of technical text that must be allowed to break anywhere (a key and a docker
+ * command have no usable spaces).
  */
 
 .machines {
@@ -24,7 +24,7 @@
   margin-right: auto;
 }
 
-/* Le compte est une donnée, pas un libellé — même traitement que la bibliothèque. */
+/* The count is data, not a label — same treatment as in the library. */
 .machines__count {
   border-radius: var(--radius-pill);
   background: var(--surface-sunken);
@@ -43,7 +43,7 @@
   display: none;
 }
 
-/* --- Déclaration -------------------------------------------------------------------------- */
+/* --- Declaration -------------------------------------------------------------------------- */
 
 .machines__form {
   display: flex;
@@ -52,15 +52,15 @@
   align-items: start;
 }
 
-/* Cible du retour de focus après la fermeture de la carte du secret. */
+/* Target of the focus return after the secret card is closed. */
 .machines__form:focus-visible {
   outline-offset: var(--space-1);
 }
 
-/* --- Clé secrète ---------------------------------------------------------------------------
+/* --- Secret key ----------------------------------------------------------------------------
  *
- * Elle ne s'affiche qu'une fois : elle se distingue nettement du reste du panneau, et
- * l'avertissement précède la valeur dans l'ordre de lecture comme dans l'ordre du DOM.
+ * It is shown only once: it stands out clearly from the rest of the panel, and the warning
+ * comes before the value in the reading order as in the DOM order.
  */
 
 .machines__secret {
@@ -73,8 +73,8 @@
   padding: var(--space-4);
   align-items: start;
   /*
-   * La carte reçoit le focus dès son apparition, ce qui la fait défiler à l'écran. L'en-tête
-   * collant en recouvrirait le haut — donc l'avertissement — sans cette marge de défilement.
+   * The card takes the focus as soon as it appears, which scrolls it into view. The sticky
+   * header would cover its top — hence the warning — without this scroll margin.
    */
   scroll-margin-block-start: var(--space-8);
 }
@@ -98,13 +98,13 @@
   flex-direction: column;
   gap: var(--space-2);
   align-items: start;
-  /* Sans cette largeur, le bloc de code déborde du panneau au lieu de se replier. */
+  /* Without this width, the code block overflows the panel instead of folding. */
   width: 100%;
 }
 
 /*
- * Clé et commande : `all` fait qu'un simple clic sélectionne le bloc entier — la copie
- * manuelle reste un geste, pour qui n'a pas de presse-papiers accessible.
+ * Key and command: `all` makes a single click select the whole block — copying by hand stays
+ * a gesture, for whoever has no accessible clipboard.
  */
 .machines__value {
   display: block;
@@ -122,7 +122,7 @@
 }
 
 .machines__value--command {
-  /* La commande se lit ligne par ligne : les retours choisis par le navigateur suffisent. */
+  /* The command is read line by line: the breaks chosen by the browser are enough. */
   white-space: pre-wrap;
 }
 
@@ -138,12 +138,12 @@
   color: var(--text-muted);
 }
 
-/* Un refus de copie n'est pas un succès discret : il se voit. */
+/* A refused copy is not a quiet success: it shows. */
 .machines__copy-failed {
   color: var(--status-failed);
 }
 
-/* --- Liste des machines --------------------------------------------------------------------- */
+/* --- List of machines ---------------------------------------------------------------------- */
 
 .machines__items {
   display: flex;
@@ -163,14 +163,14 @@
   align-items: start;
 }
 
-/* La ligne reçoit le focus après une révocation : l'anneau se dessine à l'intérieur. */
+/* The row takes the focus after a revocation: the ring is drawn on the inside. */
 .machines__item:focus-visible {
   outline-offset: calc(-1 * var(--space-1));
 }
 
 /*
- * Révoquée : le fond creusé la retire du premier plan sans l'effacer. Le texte, lui, garde
- * son contraste — une machine révoquée reste une information qu'on doit pouvoir lire.
+ * Revoked: the sunken background takes it out of the foreground without erasing it. The text
+ * keeps its contrast — a revoked machine is still information one must be able to read.
  */
 .machines__item--revoked {
   background: var(--surface-sunken);
@@ -183,13 +183,13 @@
   gap: var(--space-2);
 }
 
-/* Un nom de machine peut être un mot long sans espace : il faut l'autoriser à se couper. */
+/* A machine name can be one long word with no space: it has to be allowed to break. */
 .machines__label {
   font-weight: var(--weight-medium);
   overflow-wrap: anywhere;
 }
 
-/* Le statut n'est pas porté par la seule couleur : le mot « Révoquée » le dit. */
+/* The status is not carried by colour alone: the word “Revoked” says it. */
 .machines__badge {
   border-radius: var(--radius-pill);
   background: var(--status-failed-bg);
@@ -211,7 +211,7 @@
   align-items: start;
 }
 
-/* Confirmation de révocation : l'avertissement d'abord, l'action définitive ensuite. */
+/* Revocation confirmation: the warning first, the definitive action next. */
 .machines__confirm {
   display: flex;
   flex-direction: column;

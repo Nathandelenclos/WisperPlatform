@@ -1,40 +1,42 @@
 import { requestJson, requestNoContent } from './http';
 
-/** Modèles whisper servis par la plateforme (contrat du domaine). */
+/** Whisper models served by the platform (domain contract). */
 export const WHISPER_MODELS = ['tiny', 'base', 'small', 'medium', 'large', 'turbo'] as const;
 export type WhisperModel = (typeof WHISPER_MODELS)[number];
 
 export const DEFAULT_MODEL: WhisperModel = 'medium';
-export const DEFAULT_LANGUAGE = 'French';
+export const DEFAULT_LANGUAGE: TranscriptionLanguage = 'French';
 
 /**
- * Langues proposées. La valeur part en argument de processus côté worker : le domaine
- * n'accepte que `/^[A-Za-z]{2,32}$/`, un choix fermé garantit cette contrainte.
+ * Spoken languages offered. The value goes to the worker as a process argument: the domain
+ * only accepts `/^[A-Za-z]{2,32}$/`, and a closed list guarantees that constraint. The name
+ * shown to the reader lives in the message catalogue, keyed by this value.
  */
-export const TRANSCRIPTION_LANGUAGES: readonly { value: string; label: string }[] = [
-  { value: 'French', label: 'Français' },
-  { value: 'English', label: 'Anglais' },
-  { value: 'Spanish', label: 'Espagnol' },
-  { value: 'German', label: 'Allemand' },
-  { value: 'Italian', label: 'Italien' },
-  { value: 'Portuguese', label: 'Portugais' },
-  { value: 'Dutch', label: 'Néerlandais' },
-  { value: 'Russian', label: 'Russe' },
-  { value: 'Arabic', label: 'Arabe' },
-  { value: 'Japanese', label: 'Japonais' },
-  { value: 'Chinese', label: 'Chinois' },
-  { value: 'Korean', label: 'Coréen' },
-];
+export const TRANSCRIPTION_LANGUAGES = [
+  'French',
+  'English',
+  'Spanish',
+  'German',
+  'Italian',
+  'Portuguese',
+  'Dutch',
+  'Russian',
+  'Arabic',
+  'Japanese',
+  'Chinese',
+  'Korean',
+] as const;
+export type TranscriptionLanguage = (typeof TRANSCRIPTION_LANGUAGES)[number];
 
-/** Reflète `MEDIA_MAX_BYTES` côté API (2 Gio). Le serveur reste seul juge. */
+/** Mirrors `MEDIA_MAX_BYTES` on the API side (2 GiB). The server remains the only judge. */
 export const MEDIA_MAX_BYTES = 2_147_483_648;
 
 export type TranscriptionStatus = 'pending' | 'transcribing' | 'completed' | 'failed';
 
 /**
- * Où le calcul a lieu : sur les workers de la plateforme (`service`) ou sur les machines
- * du propriétaire (`owner`). Aucun croisement côté API — une demande placée sur `owner`
- * attend une machine de son propriétaire, aussi longtemps qu'il le faut.
+ * Where the computing happens: on the platform workers (`service`) or on the owner's own
+ * machines (`owner`). No crossover on the API side — a request placed on `owner` waits for a
+ * machine of its owner, for as long as it takes.
  */
 export type Placement = 'service' | 'owner';
 
@@ -46,20 +48,20 @@ export type Segment = {
   endMs: number;
   text: string;
   corrected: boolean;
-  /** Locuteur attribué par la diarisation ; `null` quand aucun tour ne recouvre le segment. */
+  /** Speaker assigned by diarisation; `null` when no turn covers the segment. */
   speakerIndex: number | null;
 };
 
 /**
- * Locuteur découvert par la diarisation. L'index est technique (produit par le clustering) ;
- * `name` est celui que le propriétaire a donné, `null` tant que personne n'a renommé.
+ * Speaker discovered by diarisation. The index is technical (produced by the clustering);
+ * `name` is the one the owner gave, `null` as long as nobody has renamed anything.
  */
 export type Speaker = {
   index: number;
   name: string | null;
 };
 
-/** Vue de liste. Dates sérialisées en ISO 8601 par l'API. */
+/** List view. Dates serialised as ISO 8601 by the API. */
 export type TranscriptionSummary = {
   id: string;
   status: TranscriptionStatus;
@@ -75,7 +77,7 @@ export type TranscriptionSummary = {
   placement: Placement;
 };
 
-/** Vue de détail, segments inclus. */
+/** Detail view, segments included. */
 export type TranscriptionView = {
   id: string;
   status: TranscriptionStatus;
@@ -89,7 +91,7 @@ export type TranscriptionView = {
   failureReason: string | null;
   placement: Placement;
   segments: Segment[];
-  /** Locuteurs découverts. Vide quand la diarisation n'a pas eu lieu. */
+  /** Speakers discovered. Empty when no diarisation took place. */
   speakers: Speaker[];
 };
 
@@ -97,7 +99,7 @@ export const SUBTITLE_FORMATS = ['srt', 'vtt', 'txt'] as const;
 export type SubtitleFormat = (typeof SUBTITLE_FORMATS)[number];
 
 /**
- * Événements de domaine reçus sur le flux SSE. Un seul champ discriminant : `name`.
+ * Domain events received on the SSE stream. A single discriminating field: `name`.
  */
 export type TranscriptionEvent =
   | { name: 'transcription.requested'; transcriptionId: string; occurredAt: string }
@@ -122,7 +124,7 @@ export type TranscriptionEvent =
       transcriptionId: string;
       occurredAt: string;
       speakers: Speaker[];
-      /** Tous les segments, `speakerIndex` à jour : la passe recalcule l'attribution. */
+      /** Every segment, `speakerIndex` up to date: the pass recomputes the assignment. */
       segments: Segment[];
     }
   | {
@@ -130,11 +132,11 @@ export type TranscriptionEvent =
       transcriptionId: string;
       occurredAt: string;
       index: number;
-      /** `speakerName`, et non `name` : ce dernier porte déjà le nom de l'événement. */
+      /** `speakerName`, not `name`: that one already carries the name of the event. */
       speakerName: string;
     };
 
-/** URL servies directement au navigateur (lecteur média, liens d'export, flux SSE). */
+/** URLs served straight to the browser (media player, export links, SSE stream). */
 export const transcriptionUrls = {
   media: (id: string): string => `/api/transcriptions/${encodeURIComponent(id)}/media`,
   export: (id: string, format: SubtitleFormat): string =>
@@ -143,12 +145,12 @@ export const transcriptionUrls = {
 };
 
 /**
- * Plafond de l'envoi d'un média : `MEDIA_MAX_BYTES` à ~1 Mo/s. Généreux, mais borné —
- * un transfert interrompu ne doit pas laisser la requête pendante indéfiniment.
+ * Ceiling for sending a media file: `MEDIA_MAX_BYTES` at ~1 MB/s. Generous, but bounded — an
+ * interrupted transfer must not leave the request hanging forever.
  */
 const UPLOAD_TIMEOUT_MS = 40 * 60_000;
 
-/** Dépose un média et demande sa transcription. */
+/** Uploads a media file and requests its transcription. */
 export async function requestTranscription(p: {
   file: File;
   model: WhisperModel;
@@ -168,8 +170,8 @@ export async function requestTranscription(p: {
 }
 
 /**
- * Transcriptions de l'utilisateur connecté, les plus récentes d'abord. Le signal vient
- * de React Query : une requête devenue inutile est annulée au lieu de courir jusqu'au bout.
+ * Transcriptions of the signed-in user, most recent first. The signal comes from React Query:
+ * a request that became useless is aborted instead of running to the end.
  */
 export async function listTranscriptions(p: { signal?: AbortSignal } = {}): Promise<
   TranscriptionSummary[]
@@ -186,7 +188,7 @@ export async function getTranscription(
   });
 }
 
-/** Corrige le texte d'un segment déjà transcrit. */
+/** Corrects the text of an already transcribed segment. */
 export async function correctSegment(p: {
   transcriptionId: string;
   ordinal: number;
@@ -203,8 +205,8 @@ export async function correctSegment(p: {
 }
 
 /**
- * Renomme un locuteur pour toute la transcription. L'API répond avec la vue de détail
- * complète : c'est elle qui fait autorité, le client n'a rien à recomposer.
+ * Renames a speaker across the whole transcription. The API answers with the complete detail
+ * view: that view is authoritative, the client has nothing to recompose.
  */
 export async function renameSpeaker(p: {
   transcriptionId: string;
@@ -222,8 +224,9 @@ export async function renameSpeaker(p: {
 }
 
 /**
- * Déplace une transcription qui n'a pas démarré. Comme le renommage, l'API répond avec la
- * vue de détail complète : elle a pu changer de statut entre-temps, et c'est elle qui sait.
+ * Moves a transcription that has not started. As with renaming, the API answers with the
+ * complete detail view: its status may have changed meanwhile, and the server is the one who
+ * knows.
  */
 export async function changePlacement(p: {
   transcriptionId: string;
@@ -280,8 +283,8 @@ function isSegment(value: unknown): value is Segment {
 }
 
 /**
- * Valide un message SSE avant de laisser son contenu toucher le cache : le flux est
- * une frontière de confiance, un message inattendu doit être ignoré, pas propagé.
+ * Validates an SSE message before letting its content touch the cache: the stream is a trust
+ * boundary, and an unexpected message must be ignored, not propagated.
  */
 export function parseTranscriptionEvent(raw: string): TranscriptionEvent | null {
   let payload: unknown;
@@ -317,7 +320,7 @@ export function parseTranscriptionEvent(raw: string): TranscriptionEvent | null 
   if (name === 'transcription.failed') {
     if (!('reason' in payload) || typeof payload.reason !== 'string') return null;
   }
-  // Chaque champ du variant a été vérifié ci-dessus : la forme correspond au contrat.
+  // Every field of the variant was checked above: the shape matches the contract.
   const event = payload as TranscriptionEvent;
   return event;
 }

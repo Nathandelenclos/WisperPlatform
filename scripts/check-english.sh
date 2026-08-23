@@ -12,9 +12,11 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
+# Words with no English homograph. `sans` was removed after it flagged `sans-serif` in the
+# font stacks: it is an English word in CSS, which is exactly what this list must exclude.
 # Words with no English homograph. Deliberately short: every entry must be a word a French
 # comment can hardly avoid, and an English one cannot produce.
-WORDS='le|la|les|des|une|qui|pour|dans|avec|pas|mais|donc|jamais|toujours|aucun|est|sont|cette|sans|leur|nous|vous|elle|elles|ils|chaque|entre|alors|donne|rend'
+WORDS='le|la|les|des|une|qui|pour|dans|avec|pas|mais|donc|jamais|toujours|aucun|est|sont|cette|leur|nous|vous|elle|elles|ils|chaque|entre|alors|donne|rend'
 
 # Explicit exclusions, every entry justified. Anything listed here contains one of the words
 # above legitimately.

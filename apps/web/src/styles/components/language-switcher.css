@@ -1,0 +1,10 @@
+/*
+ * Language choice. It is a control like the others: `.control` already carries the border, the
+ * 44px target and the focus ring. Only the width is taken back — a control stretched to 100%
+ * would push the account out of the top bar and the brand off the sign-in card.
+ */
+
+.language-switcher .control {
+  inline-size: auto;
+  font-size: var(--text-sm);
+}

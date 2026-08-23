@@ -12,7 +12,7 @@ describe('Scenario: the worker completes a transcription', () => {
       transcriptionId,
       runId,
       batchSequence: 1,
-      segments: [{ startMs: 0, endMs: 2_000, text: 'Tout est dit.' }],
+      segments: [{ startMs: 0, endMs: 2_000, text: 'That is all.' }],
     });
     platform.publisher.clear();
     platform.clock.advanceSeconds(42);

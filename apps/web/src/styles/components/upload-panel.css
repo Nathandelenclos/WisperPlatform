@@ -1,7 +1,7 @@
 /*
- * Panneau de dépôt : première chose que l'on voit, seule action mise en avant de l'écran.
- * Une seule colonne, quelle que soit la largeur — un formulaire en colonnes fait sauter
- * un champ, et celui-ci vit dans un atelier de 320px.
+ * Upload panel: the first thing one sees, the only action put forward on the screen. One
+ * single column whatever the width — a form in columns makes a field jump, and this one lives
+ * in a 320px workspace.
  */
 
 .upload-panel {
@@ -11,12 +11,12 @@
   padding: var(--space-5);
 }
 
-/* Cible d'ancre depuis l'éditeur : l'anneau se dessine à l'intérieur du panneau. */
+/* Anchor target from the editor: the ring is drawn inside the panel. */
 .upload-panel:focus-visible {
   outline-offset: calc(-1 * var(--space-1));
 }
 
-/* Titre et accroche forment un groupe : serrés entre eux, détachés du formulaire. */
+/* Title and tagline form a group: tight together, detached from the form. */
 .upload-panel__head {
   display: flex;
   flex-direction: column;
@@ -45,8 +45,8 @@
 }
 
 /*
- * Choix du placement. Un `fieldset` sans bordure ni fond : le groupe est dit par sa légende
- * et tenu par sa proximité, pas par un cadre de plus dans un panneau déjà encadré.
+ * Placement choice. A `fieldset` with no border and no background: the group is said by its
+ * legend and held by its proximity, not by one more frame in an already framed panel.
  */
 .upload-panel__placement {
   display: flex;
@@ -64,8 +64,8 @@
 }
 
 /*
- * Toute l'option est cliquable, pas seulement le rond : la cible d'un bouton radio nu est
- * sous les 24px que demande WCAG 2.2, et la conséquence se lit dans le même geste.
+ * The whole option is clickable, not just the dot: the target of a bare radio button is below
+ * the 24px WCAG 2.2 asks for, and the consequence is read in the same gesture.
  */
 .upload-panel__choice {
   display: grid;
@@ -76,7 +76,7 @@
 }
 
 .upload-panel__choice-input {
-  /* Aligné sur la première ligne du libellé, quelle que soit la taille du texte. */
+  /* Aligned on the first line of the label, whatever the size of the text. */
   margin-block-start: calc(var(--space-1) / 2);
   accent-color: var(--accent);
 }
@@ -91,7 +91,7 @@
   font-size: var(--text-sm);
 }
 
-/* La conséquence, pas la mécanique : c'est elle qui décide, donc elle reste lisible. */
+/* The consequence, not the machinery: it is what decides, so it stays readable. */
 .upload-panel__choice-hint {
   font-size: var(--text-xs);
   color: var(--text-muted);

@@ -1,20 +1,19 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { createWorkerKey, listWorkerKeys, revokeWorkerKey } from '../api/worker-keys';
 
-/** Clé du cache d'état serveur des machines déclarées. Une seule liste par compte. */
+/** Server-state cache key for declared machines. One single list per account. */
 export const workerKeyKeys = {
   list: ['worker-keys', 'list'] as const,
 };
 
 /**
- * Machines déclarées. La liste se redemande périodiquement : sa valeur tient à « vue il y a
- * 3 minutes », qui dit si la machine tourne. Sans ce rafraîchissement, l'écran affirmait
- * encore « jamais vue » alors que le worker venait de réclamer un job — l'écran devenait le
- * seul endroit du produit qui mentait sur l'état de sa propre machine.
+ * Declared machines. The list is asked for again periodically: its value rests on “seen 3
+ * minutes ago”, which tells whether the machine is running. Without that refresh the screen
+ * still claimed “never seen” while the worker had just claimed a job — the screen became the
+ * one place in the product that lied about the state of its own machine.
  *
- * Trente secondes : assez fin pour qu'un worker qu'on vient de lancer apparaisse pendant
- * qu'on regarde, assez large pour ne pas discuter une donnée que l'API n'écrit, elle, qu'une
- * fois par minute par clé.
+ * Thirty seconds: fine enough for a worker just started to appear while one is watching, wide
+ * enough not to argue over a value the API itself only writes once a minute per key.
  */
 const SIGHTING_REFRESH_MS = 30_000;
 
@@ -23,15 +22,15 @@ export function useWorkerKeys() {
     queryKey: workerKeyKeys.list,
     queryFn: ({ signal }) => listWorkerKeys({ signal }),
     refetchInterval: SIGHTING_REFRESH_MS,
-    // Revenir sur l'onglet, c'est justement le moment où l'on vient voir si ça tourne.
+    // Coming back to the tab is precisely when one comes to see whether it is running.
     refetchOnWindowFocus: true,
   });
 }
 
 /**
- * Déclare une machine. Le secret rendu par l'API n'est **pas** écrit dans le cache : il ne
- * doit survivre ni à un rafraîchissement de la liste, ni à la fermeture de la vue qui
- * l'affiche. Seule cette vue le tient, le temps qu'on le copie.
+ * Declares a machine. The secret returned by the API is **not** written into the cache: it
+ * must survive neither a refresh of the list nor the closing of the view that shows it. That
+ * view alone holds it, just long enough to copy.
  */
 export function useCreateWorkerKey() {
   const queryClient = useQueryClient();
@@ -41,7 +40,7 @@ export function useCreateWorkerKey() {
   });
 }
 
-/** Révoque une machine. L'API ne répond rien : la liste fait foi, on la redemande. */
+/** Revokes a machine. The API answers nothing: the list is the truth, so it is asked again. */
 export function useRevokeWorkerKey() {
   const queryClient = useQueryClient();
   return useMutation({

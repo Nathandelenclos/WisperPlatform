@@ -1,40 +1,41 @@
 import { useState, type ReactNode } from 'react';
 import type { Segment } from '../api/transcriptions';
 import { formatTimecode } from '../format';
+import { useTranslation } from '../i18n';
 import { VisuallyHidden } from './primitives';
 
 /*
- * Les callbacks reçoivent l'ordinal du segment au lieu d'être refermés dessus par le parent :
- * un transcript peut compter des milliers de lignes, et une fonction par ligne et par rendu
- * est de l'allocation pure. Ici le parent passe trois références, une fois pour toutes.
+ * The callbacks receive the ordinal of the segment instead of being closed over by the parent:
+ * a transcript can hold thousands of lines, and one function per line per render is pure
+ * allocation. Here the parent passes three references, once and for all.
  */
 type SegmentRowProps = {
   segment: Segment;
   /**
-   * Étiquette du locuteur, quand ce segment ouvre un tour de parole. Le parent tranche : lui
-   * seul voit la ligne précédente, et l'étiquette ne se répète pas d'une ligne à l'autre.
+   * Speaker label, when this segment opens a turn. The parent decides: it alone sees the
+   * previous line, and the label does not repeat itself from one line to the next.
    */
   speakerHead: ReactNode;
-  /** Le segment couvre la position de lecture courante. */
+  /** The segment covers the current playback position. */
   current: boolean;
-  /** La correction n'est ouverte que sur une transcription terminée. */
+  /** Correcting is only open on a finished transcription. */
   editable: boolean;
   saving: boolean;
   onSeek: (startMs: number) => void;
   onCommit: (ordinal: number, text: string) => void;
-  /** Le champ prend ou rend le focus : le parent suspend le défilement automatique. */
+  /** The field takes or gives back the focus: the parent suspends automatic scrolling. */
   onEditingChange: (editing: boolean) => void;
 };
 
 /**
- * Une ligne de transcription : timecode cliquable et texte du segment. La correction
- * est confiée au parent au moment où le champ perd le focus, si le texte a changé ;
- * hors transcription terminée, le champ est en lecture seule.
+ * One transcript line: clickable timecode and segment text. The correction is handed to the
+ * parent when the field loses focus, if the text changed; outside a finished transcription the
+ * field is read-only.
  *
- * Le champ s'agrandit avec son contenu sans mesure en JavaScript : le conteneur duplique
- * le texte dans un pseudo-élément superposé (`data-replicated-value`), et c'est ce jumeau
- * invisible qui donne sa hauteur à la grille. Aucun défilement interne, aucun calcul de
- * mise en page déclenché à la frappe.
+ * The field grows with its content without any measurement in JavaScript: the container
+ * duplicates the text in a superimposed pseudo-element (`data-replicated-value`), and it is
+ * that invisible twin which gives the grid its height. No internal scrolling, no layout
+ * computation triggered on each keystroke.
  */
 export function SegmentRow({
   segment,
@@ -46,14 +47,15 @@ export function SegmentRow({
   onCommit,
   onEditingChange,
 }: SegmentRowProps) {
+  const { t } = useTranslation();
   const [draft, setDraft] = useState(segment.text);
   const [known, setKnown] = useState(segment.text);
   const [editing, setEditing] = useState(false);
   const [emptyRejected, setEmptyRejected] = useState(false);
 
-  // Le texte de référence a changé (correction enregistrée, lot rejoué, resynchronisation
-  // du flux) : le brouillon suit. Jamais pendant l'édition — rien ne bouge sous le curseur ;
-  // l'arbitrage est reporté au blur, où la saisie de l'utilisateur reste prioritaire.
+  // The reference text changed (correction saved, batch replayed, stream resynchronised): the
+  // draft follows. Never while editing — nothing moves under the cursor; the arbitration is
+  // deferred to the blur, where what the user typed keeps priority.
   if (!editing && segment.text !== known) {
     setKnown(segment.text);
     setDraft(segment.text);
@@ -70,8 +72,8 @@ export function SegmentRow({
     const text = draft.trim();
 
     if (text.length === 0) {
-      // Correction vide refusée : le champ retrouve le dernier texte accepté, sinon
-      // l'utilisateur perd de vue ce qu'il était en train de corriger.
+      // Empty correction refused: the field goes back to the last accepted text, otherwise the
+      // user loses sight of what they were correcting.
       setDraft(segment.text);
       setKnown(segment.text);
       setEmptyRejected(true);
@@ -81,8 +83,8 @@ export function SegmentRow({
     setEmptyRejected(false);
 
     if (text === known) {
-      // Rien de neuf n'a été saisi. Si la référence a bougé pendant l'édition, on l'adopte
-      // maintenant plutôt que de réécrire par-dessus une version plus récente que la nôtre.
+      // Nothing new was typed. If the reference moved during the edit, we adopt it now rather
+      // than writing over a version more recent than ours.
       setDraft(segment.text);
       setKnown(segment.text);
       return;
@@ -98,22 +100,23 @@ export function SegmentRow({
       data-ordinal={segment.ordinal}
       aria-current={current ? 'location' : undefined}
     >
-      {/* Le tour de parole coiffe la ligne entière, timecode compris. */}
+      {/* The speaker turn caps the whole line, timecode included. */}
       {speakerHead}
 
       <button className="segment__timecode" type="button" onClick={() => onSeek(segment.startMs)}>
-        {/* Le timecode visible sert d'étiquette ; le lecteur d'écran entend le geste. */}
-        <VisuallyHidden>Écouter à partir de </VisuallyHidden>
+        {/* The visible timecode acts as the label; the screen reader hears the gesture. */}
+        <VisuallyHidden>{`${t('segment.playFrom')} `}</VisuallyHidden>
         <span className="segment__clock">{clock}</span>
       </button>
 
       <div className="segment__body">
         {/*
-         * Un label visible par ligne serait un mur de texte : le timecode voisin joue ce
-         * rôle à l'œil, et le label lié — masqué — nomme le champ pour l'assistance.
+         * One visible label per line would be a wall of text: the neighbouring timecode plays
+         * that role for the eye, and the tied label — hidden — names the field for assistive
+         * technology.
          */}
         <label className="visually-hidden" htmlFor={fieldId}>
-          Texte du segment à {clock}
+          {t('segment.textLabel', { at: clock })}
         </label>
 
         <div className="segment__grow" data-replicated-value={draft}>
@@ -136,19 +139,19 @@ export function SegmentRow({
         </div>
 
         {/*
-         * Ligne d'état toujours présente : sa hauteur est réservée, donc l'apparition
-         * d'« Enregistrement… » puis de « Corrigé » ne décale jamais la suite du transcript.
+         * State line always present: its height is reserved, so the appearance of “Saving…”
+         * then of “Corrected” never shifts the rest of the transcript.
          */}
         <p className="segment__state" id={stateId}>
-          {current ? <VisuallyHidden>Segment en cours de lecture.</VisuallyHidden> : null}
+          {current ? <VisuallyHidden>{t('segment.playing')}</VisuallyHidden> : null}
           {emptyRejected ? (
             <span className="segment__error" role="alert">
-              Un segment ne peut pas être vide : le texte précédent a été rétabli.
+              {t('segment.emptyRejected')}
             </span>
           ) : null}
-          {saving ? <span className="segment__saving">Enregistrement…</span> : null}
+          {saving ? <span className="segment__saving">{t('segment.saving')}</span> : null}
           {!saving && !emptyRejected && segment.corrected ? (
-            <span className="segment__corrected">Corrigé</span>
+            <span className="segment__corrected">{t('segment.corrected')}</span>
           ) : null}
         </p>
       </div>

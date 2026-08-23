@@ -1,17 +1,18 @@
 import type { ReactElement, ReactNode } from 'react';
+import { useTranslation, type MessageKey } from '../../i18n';
 import { VisuallyHidden } from './visually-hidden';
 
 type NoticeTone = 'info' | 'warning' | 'error' | 'success';
 
-/** Le ton est nommé pour le lecteur d'écran : la couleur ne dit rien à qui ne la voit pas. */
-const TONE_PREFIX: Record<NoticeTone, string> = {
-  info: 'Information',
-  warning: 'Attention',
-  error: 'Erreur',
-  success: 'Succès',
+/** The tone is named for the screen reader: colour says nothing to whoever cannot see it. */
+const TONE_PREFIX: Record<NoticeTone, MessageKey> = {
+  info: 'notice.info',
+  warning: 'notice.warning',
+  error: 'notice.error',
+  success: 'notice.success',
 };
 
-/** Un contour différent par ton — cercle, triangle, losange, cercle coché. */
+/** One outline per tone — circle, triangle, diamond, ticked circle. */
 const TONE_SHAPE: Record<NoticeTone, ReactElement> = {
   info: (
     <>
@@ -49,14 +50,16 @@ type NoticeProps = {
 };
 
 /**
- * Message contextuel. Volontairement **muet** côté annonce : ni `role="alert"`, ni `aria-live`.
- * C'est le conteneur qui possède sa région live, sinon la même phrase est annoncée deux fois.
+ * Contextual message. Deliberately **mute** on the announcement side: no `role="alert"`, no
+ * `aria-live`. The container owns its live region, otherwise the same sentence is announced
+ * twice.
  *
- * Le titre est un paragraphe, pas un élément de titre : un `Notice` peut vivre n'importe où et
- * n'a pas à connaître le niveau de titre de son hôte pour ne pas créer de saut.
+ * The title is a paragraph, not a heading element: a `Notice` can live anywhere and has no
+ * business knowing the heading level of its host in order to avoid creating a break.
  */
 export function Notice({ tone, title, children, action }: NoticeProps): ReactElement {
-  const prefix = <VisuallyHidden>{`${TONE_PREFIX[tone]} : `}</VisuallyHidden>;
+  const { t } = useTranslation();
+  const prefix = <VisuallyHidden>{`${t(TONE_PREFIX[tone])} `}</VisuallyHidden>;
 
   return (
     <div className={`notice notice--${tone}`}>

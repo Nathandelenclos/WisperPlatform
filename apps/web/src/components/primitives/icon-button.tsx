@@ -1,7 +1,7 @@
 import type { ReactElement, ReactNode } from 'react';
 
 type IconButtonProps = {
-  /** Nom accessible du bouton : une icône seule n'en a aucun. Obligatoire, pas de défaut. */
+  /** Accessible name of the button: an icon alone has none. Required, no default. */
   label: string;
   onClick?: () => void;
   children: ReactNode;
@@ -11,12 +11,12 @@ type IconButtonProps = {
 };
 
 /**
- * Bouton réduit à son icône. `label` devient l'`aria-label` (lecteur d'écran) et le `title`
- * (survol souris) : l'icône, elle, est masquée de l'arbre d'accessibilité par son enveloppe,
- * ce qui évite qu'un `<title>` oublié dans un SVG appelant ne pollue le nom accessible.
+ * A button reduced to its icon. `label` becomes the `aria-label` (screen reader) and the
+ * `title` (mouse hover): the icon itself is hidden from the accessibility tree by its wrapper,
+ * which prevents a `<title>` forgotten inside a calling SVG from polluting the accessible name.
  *
- * En taille `sm`, le dessin se resserre mais la cible reste à 44×44 grâce au pseudo-élément
- * de `button.css` : les lignes denses du transcript restent pointables.
+ * At size `sm` the drawing tightens but the target stays 44×44, thanks to the pseudo-element in
+ * `button.css`: the dense lines of the transcript stay pointable.
  */
 export function IconButton({
   label,

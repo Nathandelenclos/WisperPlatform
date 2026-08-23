@@ -28,9 +28,9 @@ async function aTranscribedTranscription(): Promise<{
     runId,
     batchSequence: 1,
     segments: [
-      { startMs: 0, endMs: 1_000, text: 'bonjour à tous' },
-      { startMs: 1_000, endMs: 2_000, text: 'merci de me recevoir' },
-      { startMs: 5_000, endMs: 6_000, text: 'nous y reviendrons' },
+      { startMs: 0, endMs: 1_000, text: 'hello everyone' },
+      { startMs: 1_000, endMs: 2_000, text: 'thanks for having me' },
+      { startMs: 5_000, endMs: 6_000, text: 'we will come back to it' },
     ],
   });
   platform.publisher.clear();

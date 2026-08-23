@@ -1,7 +1,7 @@
 /*
- * Bibliothèque : la navigation de l'atelier. Une liste à plat, un seul niveau, l'élément
- * courant repérable d'un coup d'œil. Tout doit tenir à 320px sans débordement, d'où des
- * noms de média qui se coupent où ils peuvent et des méta-données qui passent à la ligne.
+ * Library: the navigation of the workspace. A flat list, one single level, the current item
+ * spottable at a glance. Everything must fit at 320px without overflow, hence media names that
+ * break wherever they can and metadata that wraps.
  */
 
 .library {
@@ -21,7 +21,7 @@
   margin-right: auto;
 }
 
-/* Le compte est une donnée, pas un libellé : « 12 », pas « Nombre : 12 ». */
+/* The count is data, not a label: “12”, not “Number: 12”. */
 .library__count {
   padding: var(--space-1) var(--space-2);
   background: var(--surface-sunken);
@@ -49,22 +49,22 @@
   list-style: none;
 }
 
-/* --- Ligne ------------------------------------------------------------------------------ */
+/* --- Row ---------------------------------------------------------------------------------- */
 
 .library__row {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
   width: 100%;
-  /* Le retrait à gauche est le même partout : le filet de l'élément courant s'y loge
-     sans décaler une seule ligne de texte. */
+  /* The left inset is the same everywhere: the rule of the current item lodges there without
+     shifting a single line of text. */
   padding: var(--space-3) var(--space-3) var(--space-3) var(--space-4);
   background: transparent;
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
   text-align: left;
   cursor: pointer;
-  /* Rien ne bouge sous le curseur : seules la couleur et la bordure changent. */
+  /* Nothing moves under the cursor: only the colour and the border change. */
   transition:
     background-color var(--motion-fast) var(--ease-out),
     border-color var(--motion-fast) var(--ease-out);
@@ -76,8 +76,8 @@
 }
 
 /*
- * Élément courant. Le fond ne suffit pas — un daltonien doit le voir : un filet d'encre
- * le marque à gauche, posé en ombre intérieure pour ne décaler aucun texte.
+ * Current item. The background is not enough — a colour-blind reader must see it: a rule of
+ * ink marks it on the left, laid as an inner shadow so as to shift no text.
  */
 .library__row[aria-current] {
   background: var(--surface-accent);
@@ -99,7 +99,7 @@
   gap: var(--space-2);
 }
 
-/* Un nom de fichier n'a pas d'espaces : il faut l'autoriser à se couper n'importe où. */
+/* A file name has no spaces: it must be allowed to break anywhere. */
 .library__name {
   min-width: 0;
   font-weight: var(--weight-medium);
@@ -119,8 +119,8 @@
 }
 
 /*
- * Le placement sort du lot des méta-données : c'est lui qui explique pourquoi une ligne
- * n'avance pas. L'encre pleine suffit à le détacher du gris des autres.
+ * The placement stands out from the other metadata: it is what explains why a row is not
+ * moving. Full ink is enough to detach it from the grey of the others.
  */
 .library__meta-item--placement {
   color: var(--text);

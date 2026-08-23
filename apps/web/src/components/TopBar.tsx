@@ -1,3 +1,5 @@
+import { useTranslation } from '../i18n';
+import { LanguageSwitcher } from './LanguageSwitcher';
 import { Button, Notice } from './primitives';
 
 type TopBarProps = {
@@ -7,13 +9,15 @@ type TopBarProps = {
   onSignOut: () => void;
 };
 
-/** Barre de titre : identité de la plateforme, utilisateur connecté, déconnexion. */
+/** Title bar: identity of the platform, signed-in user, language, sign-out. */
 export function TopBar({ displayName, signingOut, signOutError, onSignOut }: TopBarProps) {
+  const { t } = useTranslation();
+
   return (
     <header className="topbar">
-      {/* Unique `h1` de l'atelier : les panneaux qui le composent sont des `h2`. */}
+      {/* The one `h1` of the workspace: the panels that compose it are `h2`. */}
       <h1 className="topbar__brand">
-        {/* Onde sonore : trois barres suffisent à dire de quoi il est question. */}
+        {/* Sound wave: three bars are enough to say what this is about. */}
         <svg className="topbar__mark" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
           <rect x="3" y="9" width="3" height="6" rx="1.5" />
           <rect x="10.5" y="4" width="3" height="16" rx="1.5" />
@@ -23,15 +27,16 @@ export function TopBar({ displayName, signingOut, signOutError, onSignOut }: Top
       </h1>
 
       <div className="topbar__account">
+        <LanguageSwitcher />
         <span className="topbar__name">{displayName}</span>
         <Button variant="ghost" loading={signingOut} onClick={onSignOut}>
-          {signingOut ? 'Déconnexion…' : 'Se déconnecter'}
+          {signingOut ? t('topBar.signingOut') : t('topBar.signOut')}
         </Button>
       </div>
 
       {/*
-        Région live rendue en permanence et vide au repos : une région créée en même temps
-        que son contenu n'est pas annoncée.
+        Live region rendered permanently and empty at rest: a region created at the same time
+        as its content is not announced.
       */}
       <div className="topbar__feedback" aria-live="polite">
         {signOutError === null ? null : <Notice tone="error">{signOutError}</Notice>}

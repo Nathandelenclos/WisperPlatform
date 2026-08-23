@@ -1,8 +1,8 @@
 /*
- * Boutons : action textuelle (`.button`) et action réduite à son icône (`.icon-button`).
+ * Buttons: textual action (`.button`) and action reduced to its icon (`.icon-button`).
  *
- * La cible minimale de 44px ne figure pas telle quelle dans les tokens : elle se compose de
- * l'échelle d'espacement (32 + 12), ce qui évite d'inventer une valeur à côté du système.
+ * The 44px minimum target does not appear as such in the tokens: it is composed from the
+ * spacing scale (32 + 12), which avoids inventing a value beside the system.
  */
 
 .button,
@@ -32,7 +32,7 @@
     color var(--motion-fast) var(--ease-out);
 }
 
-/* Le dessin se resserre, la hauteur de cible héritée de `.button` reste à 44px. */
+/* The drawing tightens, the target height inherited from `.button` stays at 44px. */
 .button--sm {
   padding-inline: var(--space-3);
   font-size: var(--text-sm);
@@ -50,7 +50,7 @@
   block-size: 100%;
 }
 
-/* Une rotation lente : quatre fois le temps de base, sinon le disque paraît affolé. */
+/* A slow rotation: four times the base duration, otherwise the disc looks panicked. */
 .button__spinner {
   animation: button-spin calc(var(--motion-base) * 4) linear infinite;
 }
@@ -62,8 +62,8 @@
 }
 
 /*
- * Moins de mouvement demandé : la rotation disparaît. L'arc reste comme signe fixe, et
- * l'occupation continue d'être portée par le texte et par `aria-busy`.
+ * Less motion asked for: the rotation disappears. The arc stays as a fixed sign, and the busy
+ * state goes on being carried by the text and by `aria-busy`.
  */
 @media (prefers-reduced-motion: reduce) {
   .button__spinner {
@@ -71,7 +71,7 @@
   }
 }
 
-/* --- Variantes --------------------------------------------------------------------------- */
+/* --- Variants ----------------------------------------------------------------------------- */
 
 .button--primary {
   background: var(--accent);
@@ -85,9 +85,9 @@
 }
 
 /*
- * La bordure du bouton secondaire l'identifie comme contrôle : elle prend `--border-control`
- * (≥ 3:1) et ne s'affaiblit pas au survol, où c'est le fond qui se creuse. Un état ne peut pas
- * repasser sous le seuil.
+ * The border of the secondary button identifies it as a control: it takes `--border-control`
+ * (≥ 3:1) and does not weaken on hover, where it is the background that sinks. A state cannot
+ * drop back below the threshold.
  */
 .button--secondary {
   background: var(--surface-raised);
@@ -109,8 +109,8 @@
 }
 
 /*
- * Destructif sans hurler : le rouge est dans le texte et la bordure, pas en aplat. Une action
- * dangereuse doit se remarquer, pas dominer l'écran.
+ * Destructive without shouting: the red is in the text and the border, not in a flat fill. A
+ * dangerous action must be noticed, not dominate the screen.
  */
 .button--danger {
   background: var(--surface-raised);
@@ -123,28 +123,28 @@
   border-color: var(--status-failed);
 }
 
-/* --- États ------------------------------------------------------------------------------- */
+/* --- States ------------------------------------------------------------------------------- */
 
 .button:disabled,
 .icon-button:disabled {
   background: var(--surface-sunken);
   border-color: var(--border);
   /*
-   * WCAG 1.4.3 exempte le texte d'un contrôle inactif, mais un bouton éteint est justement
-   * celui qu'on lit pour comprendre pourquoi il l'est : on reste au-dessus du seuil (6.9:1).
-   * L'inactivité se voit au fond aplati, à la bordure affaiblie et au curseur, pas à un texte
-   * qu'il faut deviner.
+   * WCAG 1.4.3 exempts the text of an inactive control, but a button that is off is precisely
+   * the one read to understand why it is off: we stay above the threshold (6.9:1). Inactivity
+   * shows in the flattened background, the weakened border and the cursor, not in a text one
+   * has to guess.
    */
   color: var(--text-muted);
   cursor: not-allowed;
 }
 
-/* Occupé : le bouton reste focusable, le curseur annonce l'attente. */
+/* Busy: the button stays focusable, the cursor announces the wait. */
 .button--loading {
   cursor: progress;
 }
 
-/* --- Bouton icône ------------------------------------------------------------------------ */
+/* --- Icon button -------------------------------------------------------------------------- */
 
 .icon-button {
   position: relative;
@@ -173,9 +173,10 @@
 }
 
 /*
- * Le dessin se resserre en taille `sm`, la cible non : ce pseudo-élément la ramène à 44×44 et
- * la centre sur le bouton. Les lignes denses du transcript restent pointables au doigt.
- * Le conteneur doit espacer ces boutons d'au moins un cran, sinon les cibles se chevauchent.
+ * The drawing tightens at size `sm`, the target does not: this pseudo-element brings it back
+ * to 44×44 and centres it on the button. The dense lines of the transcript stay pointable with
+ * a finger. The container must space these buttons by at least one step, otherwise the targets
+ * overlap.
  */
 .icon-button--sm::after {
   content: '';

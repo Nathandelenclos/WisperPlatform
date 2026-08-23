@@ -1,6 +1,11 @@
 /*
- * Couche atomique du design system. Un composant d'ici est purement visuel : aucun appel
- * réseau, aucune route, aucun store — tout arrive en props, tout repart en callback.
+ * Atomic layer of the design system. A component from here is purely visual: no network call,
+ * no route, no store — everything comes in as props and leaves as callbacks.
+ *
+ * One exception, and only one: the copy a primitive owns itself (a tone prefix, a status label,
+ * the wording of the drop zone) is read from the message catalogue. That text belongs to the
+ * primitive, not to its host, and threading it through props would make every call site carry
+ * strings it has no opinion about.
  */
 export { Button } from './button';
 export type { ButtonProps } from './button';

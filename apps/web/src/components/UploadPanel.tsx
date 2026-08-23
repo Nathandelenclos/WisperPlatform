@@ -1,56 +1,61 @@
 import { useState } from 'react';
-import { DEFAULT_PLACEMENT, type Placement, type WhisperModel } from '../api/transcriptions';
-import { formatByteSize } from '../format';
+import {
+  DEFAULT_PLACEMENT,
+  type Placement,
+  type TranscriptionLanguage,
+  type WhisperModel,
+} from '../api/transcriptions';
+import { useTranslation, type MessageKey } from '../i18n';
 import { Button, Field, FileDrop, Notice, Select } from './primitives';
 
 /**
- * Ce que change le choix du modèle, dit sur place. Sans cette ligne, arbitrer entre
- * vitesse et fidélité obligerait à aller chercher l'information ailleurs — la décision
- * appartient à l'écran où elle se prend.
+ * What the choice of model changes, said on the spot. Without that line, arbitrating between
+ * speed and fidelity would mean going to look the information up elsewhere — the decision
+ * belongs to the screen where it is taken.
  */
-const MODEL_HINTS: Record<WhisperModel, string> = {
-  tiny: 'Le plus rapide, le moins fidèle : pour dégrossir un son net.',
-  base: 'Rapide, correct sur une voix claire et sans bruit de fond.',
-  small: 'Compromis raisonnable entre le temps de traitement et la fidélité.',
-  medium: 'Fidèle, y compris sur un son moyen. Traitement sensiblement plus long.',
-  large: 'Le plus fidèle, le plus lent : pour un son difficile ou plusieurs voix.',
-  turbo: 'Presque la fidélité de « large », pour une fraction du temps.',
+const MODEL_HINTS: Record<WhisperModel, MessageKey> = {
+  tiny: 'upload.modelHint.tiny',
+  base: 'upload.modelHint.base',
+  small: 'upload.modelHint.small',
+  medium: 'upload.modelHint.medium',
+  large: 'upload.modelHint.large',
+  turbo: 'upload.modelHint.turbo',
 };
 
 /**
- * Ce que le placement change pour l'utilisateur, dit en conséquence et non en mécanique :
- * ce qui l'intéresse, c'est quand sa transcription démarrera.
+ * What the placement changes for the user, said as a consequence and not as machinery: what
+ * interests them is when their transcription will start.
  */
-const PLACEMENT_CHOICES: readonly { value: Placement; label: string; hint: string }[] = [
+const PLACEMENT_CHOICES: readonly { value: Placement; label: MessageKey; hint: MessageKey }[] = [
   {
     value: 'service',
-    label: 'Sur les serveurs du service',
-    hint: 'Démarre dès qu\u2019un worker se libère.',
+    label: 'upload.placementServiceLabel',
+    hint: 'upload.placementServiceHint',
   },
   {
     value: 'owner',
-    label: 'Sur ma machine',
-    hint: "Ne démarrera que lorsqu'une de vos machines tournera. Elle attendra sans limite de temps, et vous pourrez la confier au service à tout moment.",
+    label: 'upload.placementOwnerLabel',
+    hint: 'upload.placementOwnerHint',
   },
 ];
 
 type UploadPanelProps = {
   models: readonly WhisperModel[];
-  languages: readonly { value: string; label: string }[];
+  languages: readonly TranscriptionLanguage[];
   defaultModel: WhisperModel;
-  defaultLanguage: string;
+  defaultLanguage: TranscriptionLanguage;
   maxByteSize: number;
-  /** Fichier retenu par le conteneur, qui en juge la taille. */
+  /** File held by the container, which judges its size. */
   file: File | null;
-  /** Message du refus de taille, calculé par le conteneur ; bloque l'envoi. */
+  /** Message of the size refusal, computed by the container; blocks the upload. */
   sizeError: string | null;
   submitting: boolean;
   errorMessage: string | null;
-  /** Identifiant de la dernière transcription acceptée : remet la zone de dépôt à zéro. */
+  /** Id of the last accepted transcription: resets the drop zone. */
   acceptedId: string | null;
   /**
-   * Le propriétaire a au moins une machine en état de servir. Sinon il n'a rien à
-   * arbitrer : le choix ne s'affiche pas, une option morte n'est que du bruit.
+   * The owner has at least one machine in a state to serve. Otherwise they have nothing to
+   * arbitrate: the choice is not shown, a dead option being nothing but noise.
    */
   placementAvailable: boolean;
   onFileChange: (file: File | null) => void;
@@ -63,8 +68,8 @@ type UploadPanelProps = {
 };
 
 /**
- * Dépôt d'un média : c'est l'action première de l'atelier, donc le premier panneau et la
- * seule action mise en avant. Le modèle et la langue ont un défaut utilisable tel quel.
+ * Uploading a media file: it is the first action of the workspace, hence the first panel and
+ * the only action put forward. The model and the language have a default usable as it stands.
  */
 export function UploadPanel({
   models,
@@ -81,8 +86,9 @@ export function UploadPanel({
   onFileChange,
   onSubmit,
 }: UploadPanelProps) {
+  const { t, format } = useTranslation();
   const [model, setModel] = useState<WhisperModel>(defaultModel);
-  const [language, setLanguage] = useState(defaultLanguage);
+  const [language, setLanguage] = useState<TranscriptionLanguage>(defaultLanguage);
   const [placement, setPlacement] = useState<Placement>(DEFAULT_PLACEMENT);
 
   const blocked = file === null || sizeError !== null;
@@ -95,13 +101,8 @@ export function UploadPanel({
       aria-labelledby="upload-panel-title"
     >
       <div className="upload-panel__head">
-        <h2 id="upload-panel-title">
-          Nouvelle transcription
-        </h2>
-        <p className="upload-panel__lede">
-          Déposez un audio ou une vidéo : la transcription démarre aussitôt et le texte
-          s'affiche au fil de l'eau.
-        </p>
+        <h2 id="upload-panel-title">{t('upload.title')}</h2>
+        <p className="upload-panel__lede">{t('upload.lede')}</p>
       </div>
 
       <form
@@ -113,33 +114,38 @@ export function UploadPanel({
         }}
       >
         <FileDrop
-          // Une transcription acceptée remet la zone à neuf, input natif compris.
+          // An accepted transcription resets the zone, native input included.
           key={acceptedId ?? 'first'}
           id="upload-file"
           file={file}
           accept="audio/*,video/*"
-          maxLabel={`${formatByteSize(maxByteSize)} maximum`}
+          maxLabel={t('upload.maxSize', { size: format.byteSize(maxByteSize) })}
           error={sizeError}
           disabled={submitting}
           onFile={onFileChange}
         />
 
         {/*
-          Le modèle et la langue ne se règlent qu'une fois un fichier choisi : avant, ils
-          poussent la bibliothèque hors de l'écran, et c'est elle qu'on vient chercher en
-          revenant. Leur valeur courante reste dite, pour que rien ne se décide en silence.
+          The model and the language are only adjusted once a file has been chosen: before
+          that, they push the library off the screen, and the library is what one comes back
+          for. Their current value is still said, so that nothing is decided in silence.
         */}
         {file === null ? (
           <p className="upload-panel__submit-hint">
-            Réglages : modèle {model}, {languages.find((candidate) => candidate.value === language)?.label ?? language}
             {placementAvailable
-              ? `, calcul ${placement === 'owner' ? 'sur votre machine' : 'sur le service'}`
-              : ''}
-            . Ils s'ouvrent dès qu'un fichier est choisi.
+              ? t('upload.settingsWithPlacement', {
+                  model,
+                  language: t(`language.${language}`),
+                  where:
+                    placement === 'owner'
+                      ? t('upload.computedOnOwner')
+                      : t('upload.computedOnService'),
+                })
+              : t('upload.settings', { model, language: t(`language.${language}`) })}
           </p>
         ) : (
           <>
-            <Field id="upload-model" label="Modèle" hint={MODEL_HINTS[model]}>
+            <Field id="upload-model" label={t('upload.modelLabel')} hint={t(MODEL_HINTS[model])}>
               {(fieldProps) => (
                 <Select
                   {...fieldProps}
@@ -164,8 +170,8 @@ export function UploadPanel({
 
             <Field
               id="upload-language"
-              label="Langue parlée"
-              hint="Le modèle transcrit dans cette langue ; il ne traduit pas."
+              label={t('upload.languageLabel')}
+              hint={t('upload.languageHint')}
             >
               {(fieldProps) => (
                 <Select
@@ -173,11 +179,16 @@ export function UploadPanel({
                   name="language"
                   value={language}
                   disabled={submitting}
-                  onChange={(changeEvent) => setLanguage(changeEvent.target.value)}
+                  onChange={(changeEvent) => {
+                    const chosen = languages.find(
+                      (candidate) => candidate === changeEvent.target.value,
+                    );
+                    if (chosen !== undefined) setLanguage(chosen);
+                  }}
                 >
                   {languages.map((candidate) => (
-                    <option key={candidate.value} value={candidate.value}>
-                      {candidate.label}
+                    <option key={candidate} value={candidate}>
+                      {t(`language.${candidate}`)}
                     </option>
                   ))}
                 </Select>
@@ -185,13 +196,15 @@ export function UploadPanel({
             </Field>
 
             {/*
-              Le placement ne s'affiche que si l'utilisateur a une machine : sans elle,
-              il n'y a rien à arbitrer. Deux options exclusives et brèves : des boutons
-              radio, pas une liste déroulante — les deux conséquences se lisent d'un coup.
+              The placement is only shown if the user has a machine: without one there is
+              nothing to arbitrate. Two exclusive, short options: radio buttons, not a dropdown
+              — both consequences are read in one go.
             */}
             {placementAvailable ? (
               <fieldset className="upload-panel__placement">
-                <legend className="upload-panel__placement-legend">Où calculer</legend>
+                <legend className="upload-panel__placement-legend">
+                  {t('upload.placementLegend')}
+                </legend>
                 {PLACEMENT_CHOICES.map((choice) => (
                   <label className="upload-panel__choice" key={choice.value}>
                     <input
@@ -204,8 +217,8 @@ export function UploadPanel({
                       onChange={() => setPlacement(choice.value)}
                     />
                     <span className="upload-panel__choice-text">
-                      <span className="upload-panel__choice-label">{choice.label}</span>
-                      <span className="upload-panel__choice-hint">{choice.hint}</span>
+                      <span className="upload-panel__choice-label">{t(choice.label)}</span>
+                      <span className="upload-panel__choice-hint">{t(choice.hint)}</span>
                     </span>
                   </label>
                 ))}
@@ -215,12 +228,12 @@ export function UploadPanel({
         )}
 
         {/*
-          Refus venu du serveur. Le refus de taille, lui, reste sous la zone de dépôt :
-          une erreur se lit à côté de ce qui l'a causée.
+          Refusal coming from the server. The size refusal stays under the drop zone: an error
+          is read next to what caused it.
         */}
         <div className="upload-panel__feedback" aria-live="polite">
           {errorMessage === null ? null : (
-            <Notice tone="error" title="Dépôt refusé">
+            <Notice tone="error" title={t('upload.refusedTitle')}>
               {errorMessage}
             </Notice>
           )}
@@ -228,13 +241,11 @@ export function UploadPanel({
 
         <div className="upload-panel__submit">
           <Button type="submit" variant="primary" loading={submitting} disabled={blocked}>
-            {submitting ? 'Envoi du média…' : 'Lancer la transcription'}
+            {submitting ? t('upload.submitting') : t('upload.submit')}
           </Button>
-          {/* Un bouton éteint doit dire pourquoi : sans ça, l'utilisateur essaie à vide. */}
+          {/* A button that is off must say why: without that, the user tries in the void. */}
           {file === null ? (
-            <p className="upload-panel__submit-hint">
-              Choisissez d'abord un fichier à transcrire.
-            </p>
+            <p className="upload-panel__submit-hint">{t('upload.chooseFirst')}</p>
           ) : null}
         </div>
       </form>

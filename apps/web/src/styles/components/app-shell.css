@@ -1,16 +1,16 @@
 /*
- * Coquille de l'atelier : en-tête d'identité, atelier à gauche, transcription à droite.
+ * Shell of the workspace: identity header, workspace on the left, transcription on the right.
  *
- * Mise en page mobile first : une seule colonne par défaut, deux dès que la place le permet.
+ * Mobile-first layout: one single column by default, two as soon as there is room.
  *
- * La rupture est une requête de conteneur, pas de fenêtre. Dans un `@container`, `em` se
- * résout sur la police du conteneur : un texte agrandi à 200 % recule donc la rupture et
- * l'atelier se replie en une colonne, au lieu de garder deux colonnes dont celle de lecture
- * serait devenue trop étroite. Un zoom de page, lui, rétrécit le conteneur et produit le
- * même repli.
+ * The breakpoint is a container query, not a window one. Inside a `@container`, `em` resolves
+ * against the font of the container: text enlarged to 200% therefore pushes the breakpoint
+ * back and the workspace folds into one column, instead of keeping two columns of which the
+ * reading one would have become too narrow. A page zoom, in turn, shrinks the container and
+ * produces the same fold.
  */
 
-/* --- En-tête ---------------------------------------------------------------------------- */
+/* --- Header ------------------------------------------------------------------------------ */
 
 .topbar {
   display: flex;
@@ -26,7 +26,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  /* Pousse le compte à l'autre extrémité, sans conteneur intermédiaire. */
+  /* Pushes the account to the other end, with no intermediate container. */
   margin-right: auto;
   min-width: 0;
   font-size: var(--text-lg);
@@ -47,8 +47,8 @@
 }
 
 /*
- * L'identité du compte est un repère, pas un contenu : elle cède la place avant tout le
- * reste sur un écran étroit.
+ * The identity of the account is a landmark, not content: it gives way before anything else on
+ * a narrow screen.
  */
 .topbar__name {
   overflow: hidden;
@@ -58,12 +58,12 @@
   white-space: nowrap;
 }
 
-/* Région live vide au repos : elle ne doit pas creuser un vide dans l'en-tête. */
+/* Live region empty at rest: it must not dig a hole in the header. */
 .topbar__feedback:not(:empty) {
   flex-basis: 100%;
 }
 
-/* --- Atelier ---------------------------------------------------------------------------- */
+/* --- Workspace --------------------------------------------------------------------------- */
 
 .workspace {
   container-type: inline-size;
@@ -77,9 +77,9 @@
 }
 
 /*
- * Le lien d'évitement et la sélection d'une transcription posent le focus sur des régions
- * pleine largeur : l'anneau se dessine à l'intérieur, sinon il déborde et crée un
- * défilement horizontal à 320px.
+ * The skip link and the selection of a transcription put the focus on full-width regions: the
+ * ring is drawn on the inside, otherwise it overflows and creates a horizontal scroll at
+ * 320px.
  */
 .workspace:focus-visible,
 .workspace__detail:focus-visible {
@@ -97,7 +97,7 @@
   min-width: 0;
 }
 
-/* L'atelier fait 20rem, la lecture prend le reste ; `minmax(0, …)` laisse les deux se couper. */
+/* The workspace is 20rem, reading takes the rest; `minmax(0, …)` lets both of them shrink. */
 @container (min-width: 56.25em) {
   .workspace__grid {
     grid-template-columns: minmax(0, 20rem) minmax(0, 1fr);
@@ -107,7 +107,7 @@
 
 @media (min-width: 56.25em) {
   .topbar {
-    /* Le transcript se lit longtemps : l'identité et la sortie restent à portée. */
+    /* The transcript is read for a long time: identity and exit stay within reach. */
     position: sticky;
     top: 0;
     z-index: 5;
@@ -119,7 +119,7 @@
   }
 }
 
-/* --- Écrans d'attente et de repli -------------------------------------------------------- */
+/* --- Waiting and fallback screens -------------------------------------------------------- */
 
 .boot {
   display: grid;
@@ -129,7 +129,7 @@
   color: var(--text-muted);
 }
 
-/* Panneau de droite pendant l'ouverture d'une transcription, ou après un rendu interrompu. */
+/* Right-hand panel while a transcription opens, or after an interrupted render. */
 .detail-status {
   display: flex;
   flex-direction: column;
@@ -142,11 +142,11 @@
   color: var(--text-muted);
 }
 
-/* --- Lien d'action ---------------------------------------------------------------------- */
+/* --- Action link -------------------------------------------------------------------------- */
 
 /*
- * Destination, donc un lien — pas un bouton déguisé. Souligné : la couleur seule ne suffit
- * pas à distinguer un lien d'un texte statique.
+ * A destination, hence a link — not a disguised button. Underlined: colour alone does not tell
+ * a link apart from static text.
  */
 .text-link {
   align-self: start;

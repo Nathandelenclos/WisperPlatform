@@ -5,21 +5,18 @@ import {
   type CreatedWorkerKey,
   type WorkerKey,
 } from '../api/worker-keys';
-import { formatRelativeTime } from '../format';
+import { useTranslation } from '../i18n';
 import { Button, EmptyState, Field, Notice, Skeleton, TextInput } from './primitives';
 
-/** Le retour de copie s'efface : c'est un accusé de réception, pas un état de l'écran. */
+/** The copy feedback fades: it is an acknowledgement, not a state of the screen. */
 const COPY_FEEDBACK_MS = 5_000;
-
-const COPY_FAILED_MESSAGE =
-  "Copie refusée par le navigateur. Sélectionnez le texte et copiez-le à la main.";
 
 type CopyState = { token: number; ok: boolean };
 
 /**
- * Copie en un geste. La valeur ne transite ni par une URL, ni par un attribut, ni par la
- * console : elle part directement dans le presse-papiers, et un refus se dit au lieu de
- * laisser croire que la copie a eu lieu.
+ * Copy in one gesture. The value goes through neither a URL, nor an attribute, nor the console:
+ * it goes straight to the clipboard, and a refusal is said instead of letting one believe the
+ * copy happened.
  */
 function CopyButton({
   value,
@@ -30,8 +27,9 @@ function CopyButton({
   label: string;
   copiedMessage: string;
 }): ReactElement {
-  // Le jeton force la relecture par le lecteur d'écran : deux copies de suite produisent
-  // le même texte, et une région live ne répète pas d'elle-même.
+  const { t } = useTranslation();
+  // The token forces the screen reader to read again: two copies in a row produce the same
+  // text, and a live region does not repeat itself.
   const [state, setState] = useState<CopyState | null>(null);
 
   useEffect(() => {
@@ -45,8 +43,8 @@ function CopyButton({
     try {
       await navigator.clipboard.writeText(value);
     } catch {
-      // Contexte non sécurisé ou permission refusée. Rien à journaliser : le message
-      // porterait le secret dans la console.
+      // Insecure context or permission denied. Nothing to log: the message would carry the
+      // secret into the console.
       ok = false;
     }
     setState((current) => ({ token: (current?.token ?? 0) + 1, ok }));
@@ -60,7 +58,7 @@ function CopyButton({
       <span className="machines__copy-status" role="status">
         {state === null ? null : (
           <span key={state.token} className={state.ok ? undefined : 'machines__copy-failed'}>
-            {state.ok ? copiedMessage : COPY_FAILED_MESSAGE}
+            {state.ok ? copiedMessage : t('machines.copyFailed')}
           </span>
         )}
       </span>
@@ -68,26 +66,26 @@ function CopyButton({
   );
 }
 
-/** Ce que `lastSeenAt` veut dire pour quelqu'un qui se demande si sa machine tourne. */
+/** What `lastSeenAt` means to someone wondering whether their machine is running. */
 function LastSeen({ machine }: { machine: WorkerKey }): ReactElement {
+  const { t, format } = useTranslation();
+
   if (machine.revokedAt !== null) {
     return (
       <p className="machines__seen">
-        Révoquée <time dateTime={machine.revokedAt}>{formatRelativeTime(machine.revokedAt)}</time>.
-        Le worker qui la porte est refusé.
+        {t('machines.revokedOn')}{' '}
+        <time dateTime={machine.revokedAt}>{format.relativeTime(machine.revokedAt)}</time>.{' '}
+        {t('machines.revokedNote')}
       </p>
     );
   }
   if (machine.lastSeenAt === null) {
-    return (
-      <p className="machines__seen">
-        Jamais vue : aucun worker ne s'est encore présenté avec cette clé.
-      </p>
-    );
+    return <p className="machines__seen">{t('machines.neverSeen')}</p>;
   }
   return (
     <p className="machines__seen">
-      Vue <time dateTime={machine.lastSeenAt}>{formatRelativeTime(machine.lastSeenAt)}</time>.
+      {t('machines.seenOn')}{' '}
+      <time dateTime={machine.lastSeenAt}>{format.relativeTime(machine.lastSeenAt)}</time>.
     </p>
   );
 }
@@ -96,11 +94,11 @@ type MachinesPanelProps = {
   machines: readonly WorkerKey[];
   loading: boolean;
   listError: string | null;
-  /** Origine de la page : le worker doit joindre la même API que le navigateur. */
+  /** Origin of the page: the worker must reach the same API as the browser. */
   origin: string;
   creating: boolean;
   createError: string | null;
-  /** Clé qui vient d'être créée, secret compris. `null` dès qu'elle a été acquittée. */
+  /** Key that has just been created, secret included. `null` as soon as it is acknowledged. */
   created: CreatedWorkerKey | null;
   onCreate: (request: { label: string }) => void;
   onDismissSecret: () => void;
@@ -110,10 +108,10 @@ type MachinesPanelProps = {
 };
 
 /**
- * Machines de l'utilisateur : en déclarer une, voir si elles tournent, en révoquer une.
+ * Machines of the user: declare one, see whether they are running, revoke one.
  *
- * La clé secrète n'est montrée qu'une fois, et l'écran le dit **avant** de la produire :
- * découvrir après coup qu'on avait une seule occasion de la copier est une impasse.
+ * The secret key is shown only once, and the screen says so **before** producing it: finding
+ * out afterwards that there was a single chance to copy it is a dead end.
  */
 export function MachinesPanel({
   machines,
@@ -129,19 +127,20 @@ export function MachinesPanel({
   revokeError,
   onRevoke,
 }: MachinesPanelProps) {
+  const { t, format } = useTranslation();
   const [label, setLabel] = useState('');
-  // Machine dont la demande de révocation est dépliée : un seul avertissement à la fois.
+  // Machine whose revocation request is unfolded: one warning at a time.
   const [confirming, setConfirming] = useState<string | null>(null);
   /**
-   * La carte du secret disparaît avec le bouton qui la ferme : sans reprise explicite, le
-   * focus retombe sur le corps du document et le clavier repart du haut de la page. Le
-   * formulaire remonte à cet instant précis, c'est donc son montage qui reprend le focus —
-   * une intention, pas un état : elle ne vaut que pour le prochain montage.
+   * The secret card disappears along with the button that closes it: without an explicit
+   * recovery, the focus falls back on the document body and the keyboard starts again from the
+   * top of the page. The form comes back at that precise instant, so it is its mounting that
+   * takes the focus back — an intention, not a state: it only holds for the next mount.
    */
   const refocusForm = useRef(false);
 
-  // Identité stable : chaque cible n'est visée qu'à son montage, jamais à chaque rendu —
-  // sinon le focus reviendrait s'y poser pendant qu'on tape ailleurs.
+  // Stable identity: each target is aimed at on its mount only, never on every render —
+  // otherwise the focus would come back and land on it while one is typing elsewhere.
   const focusOnMount = useCallback((node: HTMLElement | null) => {
     node?.focus();
   }, []);
@@ -153,10 +152,11 @@ export function MachinesPanel({
   }, []);
 
   /**
-   * Une révocation acceptée retire le bouton qui l'a déclenchée : sans reprise, le focus
-   * retombe sur le corps du document. Il se pose sur la ligne, qui porte désormais l'état
-   * révoqué — le lecteur d'écran annonce donc le résultat du geste. La fin de l'envoi se
-   * lit à la disparition de `revokingId` ; un refus, lui, laisse le bouton en place.
+   * An accepted revocation removes the button that triggered it: without a recovery, the focus
+   * falls back on the document body. It lands on the row, which now carries the revoked state
+   * — so the screen reader announces the result of the gesture. The end of the submission is
+   * read from the disappearance of `revokingId`; a refusal, in contrast, leaves the button in
+   * place.
    */
   const listRef = useRef<HTMLUListElement>(null);
   const previousRevoking = useRef<string | null>(null);
@@ -176,33 +176,30 @@ export function MachinesPanel({
     <section className="machines panel" aria-labelledby="machines-title">
       <div className="machines__head">
         <h2 className="machines__title" id="machines-title">
-          Mes machines
+          {t('machines.title')}
         </h2>
         {machines.length === 0 ? null : (
-          <span className="machines__count">{machines.length}</span>
+          <span className="machines__count">{format.number(machines.length)}</span>
         )}
       </div>
 
-      <p className="machines__lede">
-        Une machine à vous peut transcrire vos médias à la place des serveurs du service.
-        Déclarez-la ici, puis lancez le worker avec la clé obtenue.
-      </p>
+      <p className="machines__lede">{t('machines.lede')}</p>
 
       {/*
-        Région live rendue en permanence et vide au repos : une région créée en même temps
-        que son contenu n'est pas annoncée. Les trois refus possibles y passent tour à tour.
+        Live region rendered permanently and empty at rest: a region created at the same time
+        as its content is not announced. The three possible refusals take turns in it.
       */}
       <div className="machines__feedback" aria-live="polite">
         {listError !== null ? (
-          <Notice tone="error" title="Machines indisponibles">
+          <Notice tone="error" title={t('machines.unavailableTitle')}>
             {listError}
           </Notice>
         ) : createError !== null ? (
-          <Notice tone="error" title="Machine non déclarée">
+          <Notice tone="error" title={t('machines.notDeclaredTitle')}>
             {createError}
           </Notice>
         ) : revokeError !== null ? (
-          <Notice tone="error" title="Révocation refusée">
+          <Notice tone="error" title={t('machines.revokeRefusedTitle')}>
             {revokeError}
           </Notice>
         ) : null}
@@ -213,20 +210,16 @@ export function MachinesPanel({
           className="machines__form"
           ref={attachForm}
           tabIndex={-1}
-          aria-label="Déclarer une machine"
+          aria-label={t('machines.formLabel')}
           onSubmit={(submitEvent) => {
             submitEvent.preventDefault();
-            // Le champ n'est PAS vidé ici : un refus du serveur ne doit pas emporter ce
-            // qui vient d'être tapé. Il se vide à l'acquittement de la clé produite.
+            // The field is NOT cleared here: a refusal from the server must not carry away
+            // what was just typed. It clears when the produced key is acknowledged.
             if (trimmed === '' || creating) return;
             onCreate({ label: trimmed });
           }}
         >
-          <Field
-            id="machine-label"
-            label="Nom de la machine"
-            hint="Pour vous y retrouver : « portable », « tour du bureau ». La clé secrète s'affichera une seule fois, juste après la création."
-          >
+          <Field id="machine-label" label={t('machines.labelField')} hint={t('machines.labelHint')}>
             {(fieldProps) => (
               <TextInput
                 {...fieldProps}
@@ -241,14 +234,14 @@ export function MachinesPanel({
           </Field>
 
           <Button type="submit" loading={creating} disabled={trimmed === ''}>
-            {creating ? 'Création de la clé…' : 'Déclarer une machine'}
+            {creating ? t('machines.creating') : t('machines.declare')}
           </Button>
         </form>
       ) : (
         /*
-          Le focus se pose ici dès l'apparition : la clé ne s'affiche qu'une fois, et son
-          avertissement doit être lu avant tout le reste. La région porte son nom et sa mise
-          en garde, le lecteur d'écran les annonce ensemble.
+          The focus lands here as soon as it appears: the key is shown only once, and its
+          warning must be read before anything else. The region carries its name and its
+          caution, and the screen reader announces them together.
         */
         <section
           className="machines__secret"
@@ -258,31 +251,30 @@ export function MachinesPanel({
           aria-describedby="machine-secret-warning"
         >
           <p className="machines__secret-title" id="machine-secret-title">
-            Clé de « {created.label} »
+            {t('machines.secretTitle', { label: created.label })}
           </p>
           <p className="machines__secret-warning" id="machine-secret-warning">
-            Cette clé ne sera plus jamais affichée : la plateforme n'en garde qu'une
-            empreinte. Copiez-la maintenant.
+            {t('machines.secretWarning')}
           </p>
 
           <div className="machines__copy">
             <code className="machines__value">{created.secret}</code>
             <CopyButton
               value={created.secret}
-              label="Copier la clé"
-              copiedMessage="Clé copiée."
+              label={t('machines.copyKey')}
+              copiedMessage={t('machines.keyCopied')}
             />
           </div>
 
-          <p className="machines__secret-step">Commande de lancement, clé comprise :</p>
+          <p className="machines__secret-step">{t('machines.commandStep')}</p>
           <div className="machines__copy">
             <code className="machines__value machines__value--command">
               {workerRunCommand({ origin, secret: created.secret })}
             </code>
             <CopyButton
               value={workerRunCommand({ origin, secret: created.secret })}
-              label="Copier la commande"
-              copiedMessage="Commande copiée."
+              label={t('machines.copyCommand')}
+              copiedMessage={t('machines.commandCopied')}
             />
           </div>
 
@@ -294,12 +286,12 @@ export function MachinesPanel({
               refocusForm.current = true;
             }}
           >
-            J'ai copié la clé
+            {t('machines.secretAcknowledged')}
           </Button>
         </section>
       )}
 
-      {/* La place est réservée dès le premier rendu : la liste qui arrive ne pousse rien. */}
+      {/* The space is reserved from the first render: the list that lands pushes nothing. */}
       {firstLoad ? (
         <div className="machines__items" aria-hidden="true">
           <Skeleton lines={2} />
@@ -307,10 +299,7 @@ export function MachinesPanel({
       ) : null}
 
       {empty ? (
-        <EmptyState
-          title="Aucune machine déclarée"
-          description="Vos transcriptions partent sur les serveurs du service. Déclarez une machine pour pouvoir les calculer chez vous."
-        />
+        <EmptyState title={t('machines.emptyTitle')} description={t('machines.emptyDescription')} />
       ) : null}
 
       {machines.length === 0 ? null : (
@@ -328,7 +317,9 @@ export function MachinesPanel({
               >
                 <div className="machines__item-head">
                   <span className="machines__label">{machine.label}</span>
-                  {revoked ? <span className="machines__badge">Révoquée</span> : null}
+                  {revoked ? (
+                    <span className="machines__badge">{t('machines.revokedBadge')}</span>
+                  ) : null}
                 </div>
 
                 <LastSeen machine={machine} />
@@ -336,8 +327,8 @@ export function MachinesPanel({
                 {revoked ? null : (
                   <div className="machines__actions">
                     {/*
-                      Révoquer est définitif : le geste se confirme. Le déclencheur reste en
-                      place et devient « Annuler », donc le focus ne saute nulle part.
+                      Revoking is definitive: the gesture is confirmed. The trigger stays in
+                      place and becomes “Cancel”, so the focus jumps nowhere.
                     */}
                     <Button
                       variant="ghost"
@@ -345,22 +336,19 @@ export function MachinesPanel({
                       aria-expanded={open}
                       onClick={() => setConfirming(open ? null : machine.id)}
                     >
-                      {open ? 'Annuler' : 'Révoquer…'}
+                      {open ? t('machines.revokeCancel') : t('machines.revokeOpen')}
                     </Button>
 
                     {open ? (
                       <div className="machines__confirm">
-                        <p className="machines__confirm-text">
-                          Le worker qui porte cette clé sera refusé dès son prochain appel.
-                          C'est définitif : il faudra déclarer une nouvelle machine.
-                        </p>
+                        <p className="machines__confirm-text">{t('machines.revokeWarning')}</p>
                         <Button
                           variant="danger"
                           size="sm"
                           loading={revokingId === machine.id}
                           onClick={() => onRevoke(machine.id)}
                         >
-                          Révoquer « {machine.label} »
+                          {t('machines.revokeConfirm', { label: machine.label })}
                         </Button>
                       </div>
                     ) : null}

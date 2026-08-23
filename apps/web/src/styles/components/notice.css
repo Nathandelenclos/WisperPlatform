@@ -1,6 +1,6 @@
 /*
- * Messages adressés à l'utilisateur : `Notice` (quelque chose s'est passé) et `EmptyState`
- * (il n'y a rien, voilà quoi faire). Deux façons de parler dans le vide, d'où le même fichier.
+ * Messages addressed to the user: `Notice` (something happened) and `EmptyState` (there is
+ * nothing, here is what to do). Two ways of speaking into the void, hence the same file.
  */
 
 .notice {
@@ -16,7 +16,7 @@
   font-size: var(--text-sm);
 }
 
-/* L'icône occupe la colonne de gauche sur toute la hauteur du message et de son action. */
+/* The icon takes the left column over the full height of the message and of its action. */
 .notice__icon {
   grid-row: 1 / -1;
   align-self: start;
@@ -25,8 +25,8 @@
 }
 
 /*
- * La couleur de ton reste sur l'icône et le titre. Le corps passe en `--text` : un paragraphe
- * entier dans la teinte du ton se lit moins bien et dilue le signal.
+ * The tone colour stays on the icon and the title. The body goes to `--text`: a whole
+ * paragraph in the tone's hue reads less well and dilutes the signal.
  */
 .notice__title {
   color: inherit;
@@ -34,7 +34,7 @@
   font-weight: var(--weight-semibold);
 }
 
-/* Sans cette remise à zéro, un mot insécable élargirait la colonne de grille au lieu de se couper. */
+/* Without this reset, an unbreakable word would widen the grid column instead of breaking. */
 .notice__body {
   min-inline-size: 0;
 }
@@ -75,11 +75,11 @@
   color: var(--status-done);
 }
 
-/* --- État vide --------------------------------------------------------------------------- */
+/* --- Empty state ------------------------------------------------------------------------- */
 
 /*
- * Volontairement peu dense et aligné à gauche : c'est un texte à lire, pas une affiche. Le
- * centrage est réservé aux titres courts, et un bloc vide centré ressemble à une erreur.
+ * Deliberately loose and left-aligned: this is a text to read, not a poster. Centring is
+ * reserved for short titles, and a centred empty block looks like an error.
  */
 .empty-state {
   display: flex;

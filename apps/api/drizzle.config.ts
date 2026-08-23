@@ -1,9 +1,9 @@
 import { defineConfig } from 'drizzle-kit';
 
 /**
- * Configuration de l'outil de migration (drizzle-kit), pas de l'application.
- * `drizzle-kit generate` n'ouvre aucune connexion : la chaîne n'est requise que pour
- * les commandes qui parlent à la base.
+ * Configuration of the migration tool (drizzle-kit), not of the application.
+ * `drizzle-kit generate` opens no connection: the connection string is only required by the
+ * commands that talk to the database.
  */
 export default defineConfig({
   dialect: 'postgresql',

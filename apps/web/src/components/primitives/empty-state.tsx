@@ -8,12 +8,12 @@ type EmptyStateProps = {
 };
 
 /**
- * Zone de données vide. Elle **oriente** au lieu de constater : un titre, une phrase qui dit
- * quoi faire, et de préférence l'action qui le fait. Un « rien à afficher » sec est un écran
- * inachevé.
+ * An empty data area. It **directs** instead of merely stating: a title, a sentence saying what
+ * to do, and preferably the action that does it. A blunt “nothing to show” is an unfinished
+ * screen.
  *
- * Le titre est un paragraphe : le composant s'insère dans une liste comme dans un panneau sans
- * connaître le niveau de titre de son hôte, donc sans risquer un saut de hiérarchie.
+ * The title is a paragraph: the component slots into a list as into a panel without knowing the
+ * heading level of its host, hence without risking a break in the heading hierarchy.
  */
 export function EmptyState({ title, description, action, icon }: EmptyStateProps): ReactElement {
   return (

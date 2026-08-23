@@ -1,25 +1,23 @@
 import type { TranscriptionSummary } from '../api/transcriptions';
-import { formatDuration, formatRelativeTime } from '../format';
+import { languageLabel, useTranslation, type Translate } from '../i18n';
 import { EmptyState, Notice, Skeleton, StatusPill, VisuallyHidden } from './primitives';
 
-/** Trois lignes fantômes : assez pour occuper la place, pas assez pour faire attendre. */
+/** Three ghost rows: enough to hold the space, not enough to look like a wait. */
 const PLACEHOLDER_ROWS = [0, 1, 2];
 
 /**
- * Ce que la ligne dit de l'avancement. Une transcription en cours annonce ce qui est déjà
- * arrivé : sans ça, une attente qui dure des minutes ne se distingue pas d'un blocage.
+ * What the row says about progress. A running transcription announces what has already
+ * arrived: without that, a wait lasting minutes is indistinguishable from a stall.
  */
-function describeSegments(item: TranscriptionSummary): string {
-  const plural = item.segmentCount === 1 ? '' : 's';
-  if (item.status !== 'transcribing') return `${item.segmentCount} segment${plural}`;
-  if (item.segmentCount === 0) return 'transcription en cours de démarrage';
-  return `${item.segmentCount} segment${plural} déjà reçu${plural}`;
+function describeSegments(item: TranscriptionSummary, t: Translate): string {
+  const count = item.segmentCount;
+  if (item.status !== 'transcribing') return t('library.segments', { count });
+  if (count === 0) return t('library.starting');
+  return t('library.segmentsReceived', { count });
 }
 
 type TranscriptionListProps = {
   items: readonly TranscriptionSummary[];
-  /** Sert à nommer la langue dans celle de l'utilisateur, pas dans celle du worker. */
-  languages: readonly { value: string; label: string }[];
   selectedId: string | null;
   loading: boolean;
   errorMessage: string | null;
@@ -27,18 +25,18 @@ type TranscriptionListProps = {
 };
 
 /**
- * Bibliothèque des transcriptions. C'est la navigation principale de l'atelier : elle
- * répond à « où suis-je » (élément courant marqué) et « où puis-je aller » (tout est à
- * plat, un seul niveau). La sélection remonte au conteneur.
+ * Library of transcriptions. This is the main navigation of the workspace: it answers “where am
+ * I” (current item marked) and “where can I go” (everything is flat, one single level). The
+ * selection goes back up to the container.
  */
 export function TranscriptionList({
   items,
-  languages,
   selectedId,
   loading,
   errorMessage,
   onSelect,
 }: TranscriptionListProps) {
+  const { t, format } = useTranslation();
   const firstLoad = loading && items.length === 0;
   const empty = !loading && items.length === 0 && errorMessage === null;
 
@@ -46,26 +44,28 @@ export function TranscriptionList({
     <nav className="library panel" aria-labelledby="library-title">
       <div className="library__head">
         <h2 className="library__title" id="library-title">
-          Mes transcriptions
+          {t('library.title')}
         </h2>
-        {items.length === 0 ? null : <span className="library__count">{items.length}</span>}
+        {items.length === 0 ? null : (
+          <span className="library__count">{format.number(items.length)}</span>
+        )}
       </div>
 
       {/*
-        Région live rendue en permanence et vide au repos : une région créée en même temps
-        que son contenu n'est pas annoncée. Erreur et attente y passent tour à tour.
+        Live region rendered permanently and empty at rest: a region created at the same time
+        as its content is not announced. Error and wait take turns in it.
       */}
       <div className="library__feedback" aria-live="polite">
         {errorMessage !== null ? (
-          <Notice tone="error" title="Bibliothèque indisponible">
+          <Notice tone="error" title={t('library.unavailableTitle')}>
             {errorMessage}
           </Notice>
         ) : firstLoad ? (
-          <p className="library__loading">Chargement de vos transcriptions…</p>
+          <p className="library__loading">{t('library.loading')}</p>
         ) : null}
       </div>
 
-      {/* La place est réservée dès le premier rendu : la liste qui arrive ne pousse rien. */}
+      {/* The space is reserved from the first render: the list that lands pushes nothing. */}
       {firstLoad ? (
         <ul className="library__items" aria-hidden="true">
           {PLACEHOLDER_ROWS.map((row) => (
@@ -80,11 +80,11 @@ export function TranscriptionList({
 
       {empty ? (
         <EmptyState
-          title="Aucune transcription pour l'instant"
-          description="Déposez un audio ou une vidéo : les phrases apparaîtront ici au fil de la transcription, et chaque transcription restera consultable ensuite."
+          title={t('library.emptyTitle')}
+          description={t('library.emptyDescription')}
           action={
             <a className="text-link" href="#upload-file">
-              Choisir un fichier
+              {t('library.emptyAction')}
             </a>
           }
         />
@@ -94,9 +94,6 @@ export function TranscriptionList({
         <ul className="library__items">
           {items.map((item) => {
             const selected = item.id === selectedId;
-            const language =
-              languages.find((candidate) => candidate.value === item.language)?.label ??
-              item.language;
 
             return (
               <li key={item.id}>
@@ -113,38 +110,38 @@ export function TranscriptionList({
 
                   <span className="library__meta">
                     <span className="library__meta-item">
-                      <VisuallyHidden>Modèle </VisuallyHidden>
+                      <VisuallyHidden>{`${t('library.model')} `}</VisuallyHidden>
                       {item.model}
                     </span>
                     <span className="library__meta-item">
-                      <VisuallyHidden>Langue </VisuallyHidden>
-                      {language}
+                      <VisuallyHidden>{`${t('library.language')} `}</VisuallyHidden>
+                      {languageLabel(item.language, t)}
                     </span>
                     <time className="library__meta-item" dateTime={item.requestedAt}>
-                      {formatRelativeTime(item.requestedAt)}
+                      {format.relativeTime(item.requestedAt)}
                     </time>
                   </span>
 
                   <span className="library__meta">
                     {item.durationMs > 0 ? (
                       <span className="library__meta-item">
-                        <VisuallyHidden>Durée </VisuallyHidden>
-                        {formatDuration(item.durationMs)}
+                        <VisuallyHidden>{`${t('library.duration')} `}</VisuallyHidden>
+                        {format.duration(item.durationMs)}
                       </span>
                     ) : null}
-                    <span className="library__meta-item">{describeSegments(item)}</span>
+                    <span className="library__meta-item">{describeSegments(item, t)}</span>
                     {/*
-                      Le placement ne se dit que s'il sort de l'ordinaire : une ligne qui
-                      attend une machine du propriétaire n'attend pas la même chose que les
-                      autres, et sans ça la bibliothèque annoncerait la même attente pour
-                      deux situations différentes.
+                      The placement is only said when it is out of the ordinary: a row waiting
+                      for a machine of the owner is not waiting for the same thing as the
+                      others, and without this the library would announce the same wait for two
+                      different situations.
                     */}
                     {item.placement === 'owner' ? (
                       <span className="library__meta-item library__meta-item--placement">
-                        <VisuallyHidden>Calcul </VisuallyHidden>
+                        <VisuallyHidden>{`${t('library.computation')} `}</VisuallyHidden>
                         {item.status === 'pending'
-                          ? 'en attente de votre machine'
-                          : 'votre machine'}
+                          ? t('library.awaitingYourMachine')
+                          : t('library.yourMachine')}
                       </span>
                     ) : null}
                   </span>

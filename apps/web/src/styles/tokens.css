@@ -1,18 +1,18 @@
 /*
- * Tokens du design system — source unique de vérité.
+ * Design system tokens — the single source of truth.
  *
- * Identité : papier et encre. Un fond neutre légèrement chaud, un texte presque noir, une
- * seule couleur fonctionnelle (l'encre bleue) réservée à l'action principale et au focus.
- * Les statuts vivent dans leur pastille et n'en sortent pas.
+ * Identity: paper and ink. A neutral, slightly warm background, an almost black text, a single
+ * functional colour (the blue ink) reserved for the main action and for focus. Statuses live
+ * inside their pill and never leave it.
  *
- * Aucun composant ne déclare de valeur brute : pas de #hex, pas de px d'espacement, pas de
- * durée en dur. Un besoin non couvert se déclare ici.
+ * No component declares a raw value: no #hex, no spacing in px, no hard-coded duration. A need
+ * that is not covered gets declared here.
  */
 
 :root {
   color-scheme: light dark;
 
-  /* --- Espacement : échelle non linéaire, rien entre deux crans --------------------------- */
+  /* --- Spacing: a non-linear scale, nothing between two steps ----------------------------- */
   --space-1: 0.25rem;
   --space-2: 0.5rem;
   --space-3: 0.75rem;
@@ -22,14 +22,14 @@
   --space-7: 3rem;
   --space-8: 4rem;
 
-  /* --- Typographie fluide : la taille suit la fenêtre, sans palier brutal ----------------- */
+  /* --- Fluid typography: size follows the window, with no brutal step -------------------- */
   --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 
   --text-xs: clamp(0.75rem, 0.72rem + 0.1vw, 0.8125rem);
   --text-sm: clamp(0.8125rem, 0.79rem + 0.12vw, 0.875rem);
   --text-base: clamp(0.9375rem, 0.91rem + 0.15vw, 1rem);
-  /* Taille de lecture du transcript : le texte qu'on relit ligne à ligne. */
+  /* Reading size of the transcript: the text one rereads line by line. */
   --text-reading: clamp(1rem, 0.96rem + 0.2vw, 1.125rem);
   --text-lg: clamp(1.125rem, 1.07rem + 0.28vw, 1.25rem);
   --text-xl: clamp(1.375rem, 1.28rem + 0.45vw, 1.625rem);
@@ -43,7 +43,7 @@
   --weight-medium: 500;
   --weight-semibold: 600;
 
-  /* Largeur de lecture confortable : au-delà, l'œil perd sa ligne. */
+  /* Comfortable reading width: past it, the eye loses its line. */
   --measure: 68ch;
 
   /* --- Formes ---------------------------------------------------------------------------- */
@@ -51,12 +51,12 @@
   --radius-md: 0.875rem;
   --radius-pill: 999px;
 
-  /* --- Mouvement : au-delà de 200ms, une interaction est perçue comme lente --------------- */
+  /* --- Motion: past 200ms, an interaction is perceived as slow ---------------------------- */
   --motion-fast: 120ms;
   --motion-base: 180ms;
   --ease-out: cubic-bezier(0.2, 0, 0, 1);
 
-  /* --- Couleurs, thème clair (défaut) ---------------------------------------------------- */
+  /* --- Colours, light theme (default) ----------------------------------------------------- */
   --surface: #fbfaf8;
   --surface-raised: #ffffff;
   --surface-sunken: #f3f1ec;
@@ -69,9 +69,9 @@
   --text-muted: #57524a;
   --text-faint: #837d73;
   /*
-   * Bordure qui IDENTIFIE un contrôle (champ, select, zone de dépôt, bouton secondaire).
-   * WCAG 2.2 SC 1.4.11 exige 3:1 pour elle, là où `--border` (1.3:1) n'est qu'un séparateur
-   * décoratif : sans ce token, un champ n'était pas identifiable. Même teinte, clarté ajustée.
+   * Border that IDENTIFIES a control (field, select, drop zone, secondary button).
+   * WCAG 2.2 SC 1.4.11 requires 3:1 for it, where `--border` (1.3:1) is only a decorative
+   * separator: without this token, a field was not identifiable. Same hue, lightness adjusted.
    */
   --border-control: #8f887b;
 
@@ -94,8 +94,8 @@
 }
 
 /*
- * Thème sombre. Ce n'est pas le thème clair inversé : les surfaces se distinguent par la
- * bordure plutôt que par l'ombre, et l'accent s'éclaircit pour rester lisible sur fond sombre.
+ * Dark theme. Not the light theme inverted: surfaces are told apart by their border rather
+ * than by a shadow, and the accent lightens to stay readable on a dark background.
  */
 @media (prefers-color-scheme: dark) {
   :root {
@@ -126,7 +126,7 @@
     --status-failed: #ff9c93;
     --status-failed-bg: #2e1917;
 
-    /* L'ombre ne se voit pas sur fond sombre : l'élévation passe par la bordure. */
+    /* A shadow does not show on a dark background: elevation goes through the border. */
     --shadow-1: none;
     --shadow-2: 0 8px 24px rgb(0 0 0 / 40%);
   }

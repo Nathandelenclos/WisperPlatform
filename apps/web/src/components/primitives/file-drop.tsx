@@ -1,28 +1,28 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ChangeEvent, DragEvent, ReactElement } from 'react';
-import { formatByteSize } from '../../format';
+import { useTranslation } from '../../i18n';
 import { Button } from './button';
 
 type FileDropProps = {
-  /** Posé sur l'`<input type="file">` réel : une ancre `#id` y amène donc bien le focus. */
+  /** Set on the real `<input type="file">`: an `#id` anchor therefore lands the focus on it. */
   id: string;
   file: File | null;
   onFile: (file: File | null) => void;
   accept?: string;
-  /** Taille maximale annoncée, en clair. Sert d'aide, reliée par `aria-describedby`. */
+  /** Maximum size announced in plain words. Serves as a hint, tied by `aria-describedby`. */
   maxLabel: string;
   error?: string | null;
   disabled?: boolean;
 };
 
 /**
- * Dépôt de fichier. Le contrôle est un `<input type="file">` **natif** : il apporte le clavier,
- * le sélecteur du système et la validation du formulaire. Il est masqué par découpe et non par
- * `display: none`, qui le retirerait de l'ordre de tabulation ; l'anneau de focus est reporté
- * sur la zone visible par `file-drop.css`.
+ * File drop. The real control is a **native** `<input type="file">`: it brings the keyboard,
+ * the system picker and form validation. It is hidden by clipping and not by `display: none`,
+ * which would remove it from the tab order; the focus ring is carried over to the visible zone
+ * by `file-drop.css`.
  *
- * Le glisser-déposer n'est qu'un raccourci pour la souris : tout se fait aussi au clavier seul,
- * l'étiquette étant liée à l'input.
+ * Drag and drop is only a shortcut for the mouse: everything can be done with the keyboard
+ * alone, the label being tied to the input.
  */
 export function FileDrop({
   id,
@@ -33,13 +33,13 @@ export function FileDrop({
   error = null,
   disabled = false,
 }: FileDropProps): ReactElement {
+  const { t, format } = useTranslation();
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
 
   /*
-   * Le conteneur peut remettre la sélection à zéro (envoi accepté). Sans cette remise en
-   * cohérence, l'input garde son ancienne valeur et rechoisir le même fichier n'émettrait
-   * aucun `change`.
+   * The container may reset the selection (upload accepted). Without putting the input back in
+   * agreement, it keeps its old value and choosing the same file again would emit no `change`.
    */
   useEffect(() => {
     if (file === null && inputRef.current !== null) inputRef.current.value = '';
@@ -55,13 +55,13 @@ export function FileDrop({
 
   const handleDragOver = (event: DragEvent<HTMLElement>): void => {
     if (disabled) return;
-    // Sans ce refus du comportement par défaut, le navigateur ouvre le fichier au lieu de le déposer.
+    // Without refusing the default behaviour, the browser opens the file instead of dropping it.
     event.preventDefault();
     setDragging(true);
   };
 
   const handleDragLeave = (event: DragEvent<HTMLElement>): void => {
-    // Passer au-dessus d'un enfant émet un `dragleave` : on ne quitte que si la cible est dehors.
+    // Moving over a child emits a `dragleave`: we only leave when the target is outside.
     const next = event.relatedTarget;
     if (next instanceof Node && event.currentTarget.contains(next)) return;
     setDragging(false);
@@ -75,7 +75,7 @@ export function FileDrop({
     const dropped = event.dataTransfer.files.item(0);
     if (dropped === null) return;
 
-    // On recopie la liste dans l'input natif : le formulaire reste la source de vérité.
+    // The list is copied into the native input: the form stays the source of truth.
     if (inputRef.current !== null) inputRef.current.files = event.dataTransfer.files;
     onFile(dropped);
   };
@@ -83,7 +83,7 @@ export function FileDrop({
   const handleRemove = (): void => {
     if (inputRef.current !== null) {
       inputRef.current.value = '';
-      // Le bouton disparaît avec la sélection : on rend le focus au contrôle plutôt qu'au vide.
+      // The button disappears with the selection: focus goes back to the control, not to nothing.
       inputRef.current.focus();
     }
     onFile(null);
@@ -130,8 +130,8 @@ export function FileDrop({
           <path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5" />
           <path d="M4 15v3.5A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5V15" />
         </svg>
-        <span className="file-drop__lead">Déposez un fichier audio ou vidéo</span>
-        <span className="file-drop__cue">ou parcourez vos fichiers</span>
+        <span className="file-drop__lead">{t('fileDrop.lead')}</span>
+        <span className="file-drop__cue">{t('fileDrop.cue')}</span>
       </label>
 
       <p className="file-drop__hint" id={hintId}>
@@ -141,12 +141,12 @@ export function FileDrop({
       <div className="file-drop__selection">
         <p className="file-drop__chosen" aria-live="polite">
           {file === null
-            ? 'Aucun fichier choisi'
-            : `Fichier choisi : ${file.name} (${formatByteSize(file.size)})`}
+            ? t('fileDrop.none')
+            : t('fileDrop.chosen', { name: file.name, size: format.byteSize(file.size) })}
         </p>
         {file === null ? null : (
           <Button variant="ghost" size="sm" onClick={handleRemove} disabled={disabled}>
-            Retirer
+            {t('fileDrop.remove')}
           </Button>
         )}
       </div>

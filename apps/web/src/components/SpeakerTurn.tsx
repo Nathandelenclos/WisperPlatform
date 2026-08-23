@@ -1,17 +1,17 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import type { Speaker } from '../api/transcriptions';
-import { formatSpeakerName } from '../format';
+import { useTranslation } from '../i18n';
 import { Button, Field, TextInput, VisuallyHidden } from './primitives';
 
-/** Borne du domaine sur un nom de locuteur : le champ ne laisse pas dépasser. */
+/** Domain bound on a speaker name: the field does not let it overflow. */
 const NAME_MAX_LENGTH = 60;
 
 type SpeakerTurnProps = {
   speaker: Speaker;
-  /** Le formulaire est ouvert sur CE tour de parole — un seul à la fois dans le transcript. */
+  /** The form is open on THIS turn — only one at a time in the transcript. */
   editing: boolean;
   saving: boolean;
-  /** Échec du dernier renommage. Affiché ici, là où le geste se rejoue. */
+  /** Failure of the last rename. Shown here, where the gesture is replayed. */
   error: string | null;
   onOpen: () => void;
   onCancel: () => void;
@@ -19,16 +19,16 @@ type SpeakerTurnProps = {
 };
 
 /**
- * Étiquette de tour de parole, et geste de renommage.
+ * Speaker-turn label, and the rename gesture.
  *
- * Elle n'est rendue qu'au CHANGEMENT de locuteur (le parent en décide) : une conversation se
- * lit en tours, répéter le même nom vingt fois de suite est du bruit.
+ * It is only rendered on a CHANGE of speaker (the parent decides): a conversation is read in
+ * turns, and repeating the same name twenty times over is noise.
  *
- * Le locuteur est identifié par son nom ÉCRIT, jamais par une couleur : rien ici ne dépend
- * de la perception d'une teinte (WCAG 1.4.1).
+ * The speaker is identified by their WRITTEN name, never by a colour: nothing here depends on
+ * perceiving a hue (WCAG 1.4.1).
  *
- * Renommer est un geste unique et global — il vaut pour toute la transcription, pas pour ce
- * tour-ci — et le libellé du bouton le dit avant qu'on ne clique.
+ * Renaming is a single, global gesture — it holds for the whole transcription, not for this
+ * turn — and the button label says so before anyone clicks.
  */
 export function SpeakerTurn({
   speaker,
@@ -39,16 +39,17 @@ export function SpeakerTurn({
   onCancel,
   onCommit,
 }: SpeakerTurnProps) {
-  const display = formatSpeakerName(speaker);
-  // « Locuteur 1 » n'est pas un nom qu'on a donné, c'est un rang tenu par défaut : le champ
-  // s'ouvre vide et le montre en indication, sinon renommer commence toujours par effacer.
-  // Un nom déjà donné, lui, se pré-remplit : on vient le corriger, pas le retaper.
+  const { t } = useTranslation();
+  // “Speaker 1” is not a name anyone gave, it is a rank held by default: the field opens empty
+  // and shows it as a placeholder, otherwise renaming always starts by erasing. A name already
+  // given is prefilled: one comes to correct it, not to retype it.
+  const display = speaker.name ?? t('speaker.fallbackName', { index: speaker.index + 1 });
   const [draft, setDraft] = useState(speaker.name ?? '');
   const [emptyRejected, setEmptyRejected] = useState(false);
 
-  // Le formulaire s'ouvre toujours sur le nom courant, jamais sur un brouillon abandonné à
-  // l'ouverture précédente. Remise à zéro pendant le rendu : la reporter à un effet ferait
-  // apparaître l'ancien texte une image avant le bon.
+  // The form always opens on the current name, never on a draft abandoned at the previous
+  // opening. Reset during the render: deferring it to an effect would flash the old text one
+  // frame before the right one.
   const [opened, setOpened] = useState(editing);
   if (opened !== editing) {
     setOpened(editing);
@@ -59,9 +60,9 @@ export function SpeakerTurn({
   }
 
   const nameRef = useRef<HTMLButtonElement | null>(null);
-  // Le champ disparaît avec le formulaire, et le focus retomberait sur le document : au
-  // clavier, on perdrait sa place dans le transcript. Il revient donc sur le nom — mais
-  // seulement si personne ne l'a repris ailleurs entre-temps.
+  // The field disappears with the form, and the focus would fall back on the document: at the
+  // keyboard, one would lose one's place in the transcript. It therefore comes back to the
+  // name — but only if nobody has taken it elsewhere in the meantime.
   const wasEditing = useRef(editing);
   useEffect(() => {
     const justClosed = wasEditing.current && !editing;
@@ -74,8 +75,8 @@ export function SpeakerTurn({
       <p className="speaker-turn">
         <button className="speaker-turn__name" type="button" ref={nameRef} onClick={onOpen}>
           {display}
-          {/* Le nom visible ouvre le nom accessible : l'effet du geste est dit en entier. */}
-          <VisuallyHidden>, renommer ce locuteur dans toute la transcription</VisuallyHidden>
+          {/* The visible name opens the accessible one: the effect of the gesture is said whole. */}
+          <VisuallyHidden>{t('speaker.renameHint')}</VisuallyHidden>
           <svg
             className="speaker-turn__glyph"
             viewBox="0 0 16 16"
@@ -108,8 +109,8 @@ export function SpeakerTurn({
     }
     setEmptyRejected(false);
 
-    // Le nom n'a pas changé : rien à écrire, on referme. Comparé au nom RÉEL, pas au nom
-    // affiché — écrire « Locuteur 2 » sur un locuteur anonyme reste un renommage.
+    // The name did not change: nothing to write, we close. Compared against the REAL name, not
+    // the displayed one — writing “Speaker 2” on an anonymous speaker is still a rename.
     if (name === speaker.name) {
       onCancel();
       return;
@@ -122,9 +123,9 @@ export function SpeakerTurn({
     <form className="speaker-turn speaker-turn--editing" onSubmit={submit}>
       <Field
         id={fieldId}
-        label="Nom du locuteur"
-        hint={`Renommer ce locuteur dans toute la transcription, partout où ${display} parle.`}
-        error={emptyRejected ? 'Un nom de locuteur ne peut pas être vide.' : error}
+        label={t('speaker.nameLabel')}
+        hint={t('speaker.nameFieldHint', { name: display })}
+        error={emptyRejected ? t('speaker.emptyRejected') : error}
       >
         {(fieldProps) => (
           <TextInput
@@ -134,13 +135,13 @@ export function SpeakerTurn({
             placeholder={display}
             maxLength={NAME_MAX_LENGTH}
             autoComplete="off"
-            /* Le champ vient d'apparaître sur demande explicite : le focus le suit, sinon
-               l'utilisateur au clavier devrait retraverser la ligne pour l'atteindre. */
+            /* The field has just appeared on an explicit request: focus follows it, otherwise a
+               keyboard user would have to cross the line again to reach it. */
             autoFocus
             onChange={(changeEvent) => setDraft(changeEvent.target.value)}
             onKeyDown={(keyEvent) => {
-              // Échap renonce : un formulaire ouvert dans le fil du texte doit se refermer
-              // sans souris et sans quitter la ligne qu'on lisait.
+              // Escape gives up: a form opened inside the flow of the text must close without a
+              // mouse and without leaving the line one was reading.
               if (keyEvent.key === 'Escape') onCancel();
             }}
           />
@@ -149,10 +150,10 @@ export function SpeakerTurn({
 
       <div className="speaker-turn__actions">
         <Button type="submit" variant="primary" size="sm" loading={saving}>
-          Renommer
+          {t('speaker.rename')}
         </Button>
         <Button type="button" size="sm" onClick={onCancel}>
-          Annuler
+          {t('speaker.cancel')}
         </Button>
       </div>
     </form>

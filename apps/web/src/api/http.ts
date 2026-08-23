@@ -1,9 +1,9 @@
 /**
- * Accès HTTP à l'API. Toutes les routes sont relatives (`/api/...`) : le client et
- * l'API partagent l'origine, la session better-auth voyage donc par cookie.
+ * HTTP access to the API. Every route is relative (`/api/...`): the client and the API share
+ * the origin, so the better-auth session travels by cookie.
  */
 
-/** Erreur portant le `code` stable renvoyé par l'API (`{ error: { code, message } }`). */
+/** Error carrying the stable `code` returned by the API (`{ error: { code, message } }`). */
 export class ApiError extends Error {
   readonly code: string;
   readonly status: number;
@@ -18,7 +18,7 @@ export class ApiError extends Error {
 
 async function toApiError(response: Response): Promise<ApiError> {
   let code = `http_${response.status}`;
-  let message = response.statusText || 'Requête refusée par le serveur.';
+  let message = response.statusText || 'Request refused by the server.';
   try {
     const body: unknown = await response.json();
     if (body !== null && typeof body === 'object' && 'error' in body) {
@@ -29,21 +29,21 @@ async function toApiError(response: Response): Promise<ApiError> {
       }
     }
   } catch {
-    // Réponse sans corps JSON exploitable : le statut suffit à qualifier l'erreur.
+    // Response with no usable JSON body: the status alone qualifies the error.
   }
   return new ApiError({ code, message, status: response.status });
 }
 
-/** Aucune requête n'attend indéfiniment ; l'appelant peut allonger le délai. */
+/** No request waits forever; the caller may lengthen the deadline. */
 const DEFAULT_TIMEOUT_MS = 15_000;
 
-/** `RequestInit`, plus le délai maximal propre à la requête. */
+/** `RequestInit`, plus the time limit specific to the request. */
 export type RequestOptions = RequestInit & { timeoutMs?: number };
 
 async function send(path: string, init: RequestOptions): Promise<Response> {
   const { timeoutMs = DEFAULT_TIMEOUT_MS, ...request } = init;
-  // Le signal de l'appelant (React Query annule une requête devenue inutile) et la
-  // borne de temps s'appliquent tous les deux : annulable sans cesser d'être borné.
+  // The caller's signal (React Query aborts a request that became useless) and the time
+  // bound both apply: abortable without ceasing to be bounded.
   const caller = init.signal ?? null;
   const deadline = AbortSignal.timeout(timeoutMs);
   let response: Response;
@@ -54,14 +54,16 @@ async function send(path: string, init: RequestOptions): Promise<Response> {
       signal: caller === null ? deadline : AbortSignal.any([caller, deadline]),
     });
   } catch (cause) {
-    // Annulation demandée par l'appelant : ce n'est pas une panne, on la propage telle quelle.
+    // Abort asked for by the caller: not a failure, so it is propagated as it stands.
     if (caller !== null && caller.aborted) throw cause;
     const timedOut = cause instanceof DOMException && cause.name === 'TimeoutError';
+    // These two never reached the API, so no server message covers them: the code is stable
+    // and the interface translates it. The text here is the developer-facing fallback.
     throw new ApiError({
       code: timedOut ? 'request_timeout' : 'network_unreachable',
       message: timedOut
-        ? "Le serveur n'a pas répondu dans le délai imparti."
-        : 'Serveur injoignable. Vérifiez votre connexion.',
+        ? 'The server did not answer within the allotted time.'
+        : 'Server unreachable. Check your connection.',
       status: 0,
     });
   }
@@ -69,7 +71,7 @@ async function send(path: string, init: RequestOptions): Promise<Response> {
   return response;
 }
 
-/** Requête attendant un corps JSON. Lève une `ApiError` sur réponse non 2xx. */
+/** Request expecting a JSON body. Throws an `ApiError` on a non-2xx response. */
 export async function requestJson<T>(path: string, init: RequestOptions = {}): Promise<T> {
   const response = await send(path, {
     ...init,
@@ -78,7 +80,7 @@ export async function requestJson<T>(path: string, init: RequestOptions = {}): P
   return (await response.json()) as T;
 }
 
-/** Requête sans corps de réponse utile (204). Lève une `ApiError` sur réponse non 2xx. */
+/** Request with no useful response body (204). Throws an `ApiError` on a non-2xx response. */
 export async function requestNoContent(path: string, init: RequestOptions): Promise<void> {
   await send(path, init);
 }

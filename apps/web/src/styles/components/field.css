@@ -1,7 +1,7 @@
 /*
- * Champs de formulaire : une colonne, label au-dessus, aide puis contrôle puis erreur.
- * L'espacement intra-champ est plus serré que l'espacement entre champs — c'est la proximité,
- * pas une bordure, qui dit ce qui va ensemble.
+ * Form fields: one column, label above, then hint, then control, then error. The spacing
+ * inside a field is tighter than the spacing between fields — it is proximity, not a border,
+ * that says what belongs together.
  */
 
 .field {
@@ -16,15 +16,15 @@
   font-weight: var(--weight-medium);
 }
 
-/* L'aide est un texte utile : jamais `--text-faint`, qui passe sous 4.5:1 en thème clair. */
+/* The hint is useful text: never `--text-faint`, which drops below 4.5:1 in the light theme. */
 .field__hint {
   color: var(--text-muted);
   font-size: var(--text-xs);
 }
 
 /*
- * Zone d'erreur toujours présente, vide au repos : la hauteur d'une ligne est réservée pour que
- * l'apparition du message ne pousse pas le reste du formulaire.
+ * Error area always present, empty at rest: the height of one line is reserved so that the
+ * appearance of the message does not push the rest of the form.
  */
 .field__error {
   min-block-size: calc(var(--text-xs) * var(--leading-base));
@@ -33,11 +33,11 @@
   font-weight: var(--weight-medium);
 }
 
-/* --- Contrôles -------------------------------------------------------------------------- */
+/* --- Controls ---------------------------------------------------------------------------- */
 
 .control {
-  /* La cible de 44px se compose de l'échelle (32 + 12) et tient sur le contrôle lui-même :
-     un `TextInput` employé hors d'un `Field` garde sa hauteur minimale. */
+  /* The 44px target is composed from the scale (32 + 12) and holds on the control itself:
+     a `TextInput` used outside a `Field` keeps its minimum height. */
   --control-target: calc(var(--space-6) + var(--space-3));
 
   inline-size: 100%;
@@ -54,7 +54,7 @@
     background-color var(--motion-fast) var(--ease-out);
 }
 
-/* Le placeholder complète le label, il ne le remplace pas — et il reste lisible. */
+/* The placeholder completes the label, it does not replace it — and it stays readable. */
 .control::placeholder {
   color: var(--text-muted);
 }
@@ -66,14 +66,14 @@
 .control:disabled {
   border-color: var(--border);
   background: var(--surface-sunken);
-  /* Lisible même éteint : la valeur d'un champ inactif reste une information à lire. */
+  /* Readable even when off: the value of an inactive field is still information to read. */
   color: var(--text-muted);
   cursor: not-allowed;
 }
 
 /*
- * Erreur : la bordure s'épaissit par une ombre plutôt que par sa largeur, qui décalerait la
- * mise en page. La couleur ne suffit pas — le message de `.field__error` porte l'information.
+ * Error: the border thickens through a shadow rather than through its width, which would
+ * shift the layout. Colour is not enough — the message of `.field__error` carries the meaning.
  */
 .field--invalid .control,
 .control[aria-invalid='true'] {
@@ -82,15 +82,15 @@
 }
 
 /*
- * Validation native après saisie, dans sa propre règle : un sélecteur inconnu d'un navigateur
- * invaliderait toute la liste où il figure.
+ * Native validation after typing, in its own rule: a selector unknown to a browser would
+ * invalidate the whole list it appears in.
  */
 .control:user-invalid {
   border-color: var(--status-failed);
   box-shadow: 0 0 0 1px var(--status-failed);
 }
 
-/* --- Liste déroulante -------------------------------------------------------------------- */
+/* --- Dropdown ----------------------------------------------------------------------------- */
 
 .control-shell {
   position: relative;
@@ -110,6 +110,6 @@
   inline-size: var(--space-4);
   block-size: var(--space-4);
   color: var(--text-muted);
-  /* Le chevron n'est qu'un signe : les clics vont au `select`, y compris sur son dos. */
+  /* The chevron is only a sign: clicks go to the `select`, including on its back. */
   pointer-events: none;
 }

@@ -1,11 +1,11 @@
 import type { ReactElement } from 'react';
 
 /**
- * Réservation d'espace pendant un chargement. `aria-hidden` : le squelette est un décor, et
- * l'arrivée des données est annoncée par la région live de l'écran, pas par ces barres.
+ * Space reserved during a load. `aria-hidden`: the skeleton is scenery, and the arrival of the
+ * data is announced by the live region of the screen, not by these bars.
  *
- * Le pouls disparaît sous `prefers-reduced-motion` (cf. `skeleton.css`) : la place reste
- * réservée, ce qui est sa vraie fonction — pas de saut de mise en page à l'arrivée du contenu.
+ * The pulse disappears under `prefers-reduced-motion` (see `skeleton.css`): the space stays
+ * reserved, which is its real job — no layout jump when the content lands.
  */
 export function Skeleton({ lines = 3, width }: { lines?: number; width?: string }): ReactElement {
   const count = Math.max(1, Math.trunc(lines));

@@ -1,4 +1,5 @@
 import type { ButtonHTMLAttributes, MouseEvent, ReactElement, ReactNode } from 'react';
+import { useTranslation } from '../../i18n';
 import { VisuallyHidden } from './visually-hidden';
 
 export type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
@@ -9,9 +10,9 @@ export type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
 };
 
 /**
- * Anneau d'attente. Décoratif : l'occupation est portée par `aria-busy` et par le suffixe
- * masqué du libellé. Sous `prefers-reduced-motion`, la rotation tombe et l'arc reste lisible
- * comme un signe fixe — l'information n'a jamais dépendu du mouvement.
+ * Waiting ring. Decorative: the busy state is carried by `aria-busy` and by the hidden suffix
+ * of the label. Under `prefers-reduced-motion` the rotation drops and the arc stays readable
+ * as a fixed sign — the information never depended on the movement.
  */
 function Spinner(): ReactElement {
   return (
@@ -31,12 +32,12 @@ function Spinner(): ReactElement {
 }
 
 /**
- * Bouton d'action. Le défaut est `secondary` : une seule action contrastée par écran, donc
- * `primary` se demande explicitement.
+ * Action button. The default is `secondary`: one contrasted action per screen, so `primary` is
+ * asked for explicitly.
  *
- * `loading` ne désactive pas le bouton — un contrôle qui disparaît de l'ordre de tabulation au
- * moment où l'utilisateur attend le retour est un piège clavier. Il reste focusable, annonce
- * son occupation, et absorbe le clic pour interdire la double soumission.
+ * `loading` does not disable the button — a control that leaves the tab order at the very
+ * moment the user is waiting for an answer is a keyboard trap. It stays focusable, announces
+ * its busy state, and swallows the click to forbid a double submission.
  */
 export function Button({
   variant = 'secondary',
@@ -50,6 +51,8 @@ export function Button({
   onClick,
   ...rest
 }: ButtonProps): ReactElement {
+  const { t } = useTranslation();
+
   const handleClick = (event: MouseEvent<HTMLButtonElement>): void => {
     if (loading) {
       event.preventDefault();
@@ -80,7 +83,7 @@ export function Button({
         </span>
       ) : null}
       <span className="button__label">{children}</span>
-      {loading ? <VisuallyHidden>, en cours</VisuallyHidden> : null}
+      {loading ? <VisuallyHidden>{t('button.busy')}</VisuallyHidden> : null}
     </button>
   );
 }

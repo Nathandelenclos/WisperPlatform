@@ -1,17 +1,17 @@
 import { useQuery } from '@tanstack/react-query';
 
-/** Voies de connexion ouvertes par l'instance, telles qu'elle les déclare. */
+/** Sign-in routes opened by the instance, as the instance declares them. */
 export type SignInOptions = {
   google: boolean;
 };
 
 /**
- * Ce que le serveur autorise, demandé au serveur. Une instance auto-hébergée sans
- * identifiants Google ne doit pas afficher un bouton qui échoue au clic, et une variable du
- * build ferait de cette décision deux configurations à tenir d'accord.
+ * What the server allows, asked to the server. A self-hosted instance without Google
+ * credentials must not show a button that fails on click, and a build variable would turn
+ * that decision into two configurations to keep in agreement.
  *
- * Une instance injoignable ou une réponse inattendue retombent sur « mot de passe seulement » :
- * c'est la voie qui existe toujours, donc le repli le plus sûr.
+ * An unreachable instance or an unexpected answer fall back to “password only”: the route
+ * that always exists, hence the safest fallback.
  */
 async function fetchSignInOptions(signal?: AbortSignal): Promise<SignInOptions> {
   const response = await fetch('/api/sign-in-options', { credentials: 'include', signal });
@@ -28,7 +28,7 @@ export function useSignInOptions() {
   return useQuery({
     queryKey: ['sign-in-options'],
     queryFn: ({ signal }) => fetchSignInOptions(signal),
-    // La configuration d'une instance ne change pas en cours de visite.
+    // The configuration of an instance does not change mid-visit.
     staleTime: Infinity,
     retry: false,
   });

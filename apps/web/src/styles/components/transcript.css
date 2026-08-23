@@ -1,17 +1,17 @@
 /*
- * Le transcript : du texte long qu'on relit ligne à ligne et qu'on corrige souvent.
+ * The transcript: long text one rereads line by line and corrects often.
  *
- * Trois règles gouvernent ce fichier :
- *  — la mesure de lecture est bornée (`--measure`), l'interligne généreux ;
- *  — la colonne de timecodes est tabulaire ET commune à toutes les lignes, donc les
- *    chiffres s'alignent et le texte démarre toujours au même endroit ;
- *  — rien ne change de taille. Le surlignage du segment lu, l'apparition d'« Enregistrement… »
- *    ou de « Corrigé » ne prennent aucune place nouvelle : elle est réservée d'avance.
+ * Three rules govern this file:
+ *  — the reading measure is bounded (`--measure`), the leading generous;
+ *  — the timecode column is tabular AND shared by every line, so the figures line up and the
+ *    text always starts in the same place;
+ *  — nothing changes size. The highlight of the played segment, the appearance of “Saving…”
+ *    or of “Corrected” take up no new space: it is reserved in advance.
  */
 
 .transcript {
-  /* Le composant se met en page selon SA largeur, pas celle de la fenêtre : il vit en
-     colonne unique sous 900px et à côté de l'atelier au-delà. */
+  /* The component lays itself out according to ITS width, not the window's: it lives in a
+     single column below 900px and beside the workspace past that. */
   container-type: inline-size;
   container-name: transcript;
   display: flex;
@@ -19,7 +19,7 @@
   gap: var(--space-5);
 }
 
-/* --- En-tête ----------------------------------------------------------------------------- */
+/* --- Header ------------------------------------------------------------------------------- */
 
 .transcript__header {
   display: flex;
@@ -35,14 +35,14 @@
 }
 
 .transcript__title {
-  /* Un nom de fichier n'a pas de mots : sans coupe forcée, il déborde à 320px. */
+  /* A file name has no words: without a forced break, it overflows at 320px. */
   overflow-wrap: anywhere;
 }
 
 .transcript__facts {
   display: flex;
   flex-wrap: wrap;
-  /* Écart intra-groupe plus serré que l'inter-groupe : chaque valeur reste avec son intitulé. */
+  /* Intra-group gap tighter than the inter-group one: each value stays with its term. */
   gap: var(--space-3) var(--space-5);
   font-size: var(--text-sm);
 }
@@ -61,7 +61,7 @@
   font-weight: var(--weight-medium);
 }
 
-/* --- Outils : suivi de la lecture et export ---------------------------------------------- */
+/* --- Tools: playback following and export ------------------------------------------------ */
 
 .transcript__tools {
   display: flex;
@@ -90,7 +90,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-3);
-  /* Toute l'étiquette est la cible, pas la seule case : 16px ne se pointe pas au doigt. */
+  /* The whole label is the target, not just the box: 16px cannot be hit with a finger. */
   min-block-size: var(--space-7);
   font-weight: var(--weight-medium);
   cursor: pointer;
@@ -103,7 +103,7 @@
   cursor: pointer;
 }
 
-/* Anti-affordance : pendant une correction, le réglage est visiblement hors service. */
+/* Anti-affordance: during a correction, the setting is visibly out of service. */
 .transcript__follow:has(input:disabled),
 .transcript__follow:has(input:disabled) input {
   color: var(--text-muted);
@@ -120,8 +120,8 @@
   font-size: var(--text-sm);
 }
 
-/* Action de reprise dans un bandeau : la couleur du ton l'emporte sur celle de l'encre,
-   pour ne jamais poser du bleu sur un fond rouge. */
+/* Recovery action inside a banner: the tone colour wins over the ink one, so as never to put
+   blue on a red background. */
 .transcript__action {
   display: inline-flex;
   align-items: center;
@@ -131,12 +131,12 @@
   text-decoration: underline;
 }
 
-/* --- Liste des segments ------------------------------------------------------------------ */
+/* --- Segment list -------------------------------------------------------------------------- */
 
 .transcript__segments {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  /* Lignes serrées : c'est la ligne d'état de chaque segment qui donne la respiration. */
+  /* Tight lines: it is the state line of each segment that provides the breathing room. */
   gap: var(--space-1) var(--space-2);
   padding: 0;
   list-style: none;
@@ -146,8 +146,8 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: var(--space-1);
-  /* La place du liseré du segment lu est réservée en transparent : le surlignage
-     n'élargit rien et ne décale pas le texte d'un pixel. */
+  /* The space of the played segment's rule is reserved in transparent: the highlight widens
+     nothing and does not shift the text by a pixel. */
   border-inline-start: 2px solid transparent;
   border-radius: var(--radius-sm);
   padding-block: var(--space-1);
@@ -157,9 +157,9 @@
 
 @container transcript (min-width: 30rem) {
   /*
-   * La colonne de timecodes est déclarée UNE fois, sur la liste, et partagée par toutes les
-   * lignes via `subgrid`. Sans cela, chaque ligne calculerait sa propre colonne : le premier
-   * `1:02:19` élargirait la sienne et le texte avancerait en escalier au passage de l'heure.
+   * The timecode column is declared ONCE, on the list, and shared by every line through
+   * `subgrid`. Without that, each line would compute its own column: the first `1:02:19` would
+   * widen its own and the text would advance in a staircase at the passing of the hour.
    */
   .transcript__segments {
     grid-template-columns: auto minmax(0, 1fr);
@@ -172,10 +172,10 @@
   }
 
   /*
-   * Placement explicite des deux colonnes : le tour de parole s'insère AVANT le timecode
-   * dans le flux et occupe toute la largeur, et sans colonnes déclarées le placement
-   * automatique décalerait le timecode sur les lignes qui ouvrent un tour. Les timecodes,
-   * eux, se calent à droite de leur colonne partagée, contre le bord du texte.
+   * Explicit placement of the two columns: the speaker turn is inserted BEFORE the timecode in
+   * the flow and takes the full width, and with no declared columns the automatic placement
+   * would shift the timecode on the lines that open a turn. The timecodes themselves line up
+   * on the right of their shared column, against the edge of the text.
    */
   .segment__timecode {
     grid-column: 1;
@@ -189,8 +189,8 @@
 }
 
 /*
- * Segment lu : deux indices, un fond et un liseré. Ni graisse, ni taille, ni bordure qui
- * pousse — la ligne reste exactement où elle était.
+ * Played segment: two clues, a background and a rule. No weight, no size, no border that
+ * pushes — the line stays exactly where it was.
  */
 .segment--current {
   background: var(--surface-accent);
@@ -204,11 +204,11 @@
 .segment__timecode {
   display: inline-flex;
   align-items: center;
-  /* En colonne unique, le timecode se pose à gauche, juste au-dessus de son texte :
-     étiré à droite de la ligne, il semblerait appartenir au segment précédent. */
+  /* In a single column, the timecode sits on the left, just above its text: stretched to the
+     right of the line, it would look as if it belonged to the previous segment. */
   justify-self: start;
   justify-content: flex-start;
-  /* Cible ≥ 44px, timecodes du transcript compris (Fitts, WCAG 2.5.8). */
+  /* Target ≥ 44px, transcript timecodes included (Fitts, WCAG 2.5.8). */
   min-inline-size: var(--space-7);
   min-block-size: var(--space-7);
   padding-inline: var(--space-2);
@@ -218,7 +218,7 @@
   color: var(--text-muted);
   font-family: var(--font-mono);
   font-size: var(--text-sm);
-  /* Chiffres de largeur fixe : la colonne ne tremble pas d'une ligne à l'autre. */
+  /* Fixed-width figures: the column does not tremble from one line to the next. */
   font-variant-numeric: tabular-nums;
   cursor: pointer;
   transition:
@@ -231,8 +231,8 @@
   color: var(--text);
 }
 
-/* Aucun changement de graisse ici : en chiffres tabulaires, le gras est plus large que le
-   normal et ferait respirer toute la colonne à chaque changement de segment. */
+/* No change of weight here: in tabular figures, bold is wider than regular and would make the
+   whole column breathe on every segment change. */
 .segment--current .segment__timecode {
   color: var(--accent);
 }
@@ -244,16 +244,16 @@
 }
 
 .segment__body {
-  /* La mesure borne le TEXTE, pas la ligne entière : la colonne de timecodes vit en dehors. */
+  /* The measure bounds the TEXT, not the whole line: the timecode column lives outside it. */
   max-inline-size: var(--measure);
   min-inline-size: 0;
 }
 
 /*
- * Champ auto-dimensionné, sans mesure en JavaScript : le conteneur duplique le texte du
- * champ dans un pseudo-élément superposé, invisible, et c'est ce jumeau qui donne sa
- * hauteur à la grille. Le champ n'a donc jamais de barre de défilement interne, et la
- * frappe ne déclenche aucun calcul de mise en page côté script.
+ * Self-sizing field, with no measurement in JavaScript: the container duplicates the text of
+ * the field in a superimposed, invisible pseudo-element, and it is that twin which gives the
+ * grid its height. The field therefore never has an internal scrollbar, and typing triggers no
+ * layout computation on the script side.
  */
 .segment__grow {
   display: grid;
@@ -270,8 +270,8 @@
   overflow: hidden;
 }
 
-/* Le jumeau et le champ partagent la même cellule ET la même boîte : toute différence de
-   police, d'interligne ou de rembourrage ferait mentir la hauteur calculée. */
+/* The twin and the field share the same cell AND the same box: any difference of font, leading
+   or padding would make the computed height lie. */
 .segment__grow::after,
 .segment__grow > textarea {
   grid-area: 1 / 1 / 2 / 2;
@@ -293,16 +293,16 @@
 }
 
 /*
- * Signifier de correction : quand le texte est modifiable, un filet sous la ligne le dit
- * sans encadrer 1 500 paragraphes. Le survol et le focus complètent la bordure — seule la
- * couleur change, jamais l'épaisseur, donc rien ne bouge.
+ * Correction signifier: when the text can be edited, a rule under the line says so without
+ * boxing 1,500 paragraphs. Hover and focus complete the border — only the colour changes,
+ * never the thickness, so nothing moves.
  */
 .segment__text:not(:read-only) {
   border-block-end-color: var(--border);
 }
 
-/* Sur le fond du segment lu, `--border` disparaît — or c'est justement la ligne que
-   l'utilisateur va corriger : le filet y passe au ton plus soutenu pour rester visible. */
+/* On the background of the played segment, `--border` vanishes — and that is precisely the
+   line the user is about to correct: the rule goes to the stronger tone to stay visible. */
 .segment--current .segment__text:not(:read-only) {
   border-block-end-color: var(--border-strong);
 }
@@ -322,8 +322,8 @@
 }
 
 /*
- * Ligne d'état du segment. Sa hauteur est réservée en permanence : « Enregistrement… »
- * puis « Corrigé » s'y succèdent sans jamais ajouter de ligne au transcript.
+ * State line of the segment. Its height is permanently reserved: “Saving…” then “Corrected”
+ * follow one another there without ever adding a line to the transcript.
  */
 .segment__state {
   display: flex;
@@ -335,7 +335,7 @@
   font-size: var(--text-xs);
 }
 
-/* Statut de la correction : couleur ET mot, jamais la couleur seule. */
+/* Status of the correction: colour AND word, never colour alone. */
 .segment__error {
   color: var(--status-failed);
   font-weight: var(--weight-medium);

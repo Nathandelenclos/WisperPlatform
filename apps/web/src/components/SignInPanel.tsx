@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import type { AuthCommand } from '../auth/session';
+import { useTranslation } from '../i18n';
+import { LanguageSwitcher } from './LanguageSwitcher';
 import { Button, Field, Notice, TextInput } from './primitives';
 
 type SignInPanelProps = {
@@ -7,18 +9,18 @@ type SignInPanelProps = {
   submitting: boolean;
   errorMessage: string | null;
   minPasswordLength: number;
-  /** Vrai quand l'instance a des identifiants Google : sinon le bouton n'existe pas. */
+  /** True when the instance has Google credentials: otherwise the button does not exist. */
   googleAvailable: boolean;
   onGoogle: () => void;
   googleSubmitting: boolean;
 };
 
 /**
- * Connexion et inscription. Le composant ne connaît que ses champs et son mode
- * d'affichage : la commande part en callback.
+ * Sign-in and sign-up. The component knows only its fields and its display mode: the command
+ * leaves through a callback.
  *
- * Les deux modes partagent le même état de saisie : basculer de l'un à l'autre ne fait
- * rien perdre, alors que c'est précisément le moment où l'on hésite.
+ * Both modes share the same input state: switching from one to the other loses nothing, which
+ * is precisely the moment one hesitates.
  */
 export function SignInPanel({
   onSubmit,
@@ -29,6 +31,7 @@ export function SignInPanel({
   onGoogle,
   googleSubmitting,
 }: SignInPanelProps) {
+  const { t } = useTranslation();
   const [intent, setIntent] = useState<AuthCommand['intent']>('sign-in');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -39,19 +42,29 @@ export function SignInPanel({
   return (
     <main className="signin">
       <div className="signin__card panel">
-        <p className="signin__brand">
-          <svg className="signin__mark" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-            <rect x="3" y="9" width="3" height="6" rx="1.5" />
-            <rect x="10.5" y="4" width="3" height="16" rx="1.5" />
-            <rect x="18" y="7" width="3" height="10" rx="1.5" />
-          </svg>
-          WisperPlatform
-        </p>
+        {/*
+          The language sits on the brand line, at the very top: someone who does not read the
+          language of this screen must be able to change it before reading anything else — the
+          form included.
+        */}
+        <div className="signin__top">
+          <p className="signin__brand">
+            <svg className="signin__mark" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <rect x="3" y="9" width="3" height="6" rx="1.5" />
+              <rect x="10.5" y="4" width="3" height="16" rx="1.5" />
+              <rect x="18" y="7" width="3" height="10" rx="1.5" />
+            </svg>
+            WisperPlatform
+          </p>
+          <LanguageSwitcher />
+        </div>
 
         <div className="signin__head">
-          <h1 className="signin__title">{signingUp ? 'Créer un compte' : 'Se connecter'}</h1>
-          {/* Ce que fait le produit, en une ligne : un visiteur qui arrive froid le lit d'abord. */}
-          <p className="signin__tagline">Vos médias transcrits sur votre serveur.</p>
+          <h1 className="signin__title">
+            {signingUp ? t('signIn.signUpTitle') : t('signIn.signInTitle')}
+          </h1>
+          {/* What the product does, in one line: a visitor arriving cold reads it first. */}
+          <p className="signin__tagline">{t('signIn.tagline')}</p>
         </div>
 
         <form
@@ -67,7 +80,7 @@ export function SignInPanel({
           }}
         >
           {signingUp ? (
-            <Field id="signin-name" label="Nom affiché">
+            <Field id="signin-name" label={t('signIn.nameLabel')}>
               {(fieldProps) => (
                 <TextInput
                   {...fieldProps}
@@ -82,7 +95,7 @@ export function SignInPanel({
             </Field>
           ) : null}
 
-          <Field id="signin-email" label="Adresse e-mail">
+          <Field id="signin-email" label={t('signIn.emailLabel')}>
             {(fieldProps) => (
               <TextInput
                 {...fieldProps}
@@ -98,8 +111,8 @@ export function SignInPanel({
 
           <Field
             id="signin-password"
-            label="Mot de passe"
-            hint={signingUp ? `${minPasswordLength} caractères minimum.` : undefined}
+            label={t('signIn.passwordLabel')}
+            hint={signingUp ? t('signIn.passwordHint', { min: minPasswordLength }) : undefined}
           >
             {(fieldProps) => (
               <TextInput
@@ -115,15 +128,18 @@ export function SignInPanel({
             )}
           </Field>
 
-          <p className="signin__required">Tous les champs sont requis.</p>
+          <p className="signin__required">{t('signIn.allRequired')}</p>
 
           {/*
-            Région live rendue en permanence et vide au repos : une région créée en même
-            temps que son contenu n'est pas annoncée.
+            Live region rendered permanently and empty at rest: a region created at the same
+            time as its content is not announced.
           */}
           <div className="signin__feedback" aria-live="polite">
             {errorMessage === null ? null : (
-              <Notice tone="error" title={signingUp ? 'Inscription refusée' : 'Connexion refusée'}>
+              <Notice
+                tone="error"
+                title={signingUp ? t('signIn.signUpRefused') : t('signIn.signInRefused')}
+              >
                 {errorMessage}
               </Notice>
             )}
@@ -132,23 +148,23 @@ export function SignInPanel({
           <Button type="submit" variant="primary" loading={submitting}>
             {submitting
               ? signingUp
-                ? 'Création du compte…'
-                : 'Connexion…'
+                ? t('signIn.signingUp')
+                : t('signIn.signingIn')
               : signingUp
-                ? 'Créer le compte'
-                : 'Se connecter'}
+                ? t('signIn.submitSignUp')
+                : t('signIn.signInTitle')}
           </Button>
         </form>
 
         {/*
-          Voie alternative, donc après le formulaire : elle ne coupe pas la saisie de quelqu'un
-          qui a déjà un mot de passe. Le libellé dit le même verbe dans les deux modes — chez
-          Google, s'inscrire et se connecter sont le même geste.
+          Alternative route, hence after the form: it does not cut across the typing of someone
+          who already has a password. The label says the same verb in both modes — with Google,
+          signing up and signing in are the same gesture.
         */}
         {googleAvailable ? (
           <div className="signin__alternative">
             <p className="signin__separator">
-              <span>ou</span>
+              <span>{t('signIn.or')}</span>
             </p>
             <Button variant="secondary" loading={googleSubmitting} onClick={onGoogle}>
               <svg
@@ -162,20 +178,17 @@ export function SignInPanel({
                 <path d="M3.97 10.72a5.41 5.41 0 0 1 0-3.44V4.94H.96a9 9 0 0 0 0 8.12l3.01-2.34Z" />
                 <path d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.59C13.46.89 11.43 0 9 0A9 9 0 0 0 .96 4.94l3.01 2.34C4.68 5.16 6.66 3.58 9 3.58Z" />
               </svg>
-              {googleSubmitting ? 'Ouverture de Google…' : 'Continuer avec Google'}
+              {googleSubmitting ? t('signIn.googleOpening') : t('signIn.google')}
             </Button>
           </div>
         ) : null}
 
         <div className="signin__switch">
           <p className="signin__switch-text">
-            {signingUp ? 'Vous avez déjà un compte ?' : 'Première visite ?'}
+            {signingUp ? t('signIn.haveAccount') : t('signIn.firstVisit')}
           </p>
-          <Button
-            variant="secondary"
-            onClick={() => setIntent(signingUp ? 'sign-in' : 'sign-up')}
-          >
-            {signingUp ? 'Se connecter' : 'Créer un compte'}
+          <Button variant="secondary" onClick={() => setIntent(signingUp ? 'sign-in' : 'sign-up')}>
+            {signingUp ? t('signIn.signInTitle') : t('signIn.signUpTitle')}
           </Button>
         </div>
       </div>

@@ -1,6 +1,6 @@
 /*
- * Point d'entrée des styles. L'ordre compte : les tokens d'abord (ils n'existent que déclarés),
- * le socle ensuite, les composants en dernier — chacun dans son fichier, un par composant.
+ * Entry point of the styles. Order matters: tokens first (they exist only once declared), then
+ * the base layer, then the components — each in its own file, one per component.
  */
 @import "./styles/tokens.css";
 @import "./styles/base.css";
@@ -11,6 +11,7 @@
 @import "./styles/components/notice.css";
 @import "./styles/components/skeleton.css";
 @import "./styles/components/file-drop.css";
+@import "./styles/components/language-switcher.css";
 
 @import "./styles/components/app-shell.css";
 @import "./styles/components/upload-panel.css";

@@ -1,22 +1,24 @@
 import type { ReactElement } from 'react';
+import { useTranslation, type MessageKey } from '../../i18n';
 
 /**
- * Union redéclarée ici, identique à `TranscriptionStatus` du domaine : une primitive visuelle
- * ne dépend pas de la couche API, même par un type. Elle reste assignable depuis le domaine.
+ * Union redeclared here, identical to the domain's `TranscriptionStatus`: a visual primitive
+ * does not depend on the API layer, not even through a type. It stays assignable from the
+ * domain.
  */
 type PillStatus = 'pending' | 'transcribing' | 'completed' | 'failed';
 
-const LABELS: Record<PillStatus, string> = {
-  pending: 'En attente',
-  transcribing: 'En cours',
-  completed: 'Terminée',
-  failed: 'Échec',
+const LABELS: Record<PillStatus, MessageKey> = {
+  pending: 'status.pending',
+  transcribing: 'status.transcribing',
+  completed: 'status.completed',
+  failed: 'status.failed',
 };
 
 /**
- * Une **forme** par statut, en plus de la couleur et du libellé : cercle vide (rien n'a
- * commencé), disque plein (ça travaille), coche (c'est fait), croix (c'est tombé). La géométrie
- * vit dans le SVG, pas dans la feuille de style, qui n'a ainsi que des tokens à manipuler.
+ * One **shape** per status, on top of the colour and the label: empty circle (nothing has
+ * started), filled disc (it is working), tick (it is done), cross (it fell over). The geometry
+ * lives in the SVG, not in the stylesheet, which then has only tokens to handle.
  */
 const SHAPES: Record<PillStatus, ReactElement> = {
   pending: <circle cx="8" cy="8" r="5" fill="none" stroke="currentColor" strokeWidth="2" />,
@@ -43,8 +45,8 @@ const SHAPES: Record<PillStatus, ReactElement> = {
 };
 
 /**
- * Pastille de statut. Le statut n'est jamais porté par la seule couleur : il l'est aussi par
- * le libellé, lisible, et par une forme distincte — un daltonien lit la pastille sans elle.
+ * Status pill. The status is never carried by colour alone: it is also carried by the label,
+ * readable, and by a distinct shape — a colour-blind reader reads the pill without the colour.
  */
 export function StatusPill({
   status,
@@ -53,12 +55,14 @@ export function StatusPill({
   status: PillStatus;
   size?: 'md' | 'sm';
 }): ReactElement {
+  const { t } = useTranslation();
+
   return (
     <span className={`status-pill status-pill--${status} status-pill--${size}`}>
       <svg className="status-pill__icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
         {SHAPES[status]}
       </svg>
-      {LABELS[status]}
+      {t(LABELS[status])}
     </span>
   );
 }

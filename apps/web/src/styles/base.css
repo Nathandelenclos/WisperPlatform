@@ -1,6 +1,6 @@
 /*
- * Socle : remise à zéro minimale, typographie, focus, mouvement, primitives de mise en page.
- * Tout ce qui est propre à un composant vit dans `styles/components/`.
+ * Base layer: minimal reset, typography, focus, motion, layout primitives.
+ * Everything specific to a component lives in `styles/components/`.
  */
 
 *,
@@ -15,7 +15,7 @@
 
 html {
   -webkit-text-size-adjust: 100%;
-  /* Le défilement conduit par un timecode doit s'arrêter sous l'en-tête collant. */
+  /* A scroll driven by a timecode must come to rest below the sticky header. */
   scroll-padding-top: var(--space-7);
 }
 
@@ -34,7 +34,7 @@ h2,
 h3 {
   line-height: var(--leading-tight);
   font-weight: var(--weight-semibold);
-  /* La hiérarchie se fait par taille + graisse + couleur, jamais par un seul levier. */
+  /* Hierarchy is made of size + weight + colour, never of one single lever. */
   letter-spacing: -0.01em;
   text-wrap: balance;
 }
@@ -71,8 +71,8 @@ textarea {
 }
 
 /*
- * Focus visible partout, et uniquement au clavier : `:focus-visible` évite l'anneau au clic
- * tout en le garantissant à la tabulation. Jamais `outline: none` sans remplacement.
+ * Focus visible everywhere, and only from the keyboard: `:focus-visible` avoids the ring on a
+ * click while guaranteeing it on tabbing. Never `outline: none` without a replacement.
  */
 :focus-visible {
   outline: 2px solid var(--focus-ring);
@@ -85,7 +85,7 @@ textarea {
   color: var(--text);
 }
 
-/* Un utilisateur qui demande moins de mouvement n'en reçoit plus : ni translation, ni boucle. */
+/* A user asking for less motion gets none: no translation, no loop. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -99,7 +99,7 @@ textarea {
 
 /* --- Primitives ------------------------------------------------------------------------- */
 
-/* Texte réservé aux lecteurs d'écran : présent dans l'arbre, invisible à l'œil. */
+/* Text reserved for screen readers: present in the tree, invisible to the eye. */
 .visually-hidden {
   position: absolute;
   width: 1px;
@@ -112,7 +112,7 @@ textarea {
   border: 0;
 }
 
-/* Lien d'évitement : premier élément focusable de la page, invisible jusqu'au focus. */
+/* Skip link: first focusable element of the page, invisible until focused. */
 .skip-link {
   position: absolute;
   top: var(--space-2);

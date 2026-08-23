@@ -1,17 +1,31 @@
 import { authClient } from './client';
 
-/** Longueur minimale imposée par better-auth ; annoncée dans le formulaire. */
+/** Minimum length enforced by better-auth; announced in the form. */
 export const MIN_PASSWORD_LENGTH = 8;
 
-/** Échec d'authentification, message déjà traduit pour l'utilisateur. */
+/**
+ * What went wrong, as a stable code. The failure is raised far from any React tree, so it
+ * carries a code rather than a sentence: the interface turns it into the reader's language,
+ * and `message` stays the developer-facing English fallback.
+ */
+export type AuthFailureCode =
+  | 'unreachable'
+  | 'invalid-credentials'
+  | 'sign-up-refused'
+  | 'failed';
+
+/** Authentication failure, qualified for the interface. */
 export class AuthError extends Error {
-  constructor(message: string) {
+  readonly code: AuthFailureCode;
+
+  constructor(code: AuthFailureCode, message: string) {
     super(message);
     this.name = 'AuthError';
+    this.code = code;
   }
 }
 
-/** Les deux intentions du panneau de connexion. */
+/** The two intents of the sign-in panel. */
 export type AuthCommand =
   | { intent: 'sign-in'; email: string; password: string }
   | { intent: 'sign-up'; name: string; email: string; password: string };
@@ -20,22 +34,20 @@ type AuthFailure = { status: number; statusText: string; message?: string | unde
 
 function toAuthError(failure: AuthFailure, intent: AuthCommand['intent']): AuthError {
   if (failure.status === 0 || failure.status >= 500) {
-    return new AuthError("Le serveur d'authentification est injoignable. Réessayez dans un instant.");
+    return new AuthError('unreachable', 'The authentication server is unreachable.');
   }
   if (intent === 'sign-in' && (failure.status === 401 || failure.status === 403)) {
-    return new AuthError('Adresse e-mail ou mot de passe incorrect.');
+    return new AuthError('invalid-credentials', 'Incorrect email address or password.');
   }
   if (intent === 'sign-up' && (failure.status === 400 || failure.status === 422)) {
-    return new AuthError(
-      `Inscription refusée : adresse déjà utilisée, ou mot de passe trop court (${MIN_PASSWORD_LENGTH} caractères minimum).`,
-    );
+    return new AuthError('sign-up-refused', 'Sign-up refused.');
   }
-  return new AuthError(failure.message ?? "Échec de l'authentification.");
+  return new AuthError('failed', failure.message ?? 'Authentication failed.');
 }
 
 /**
- * Exécute une connexion ou une inscription. better-auth met la session à jour de
- * lui-même en cas de succès : rien à propager ici.
+ * Runs a sign-in or a sign-up. better-auth updates the session by itself on success: nothing
+ * to propagate here.
  */
 export async function submitAuthCommand(command: AuthCommand): Promise<void> {
   const result =
@@ -55,15 +67,15 @@ export async function signOut(): Promise<void> {
 }
 
 /**
- * Connexion par Google. Le succès n'est pas un retour de fonction : better-auth redirige le
- * navigateur vers Google, qui revient sur `/api/auth/callback/google`. Il n'y a donc rien à
- * faire après, sauf si l'appel échoue avant même de partir — instance sans identifiants,
- * serveur injoignable.
+ * Sign-in through Google. Success is not a return value: better-auth redirects the browser to
+ * Google, which comes back on `/api/auth/callback/google`. There is therefore nothing to do
+ * afterwards, except when the call fails before even leaving — instance without credentials,
+ * server unreachable.
  */
 export async function signInWithGoogle(): Promise<void> {
   const result = await authClient.signIn.social({
     provider: 'google',
-    // On revient là où l'on était : l'atelier, pas une page d'accueil générique.
+    // We come back where we were: the workspace, not a generic landing page.
     callbackURL: window.location.origin,
   });
   if (result.error) throw toAuthError(result.error, 'sign-in');

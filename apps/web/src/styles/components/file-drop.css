@@ -1,7 +1,7 @@
 /*
- * Zone de dépôt. Le contrôle réel est l'`<input type="file">` : il porte la classe
- * `.visually-hidden` du socle, donc il est invisible mais toujours tabulable — `display: none`
- * l'aurait sorti du parcours clavier. Tout le rendu se fait sur son étiquette.
+ * Drop zone. The real control is the `<input type="file">`: it carries the `.visually-hidden`
+ * class of the base layer, so it is invisible but still tabbable — `display: none` would have
+ * taken it out of the keyboard path. All the rendering happens on its label.
  */
 
 .file-drop {
@@ -40,7 +40,7 @@
   font-weight: var(--weight-medium);
 }
 
-/* Le souligné dit où l'on clique : sans lui, la zone n'annonce que le dépôt à la souris. */
+/* The underline says where one clicks: without it, the zone only announces a mouse drop. */
 .file-drop__cue {
   font-size: var(--text-sm);
   text-decoration: underline;
@@ -52,8 +52,8 @@
 }
 
 /*
- * L'anneau de focus se dessine sur la zone visible, l'input étant masqué. `:focus` autant que
- * `:focus-visible` : l'arrivée par une ancre `#id` doit se voir elle aussi.
+ * The focus ring is drawn on the visible zone, the input being hidden. `:focus` as much as
+ * `:focus-visible`: arriving through an `#id` anchor has to be seen too.
  */
 .file-drop__input:focus + .file-drop__zone,
 .file-drop__input:focus-visible + .file-drop__zone {
@@ -61,7 +61,7 @@
   outline-offset: 2px;
 }
 
-/* Survol de dépôt : la zone se ferme (trait plein) et prend la couleur d'accueil. */
+/* Drag hover: the zone closes (solid stroke) and takes the welcoming colour. */
 .file-drop--dragging .file-drop__zone {
   border-style: solid;
   border-color: var(--accent);
@@ -76,7 +76,7 @@
 .file-drop--disabled .file-drop__zone {
   border-color: var(--border);
   background: var(--surface-sunken);
-  /* Lisible même éteint : la consigne de dépôt reste une information à lire. */
+  /* Readable even when off: the drop instruction is still information to read. */
   color: var(--text-muted);
   cursor: not-allowed;
 }
@@ -94,7 +94,7 @@
   gap: var(--space-2);
 }
 
-/* Un nom de fichier peut être très long : il se coupe plutôt que de déborder de la colonne. */
+/* A file name can be very long: it breaks rather than overflowing the column. */
 .file-drop__chosen {
   color: var(--text-muted);
   font-size: var(--text-sm);

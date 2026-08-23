@@ -1,6 +1,6 @@
 /*
- * Écran de connexion. C'est la porte d'entrée : la marque, ce que fait le produit et un
- * formulaire d'une seule colonne, rien d'autre. Aucune décoration à charger avant le champ.
+ * Sign-in screen. This is the front door: the brand, what the product does, and a single
+ * column form, nothing else. No decoration to load before the field.
  */
 
 .signin {
@@ -14,9 +14,21 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-5);
-  /* Largeur de mise en page : un formulaire plus large éparpille l'œil entre label et champ. */
+  /* Layout width: a wider form scatters the eye between label and field. */
   width: min(100%, 26rem);
   padding: var(--space-6);
+}
+
+/*
+ * Brand and language on the same line. The language has to be reachable before anything else
+ * is read: someone who does not understand this screen cannot be asked to sign in first.
+ */
+.signin__top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
 }
 
 .signin__brand {
@@ -35,7 +47,7 @@
   fill: var(--accent);
 }
 
-/* Titre et accroche sont un même bloc : serrés entre eux, détachés du formulaire. */
+/* Title and tagline are one block: tight together, detached from the form. */
 .signin__head {
   display: flex;
   flex-direction: column;
@@ -65,7 +77,7 @@
   display: none;
 }
 
-/* --- Voie alternative ------------------------------------------------------------------- */
+/* --- Alternative route -------------------------------------------------------------------- */
 
 .signin__alternative {
   display: flex;
@@ -74,8 +86,8 @@
 }
 
 /*
- * Le mot « ou » sur la ligne, pas au-dessus : deux traits partent de part et d'autre par des
- * pseudo-éléments, ce qui évite un fond opaque pour masquer un trait qui passerait derrière.
+ * The word “or” on the line, not above it: two rules start on either side through
+ * pseudo-elements, which avoids an opaque background to mask a rule passing behind.
  */
 .signin__separator {
   display: flex;
@@ -94,9 +106,9 @@
 }
 
 /*
- * La marque du fournisseur suit la couleur du texte du bouton, comme les autres icônes.
- * L'écart est posé ici et pas par le `gap` du bouton : la primitive enveloppe son contenu
- * dans un seul nœud, donc son `gap` ne sépare rien à l'intérieur.
+ * The provider mark follows the colour of the button text, like the other icons. The gap is
+ * set here and not by the button's `gap`: the primitive wraps its content in a single node, so
+ * its `gap` separates nothing inside.
  */
 .signin__provider-mark {
   width: 1.125rem;
@@ -108,8 +120,8 @@
 }
 
 /*
- * Bascule connexion/inscription : détachée du formulaire par un filet, pour qu'on ne la
- * prenne pas pour une étape de plus.
+ * Sign-in/sign-up toggle: detached from the form by a rule, so that it is not taken for one
+ * more step.
  */
 .signin__switch {
   display: flex;

@@ -1,10 +1,10 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
-// Le client appelle toujours `/api` en chemin relatif : même origine en production
-// (le reverse proxy route `/api` vers l'API), proxy de développement ici.
-// Ce fichier n'est pas inclus dans le typecheck : `@types/node` n'est pas une
-// dépendance du paquet web, `process` n'y est donc pas typé.
+// The client always calls `/api` through a relative path: same origin in production (the
+// reverse proxy routes `/api` to the API), development proxy here.
+// This file is not part of the typecheck: `@types/node` is not a dependency of the web
+// package, so `process` is not typed in it.
 const apiTarget = process.env.API_PROXY_TARGET ?? 'http://localhost:3000';
 
 export default defineConfig({
@@ -13,7 +13,7 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
     proxy: {
-      // Inclut `/api/auth/*` (better-auth) et le flux SSE des événements.
+      // Covers `/api/auth/*` (better-auth) and the SSE stream of events.
       '/api': { target: apiTarget, changeOrigin: false },
     },
   },

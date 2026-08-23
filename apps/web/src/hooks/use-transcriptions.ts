@@ -10,15 +10,15 @@ import {
   type TranscriptionView,
 } from '../api/transcriptions';
 
-/** Clés du cache d'état serveur. Une liste, un détail par transcription. */
+/** Server-state cache keys. One list, one detail per transcription. */
 export const transcriptionKeys = {
   list: ['transcriptions', 'list'] as const,
   detail: (transcriptionId: string) => ['transcriptions', 'detail', transcriptionId] as const,
 };
 
 /**
- * Cadence de repli quand le flux d'événements est coupé : la vue continue d'avancer,
- * plus lentement, au lieu de rester figée sur son dernier état connu.
+ * Fallback cadence when the event stream is cut: the view keeps moving forward, more slowly,
+ * instead of freezing on its last known state.
  */
 const DEGRADED_POLL_MS = 5_000;
 
@@ -40,7 +40,7 @@ export function useTranscription(transcriptionId: string | null, p: { degraded?:
   });
 }
 
-/** Dépose un média ; la liste est rafraîchie pour faire apparaître la demande. */
+/** Uploads a media file; the list is refreshed so the request shows up. */
 export function useRequestTranscription() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -50,8 +50,8 @@ export function useRequestTranscription() {
 }
 
 /**
- * Corrige un segment. Le texte accepté est écrit directement dans le cache : l'API
- * ne renvoie pas la vue, et un refetch complet ferait clignoter l'éditeur.
+ * Corrects a segment. The accepted text is written straight into the cache: the API does not
+ * return the view, and a full refetch would make the editor flicker.
  */
 export function useCorrectSegment(transcriptionId: string) {
   const queryClient = useQueryClient();
@@ -78,9 +78,9 @@ export function useCorrectSegment(transcriptionId: string) {
 }
 
 /**
- * Renomme un locuteur pour toute la transcription. L'API répond avec la vue de détail
- * complète : elle est écrite telle quelle dans le cache — l'attribution des segments a pu
- * bouger entre-temps, et le serveur est le seul à savoir dans quel état elle est.
+ * Renames a speaker across the whole transcription. The API answers with the complete detail
+ * view: it is written into the cache as it stands — the segment assignment may have moved
+ * meanwhile, and only the server knows what state it is in.
  */
 export function useRenameSpeaker(transcriptionId: string) {
   const queryClient = useQueryClient();
@@ -94,9 +94,9 @@ export function useRenameSpeaker(transcriptionId: string) {
 }
 
 /**
- * Confie une transcription en attente à l'autre côté. La vue de détail renvoyée fait
- * autorité ; la bibliothèque est réinterrogée parce que le résumé porte lui aussi le
- * placement — sans ça, la ligne continuerait d'annoncer une attente qui n'a plus lieu.
+ * Hands a pending transcription to the other side. The detail view returned is authoritative;
+ * the library is re-queried because the summary carries the placement too — without that, the
+ * row would go on announcing a wait that no longer applies.
  */
 export function useChangePlacement(transcriptionId: string) {
   const queryClient = useQueryClient();

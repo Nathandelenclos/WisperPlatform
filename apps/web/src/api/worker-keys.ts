@@ -1,28 +1,28 @@
 import { requestJson, requestNoContent } from './http';
 
 /**
- * Clés de machine : ce qu'un utilisateur crée pour rattacher SA machine à son compte.
- * Le secret est collé dans la commande de lancement du worker ; l'API ne le rend qu'une
- * fois, à la création, et n'en garde qu'une empreinte.
+ * Machine keys: what a user creates to attach THEIR machine to their account. The secret is
+ * pasted into the worker's start command; the API returns it once, at creation, and keeps
+ * nothing but a fingerprint of it.
  */
 
-/** Reflète la contrainte du domaine sur le libellé. Le serveur reste seul juge. */
+/** Mirrors the domain constraint on the label. The server remains the only judge. */
 export const WORKER_KEY_LABEL_MAX = 60;
 
-/** Machine déclarée, telle que la liste la donne — jamais de secret ni d'empreinte. */
+/** Declared machine, as the list gives it — never a secret, never a fingerprint. */
 export type WorkerKey = {
   id: string;
   label: string;
   createdAt: string;
-  /** Dernier appel du worker portant cette clé ; `null` tant qu'aucun ne s'est présenté. */
+  /** Last call of a worker carrying this key; `null` as long as none has shown up. */
   lastSeenAt: string | null;
-  /** Date de révocation ; `null` tant que la clé sert. */
+  /** Revocation date; `null` as long as the key serves. */
   revokedAt: string | null;
 };
 
 /**
- * Réponse de la création. `secret` n'apparaît QUE là : il n'est stocké nulle part en clair,
- * ni côté serveur, ni dans le cache du client — la vue le garde le temps qu'on le copie.
+ * Answer to the creation. `secret` appears THERE and nowhere else: it is stored in the clear
+ * neither on the server nor in the client cache — the view holds it just long enough to copy.
  */
 export type CreatedWorkerKey = {
   id: string;
@@ -43,18 +43,18 @@ export async function createWorkerKey(p: { label: string }): Promise<CreatedWork
   });
 }
 
-/** Révoque une clé. La machine reste listée, marquée révoquée : son historique compte. */
+/** Revokes a key. The machine stays listed, marked revoked: its history counts. */
 export async function revokeWorkerKey(p: { id: string }): Promise<void> {
   await requestNoContent(`/api/worker-keys/${encodeURIComponent(p.id)}`, { method: 'DELETE' });
 }
 
 /**
- * Commande de lancement prête à coller. L'origine est celle de la page : le worker doit
- * joindre la même API que le navigateur, et la deviner serait une source d'erreur de plus.
+ * Start command, ready to paste. The origin is the page's own: the worker must reach the same
+ * API as the browser, and guessing it would be one more source of error.
  *
- * Une seule ligne, et une image publiée : personne ne prête un cœur de processeur au prix d'un
- * clone et d'un build de trois gigaoctets. Le tag `latest` suit la branche par défaut, publié
- * par la CI après le scan de vulnérabilités.
+ * A single line, and a published image: nobody lends a processor core at the price of a clone
+ * and a three-gigabyte build. The `latest` tag follows the default branch, published by CI
+ * after the vulnerability scan.
  */
 export function workerRunCommand(p: { origin: string; secret: string }): string {
   return [

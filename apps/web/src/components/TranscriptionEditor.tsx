@@ -1,48 +1,47 @@
 import { useCallback, useEffect, useRef, useState, type ReactEventHandler } from 'react';
 import {
-  TRANSCRIPTION_LANGUAGES,
   type Placement,
   type Segment,
   type SubtitleFormat,
   type TranscriptionStatus,
   type TranscriptionView,
 } from '../api/transcriptions';
-import { formatByteSize, formatDateTime, formatDuration, formatTimecode } from '../format';
+import { formatTimecode } from '../format';
+import { languageLabel, useTranslation, type Translate } from '../i18n';
 import { ExportMenu } from './ExportMenu';
 import { SegmentRow } from './SegmentRow';
 import { SpeakerTurn } from './SpeakerTurn';
 import { Button, EmptyState, Notice, Skeleton, StatusPill, VisuallyHidden } from './primitives';
 
-/** Recommencer, ici, c'est redéposer un média : l'ancre mène au panneau de dépôt. */
+/** Starting over, here, means uploading a media file again: the anchor leads to the drop panel. */
 const UPLOAD_ANCHOR = '#upload-panel';
 
-/** Ce que le média a réellement à montrer, connu seulement une fois ses métadonnées lues. */
+/** What the media actually has to show, known only once its metadata has been read. */
 type Picture = 'unknown' | 'present' | 'absent';
 
 /**
- * Une transcription peut durer des minutes : l'écran dit toujours où en est le travail, et
- * le nombre de segments arrivés est la seule mesure honnête de son avancement.
+ * A transcription can last minutes: the screen always says where the work stands, and the
+ * number of segments that arrived is the only honest measure of its progress.
  */
 function describeProgress(
   status: TranscriptionStatus,
   count: number,
   placement: Placement,
+  t: Translate,
 ): string {
-  const counted = `${count} ${count === 1 ? 'segment' : 'segments'}`;
-  const transcribed = count === 1 ? 'transcrit' : 'transcrits';
   switch (status) {
     case 'pending':
       return placement === 'owner'
-        ? "En attente de votre machine : la transcription démarrera dès qu'une des vôtres tournera."
-        : "En file d'attente : la transcription démarrera dès qu'un worker sera libre.";
+        ? t('transcript.progressPendingOwner')
+        : t('transcript.progressPendingService');
     case 'transcribing':
-      return `${counted} ${transcribed} — la suite arrive au fil de l'eau.`;
+      return t('transcript.progressTranscribing', { count });
     case 'completed':
-      return `${counted}. Corrigez une ligne en cliquant dans son texte.`;
+      return t('transcript.progressCompleted', { count });
     case 'failed':
       return count === 0
-        ? "L'échec est survenu avant le premier segment."
-        : `${counted} ${transcribed} avant l'échec.`;
+        ? t('transcript.progressFailedEmpty')
+        : t('transcript.progressFailed', { count });
   }
 }
 
@@ -50,26 +49,26 @@ type TranscriptionEditorProps = {
   transcription: TranscriptionView;
   mediaUrl: string;
   buildExportUrl: (format: SubtitleFormat) => string;
-  /** Segment en cours d'enregistrement, s'il y en a un. */
+  /** Segment currently being saved, if there is one. */
   savingOrdinal: number | null;
   errorMessage: string | null;
-  /** Le flux d'événements est coupé : la vue n'avance plus en direct. */
+  /** The event stream is cut: the view no longer moves live. */
   streamLost: boolean;
   onRetryStream: () => void;
   onCorrectSegment: (correction: { ordinal: number; text: string }) => void;
-  /** Locuteur en cours de renommage, s'il y en a un. */
+  /** Speaker currently being renamed, if there is one. */
   renamingSpeakerIndex: number | null;
   renameErrorMessage: string | null;
   onRenameSpeaker: (rename: { index: number; name: string }) => void;
-  /** Bascule de placement en cours : le geste de reprise en main est occupé. */
+  /** Placement switch under way: the take-back gesture is busy. */
   movingToService: boolean;
   placementErrorMessage: string | null;
   onMoveToService: () => void;
 };
 
 /**
- * Lecture du média et correction des segments. L'état de lecture (segment courant, position,
- * suivi du défilement) est purement visuel et reste ici ; les corrections partent en callback.
+ * Media playback and segment correction. The playback state (current segment, position, scroll
+ * following) is purely visual and stays here; corrections leave through callbacks.
  */
 export function TranscriptionEditor({
   transcription,
@@ -87,11 +86,12 @@ export function TranscriptionEditor({
   placementErrorMessage,
   onMoveToService,
 }: TranscriptionEditorProps) {
+  const { t, format } = useTranslation();
   const mediaRef = useRef<HTMLMediaElement | null>(null);
   const listRef = useRef<HTMLOListElement | null>(null);
-  // Dernière position connue, en millisecondes : elle survit à la bascule vidéo → audio.
+  // Last known position, in milliseconds: it survives the video → audio switch.
   const positionRef = useRef(0);
-  // Segment surligné, gardé aussi en ref pour trancher un `timeupdate` sans re-rendre.
+  // Highlighted segment, also kept in a ref to settle a `timeupdate` without re-rendering.
   const heldRef = useRef<Segment | null>(null);
 
   const [currentOrdinal, setCurrentOrdinal] = useState<number | null>(null);
@@ -99,39 +99,36 @@ export function TranscriptionEditor({
   const [follow, setFollow] = useState(false);
   const [picture, setPicture] = useState<Picture>('unknown');
   const [announcement, setAnnouncement] = useState<{ token: number; text: string } | null>(null);
-  // Tour de parole dont le formulaire de renommage est ouvert, désigné par l'ordinal du
-  // segment qui l'ouvre : un locuteur peut avoir vingt tours, un seul champ à la fois.
+  // Turn whose rename form is open, designated by the ordinal of the segment that opens it: a
+  // speaker may have twenty turns, but only one field at a time.
   const [openTurn, setOpenTurn] = useState<number | null>(null);
 
   const { segments, speakers, status, placement } = transcription;
   const isVideo = transcription.mediaContentType.startsWith('video/');
-  // Un conteneur vidéo peut n'avoir aucune image exploitable — un `.mov` enregistré au micro,
-  // par exemple. Afficher un rectangle noir mentirait sur ce que contient le fichier.
+  // A video container may hold no usable picture — a `.mov` recorded from a microphone, for
+  // instance. Showing a black rectangle would lie about what the file contains.
   const soundOnly = isVideo && picture === 'absent';
-  // Le domaine ne corrige un segment que sur une transcription terminée.
+  // The domain only corrects a segment on a finished transcription.
   const editable = status === 'completed';
-  // Une reprise vide la liste : le champ qui avait le focus a disparu avec elle, et le
-  // navigateur ne garantit pas de `blur` sur un élément retiré. Sans ce garde-fou, le
-  // réglage de suivi resterait désactivé pour de bon.
+  // A new attempt empties the list: the field that had the focus went with it, and the browser
+  // does not guarantee a `blur` on a removed element. Without this guard, the following setting
+  // would stay disabled for good.
   const editing = fieldFocused && segments.length > 0;
 
-  const languageLabel =
-    TRANSCRIPTION_LANGUAGES.find((candidate) => candidate.value === transcription.language)
-      ?.label ?? transcription.language;
   const spokenMs = segments.at(-1)?.endMs ?? null;
-  // Une demande réservée aux machines du propriétaire et qui n'a pas démarré : c'est le
-  // seul cas où il a une décision à reprendre, et il doit pouvoir la reprendre à la main.
+  // A request reserved for the owner's machines that has not started: it is the only case where
+  // they have a decision to take back, and they must be able to take it back by hand.
   const stuckOnOwnMachine = status === 'pending' && placement === 'owner';
 
-  /** Une région live ne se répète pas d'elle-même : le jeton force la relecture. */
+  /** A live region does not repeat itself: the token forces it to be read again. */
   const announce = useCallback((text: string) => {
     setAnnouncement((current) => ({ token: (current?.token ?? 0) + 1, text }));
   }, []);
 
-  // Identité stable : un ref-callback recréé à chaque rendu serait détaché/rattaché.
+  // Stable identity: a ref callback recreated on every render would be detached/reattached.
   const attachMedia = useCallback((node: HTMLMediaElement | null) => {
     mediaRef.current = node;
-    // Report de la tête de lecture quand l'élément change de nature (vidéo → audio).
+    // Carrying the playhead over when the element changes nature (video → audio).
     if (node !== null && positionRef.current > 0) node.currentTime = positionRef.current / 1000;
   }, []);
 
@@ -141,9 +138,9 @@ export function TranscriptionEditor({
     const positionMs = media.currentTime * 1000;
     positionRef.current = positionMs;
 
-    // Cas courant, quatre fois par seconde : la lecture avance dans le segment déjà
-    // surligné. Rien à chercher, rien à re-rendre — un transcript peut compter des
-    // milliers de lignes et n'a aucune raison de se redessiner à chaque battement.
+    // Common case, four times a second: playback advances inside the segment already
+    // highlighted. Nothing to look for, nothing to re-render — a transcript can hold thousands
+    // of lines and has no reason to redraw itself on every beat.
     const held = heldRef.current;
     if (held !== null && positionMs >= held.startMs && positionMs < held.endMs) return;
 
@@ -164,17 +161,17 @@ export function TranscriptionEditor({
     if (media === null) return;
     media.currentTime = startMs / 1000;
     void media.play().catch(() => {
-      // Lecture refusée par le navigateur : le déplacement de la tête de lecture suffit.
+      // Playback refused by the browser: moving the playhead is enough.
     });
   };
 
-  // Une seule référence pour toute la liste : l'ordinal remonte en argument plutôt que
-  // d'être capturé dans une fermeture par ligne.
+  // A single reference for the whole list: the ordinal comes back as an argument rather than
+  // being captured in one closure per row.
   const commitSegment = (ordinal: number, text: string) => onCorrectSegment({ ordinal, text });
 
-  // Suivi de la lecture : jamais pendant une correction, et `nearest` ne déplace rien tant
-  // que le segment lu est déjà à l'écran. Aucun `behavior` demandé : le défilement suit la
-  // préférence de mouvement du système, réglée dans le socle.
+  // Playback following: never during a correction, and `nearest` moves nothing as long as the
+  // segment being played is already on screen. No `behavior` asked for: the scroll follows the
+  // system motion preference, set in the base stylesheet.
   useEffect(() => {
     if (!follow || editing || currentOrdinal === null) return;
     listRef.current
@@ -182,54 +179,56 @@ export function TranscriptionEditor({
       ?.scrollIntoView({ block: 'nearest' });
   }, [follow, editing, currentOrdinal]);
 
-  // Le sort d'une correction est annoncé, pas seulement coloré : la fin de l'enregistrement
-  // se lit à la disparition de `savingOrdinal`, et l'erreur éventuelle l'accompagne.
+  // The fate of a correction is announced, not merely coloured: the end of the save is read
+  // from the disappearance of `savingOrdinal`, and the error, if any, comes with it.
   const previousSaving = useRef<number | null>(null);
   useEffect(() => {
     const previous = previousSaving.current;
     previousSaving.current = savingOrdinal;
     if (previous === null || previous === savingOrdinal) return;
     const saved = segments.find((segment) => segment.ordinal === previous);
-    const where = saved === undefined ? '' : ` à ${formatTimecode(saved.startMs)}`;
+    const at = saved === undefined ? null : formatTimecode(saved.startMs);
+    if (errorMessage === null) {
+      announce(at === null ? t('transcript.announceSaved') : t('transcript.announceSavedAt', { at }));
+      return;
+    }
     announce(
-      errorMessage === null
-        ? `Segment${where} enregistré.`
-        : `Segment${where} non enregistré : ${errorMessage}`,
+      at === null
+        ? t('transcript.announceNotSaved', { reason: errorMessage })
+        : t('transcript.announceNotSavedAt', { at, reason: errorMessage }),
     );
-  }, [savingOrdinal, errorMessage, segments, announce]);
+  }, [savingOrdinal, errorMessage, segments, announce, t]);
 
-  // Le sort d'un renommage s'entend aussi. La fin de l'envoi se lit à la disparition de
-  // `renamingSpeakerIndex` ; le formulaire ne se referme que si le serveur a accepté, sinon
-  // la correction se rejoue là où elle a été saisie.
+  // The fate of a rename is heard too. The end of the submission is read from the disappearance
+  // of `renamingSpeakerIndex`; the form only closes if the server accepted, otherwise the
+  // correction is replayed where it was typed.
   const previousRenaming = useRef<number | null>(null);
   useEffect(() => {
     const previous = previousRenaming.current;
     previousRenaming.current = renamingSpeakerIndex;
     if (previous === null || previous === renamingSpeakerIndex) return;
     if (renameErrorMessage !== null) {
-      announce(`Locuteur non renommé : ${renameErrorMessage}`);
+      announce(t('transcript.announceRenameFailed', { reason: renameErrorMessage }));
       return;
     }
     setOpenTurn(null);
     const renamed = speakers.find((speaker) => speaker.index === previous)?.name ?? null;
     announce(
       renamed === null
-        ? 'Locuteur renommé dans toute la transcription.'
-        : `Locuteur renommé en ${renamed} dans toute la transcription.`,
+        ? t('transcript.announceRenamed')
+        : t('transcript.announceRenamedTo', { name: renamed }),
     );
-  }, [renamingSpeakerIndex, renameErrorMessage, speakers, announce]);
+  }, [renamingSpeakerIndex, renameErrorMessage, speakers, announce, t]);
 
-  // Un flux perdu se voit — et s'entend : le bandeau ne suffit pas à qui ne le voit pas.
+  // A lost stream is seen — and heard: the banner is no use to whoever cannot see it.
   const previousLost = useRef(streamLost);
   useEffect(() => {
     if (previousLost.current === streamLost) return;
     previousLost.current = streamLost;
     announce(
-      streamLost
-        ? "Connexion au direct perdue : les segments n'arrivent plus au fil de l'eau."
-        : 'Connexion au direct rétablie.',
+      streamLost ? t('transcript.announceStreamLost') : t('transcript.announceStreamBack'),
     );
-  }, [streamLost, announce]);
+  }, [streamLost, announce, t]);
 
   return (
     <article className="transcript" aria-labelledby="transcript-title">
@@ -243,32 +242,32 @@ export function TranscriptionEditor({
 
         <dl className="transcript__facts">
           <div className="transcript__fact">
-            <dt>Modèle</dt>
+            <dt>{t('transcript.factModel')}</dt>
             <dd>{transcription.model}</dd>
           </div>
           <div className="transcript__fact">
-            <dt>Langue</dt>
-            <dd>{languageLabel}</dd>
+            <dt>{t('transcript.factLanguage')}</dt>
+            <dd>{languageLabel(transcription.language, t)}</dd>
           </div>
           <div className="transcript__fact">
-            <dt>Média</dt>
-            <dd>{formatByteSize(transcription.mediaByteSize)}</dd>
+            <dt>{t('transcript.factMedia')}</dt>
+            <dd>{format.byteSize(transcription.mediaByteSize)}</dd>
           </div>
           <div className="transcript__fact">
-            <dt>Déposé</dt>
-            <dd>{formatDateTime(transcription.requestedAt)}</dd>
+            <dt>{t('transcript.factUploaded')}</dt>
+            <dd>{format.dateTime(transcription.requestedAt)}</dd>
           </div>
-          {/* Fait montré seulement s'il sort de l'ordinaire : « service » est le défaut. */}
+          {/* A fact shown only when it is out of the ordinary: “service” is the default. */}
           {placement === 'owner' ? (
             <div className="transcript__fact">
-              <dt>Calcul</dt>
-              <dd>Votre machine</dd>
+              <dt>{t('transcript.factComputation')}</dt>
+              <dd>{t('transcript.factYourMachine')}</dd>
             </div>
           ) : null}
           {spokenMs === null ? null : (
             <div className="transcript__fact">
-              <dt>Parole</dt>
-              <dd>{formatDuration(spokenMs)}</dd>
+              <dt>{t('transcript.factSpeech')}</dt>
+              <dd>{format.duration(spokenMs)}</dd>
             </div>
           )}
         </dl>
@@ -295,38 +294,34 @@ export function TranscriptionEditor({
             onTimeUpdate={followPlayback}
           />
         )}
-        {soundOnly ? (
-          <p className="media-player__note">
-            Ce fichier ne contient pas d'image exploitable : seule sa bande son est lue.
-          </p>
-        ) : null}
+        {soundOnly ? <p className="media-player__note">{t('transcript.soundOnly')}</p> : null}
       </div>
 
       {status === 'failed' ? (
         <Notice
           tone="error"
-          title="La transcription a échoué"
+          title={t('transcript.failedTitle')}
           action={
             <a className="transcript__action" href={UPLOAD_ANCHOR}>
-              Déposer à nouveau
+              {t('transcript.uploadAgain')}
             </a>
           }
         >
           {transcription.failureReason === null
-            ? "Le worker n'a transmis aucune raison. Un nouveau dépôt du média relance une tentative."
+            ? t('transcript.failedNoReason')
             : transcription.failureReason}
         </Notice>
       ) : null}
 
       {/*
-        Réservée aux machines du propriétaire : elle peut attendre indéfiniment, et rien ne
-        la déplacera tout seul. L'écran dit l'attente réelle et offre la seule sortie qui
-        existe — confier le calcul au service. La décision reste la sienne.
+        Reserved for the owner's machines: it may wait indefinitely, and nothing will move it on
+        its own. The screen states the real wait and offers the only way out that exists —
+        handing the computing to the service. The decision stays theirs.
       */}
       {stuckOnOwnMachine ? (
         <Notice
           tone="info"
-          title="En attente de votre machine"
+          title={t('transcript.waitingOwnMachineTitle')}
           action={
             <Button
               variant="secondary"
@@ -334,17 +329,16 @@ export function TranscriptionEditor({
               loading={movingToService}
               onClick={onMoveToService}
             >
-              Confier au service
+              {t('transcript.handToService')}
             </Button>
           }
         >
-          Cette transcription est réservée à vos machines : elle démarrera dès que l'une
-          d'elles tournera, et attendra aussi longtemps qu'il le faudra.
+          {t('transcript.waitingOwnMachineBody')}
         </Notice>
       ) : null}
 
       {placementErrorMessage === null ? null : (
-        <Notice tone="error" title="Transcription non déplacée">
+        <Notice tone="error" title={t('transcript.notMovedTitle')}>
           {placementErrorMessage}
         </Notice>
       )}
@@ -354,22 +348,19 @@ export function TranscriptionEditor({
       {streamLost ? (
         <Notice
           tone="warning"
-          title="Direct interrompu"
+          title={t('transcript.streamLostTitle')}
           action={
             <Button variant="secondary" size="sm" onClick={onRetryStream}>
-              Reconnecter
+              {t('transcript.reconnect')}
             </Button>
           }
         >
-          Les segments n'arrivent plus au fil de l'eau. La vue est rafraîchie toutes les
-          quelques secondes en attendant.
+          {t('transcript.streamLostBody')}
         </Notice>
       ) : null}
 
       {(status === 'pending' || status === 'transcribing') && segments.length > 0 ? (
-        <Notice tone="info">
-          Texte en lecture seule : la correction s'ouvre une fois la transcription terminée.
-        </Notice>
+        <Notice tone="info">{t('transcript.readOnly')}</Notice>
       ) : null}
 
       <div className="panel transcript__tools">
@@ -382,11 +373,10 @@ export function TranscriptionEditor({
               aria-describedby="follow-hint"
               onChange={(changeEvent) => setFollow(changeEvent.target.checked)}
             />
-            <span>Suivre la lecture</span>
+            <span>{t('transcript.follow')}</span>
           </label>
           <p className="transcript__hint" id="follow-hint">
-            Le transcript défile jusqu'au segment lu. Le suivi se suspend tant que le curseur
-            est posé dans un texte : rien ne bouge sous le curseur.
+            {t('transcript.followHint')}
           </p>
         </div>
 
@@ -394,16 +384,16 @@ export function TranscriptionEditor({
       </div>
 
       <p className="transcript__progress" role="status">
-        {describeProgress(status, segments.length, placement)}
+        {describeProgress(status, segments.length, placement, t)}
       </p>
 
       {segments.length === 0 && status === 'completed' ? (
         <EmptyState
-          title="Aucune parole détectée"
-          description="Le média a bien été analysé, mais aucune parole exploitable n'y a été trouvée. Un autre fichier, ou un modèle plus grand, donnera peut-être un meilleur résultat."
+          title={t('transcript.noSpeechTitle')}
+          description={t('transcript.noSpeechDescription')}
           action={
             <a className="transcript__action" href={UPLOAD_ANCHOR}>
-              Déposer un autre média
+              {t('transcript.uploadAnother')}
             </a>
           }
         />
@@ -412,10 +402,10 @@ export function TranscriptionEditor({
       {segments.length > 0 || status === 'transcribing' ? (
         <ol className="transcript__segments" ref={listRef}>
           {segments.map((segment, position) => {
-            // Étiquette de locuteur au seul CHANGEMENT de tour : une conversation se lit en
-            // tours de parole, et le même nom répété à chaque ligne n'est que du bruit.
-            // Un index absent du modèle de lecture garde son rang pour nom : mieux vaut un
-            // tour nommé par défaut qu'un tour effacé.
+            // Speaker label only on a CHANGE of turn: a conversation is read in turns, and the
+            // same name repeated on every line is nothing but noise.
+            // An index absent from the reading model keeps its rank for a name: better a turn
+            // named by default than a turn erased.
             const previousSpeaker = position === 0 ? null : segments[position - 1].speakerIndex;
             const { speakerIndex } = segment;
             const speaker =
@@ -454,9 +444,9 @@ export function TranscriptionEditor({
           })}
 
           {status === 'transcribing' && !streamLost ? (
-            // Ligne fantôme : la place du segment suivant est réservée en bas de liste, là
-            // où rien de déjà lu ne peut être décalé. Muette pour l'assistance — la ligne
-            // d'avancement dit déjà que le travail continue.
+            // Ghost row: the space of the next segment is reserved at the bottom of the list,
+            // where nothing already read can be shifted. Mute for assistive technology — the
+            // progress line already says the work is going on.
             <li className="segment segment--ghost" aria-hidden="true">
               <span className="segment__timecode segment__timecode--ghost" />
               <div className="segment__body">

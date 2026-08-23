@@ -1,26 +1,26 @@
 /*
- * Lecteur média : l'élément natif du navigateur, jamais un lecteur maison. Il connaît déjà
- * le clavier, le plein écran, la vitesse de lecture et les préférences système — un lecteur
- * réécrit perdrait tout cela. Aucune lecture automatique : le son ne part jamais sans geste.
+ * Media player: the browser's native element, never a home-made player. It already knows the
+ * keyboard, full screen, playback speed and system preferences — a rewritten player would lose
+ * all of that. No autoplay: sound never starts without a gesture.
  */
 
 .media-player {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  /* Le lecteur reste dans la mesure de lecture : une vidéo pleine largeur écraserait le texte. */
+  /* The player stays within the reading measure: a full-width video would crush the text. */
   max-inline-size: var(--measure);
 }
 
 /*
- * La place de l'image est réservée avant même que les métadonnées n'arrivent. Sans ratio
- * déclaré, l'élément passe de sa taille par défaut à sa taille réelle au chargement et
- * pousse tout le transcript vers le bas — un saut de mise en page gratuit.
+ * The space of the picture is reserved before the metadata even arrives. With no declared
+ * ratio, the element jumps from its default size to its real size on load and pushes the whole
+ * transcript down — a free layout jump.
  */
 .media-player__video {
   inline-size: 100%;
   aspect-ratio: 16 / 9;
-  /* L'image garde ses proportions dans le cadre réservé ; le fond tient les marges. */
+  /* The picture keeps its proportions inside the reserved frame; the background holds the margins. */
   object-fit: contain;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
@@ -32,8 +32,8 @@
 }
 
 /*
- * Un conteneur vidéo sans piste d'image exploitable (un `.mov` enregistré au micro) n'a
- * qu'un rectangle noir à montrer : on lui préfère le lecteur audio, et on dit pourquoi.
+ * A video container with no usable picture track (a `.mov` recorded from a microphone) has
+ * nothing but a black rectangle to show: the audio player is preferred, and we say why.
  */
 .media-player__note {
   color: var(--text-muted);
