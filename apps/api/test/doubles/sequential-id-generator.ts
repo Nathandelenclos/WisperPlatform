@@ -1,8 +1,8 @@
 import type { IdGenerator } from '../../src/transcription/application/ports/id-generator';
 
 /**
- * Identifiants prévisibles ET valides comme uuid v4 : la même suite de contrat tourne sur les
- * doubles et sur Postgres, où les colonnes sont typées `uuid`.
+ * Identifiers that are predictable AND valid as uuid v4: the same contract suite runs on the
+ * doubles and on Postgres, where the columns are typed `uuid`.
  */
 export class SequentialIdGenerator implements IdGenerator {
   private issued = 0;

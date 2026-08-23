@@ -13,9 +13,9 @@ export type ChangePlacementCommand = {
 };
 
 /**
- * Le propriétaire décide où sa demande sera calculée. C'est ce qui lui permet de rendre au
- * service une demande que sa machine, éteinte, laisse en attente — et la décision reste la
- * sienne : la plateforme ne rapatrie jamais rien d'elle-même.
+ * The owner decides where their request will be computed. That is what lets them hand back to
+ * the service a request that their machine, switched off, leaves pending — and the decision
+ * stays theirs: the platform never pulls anything back on its own.
  */
 export class ChangePlacementUseCase {
   constructor(
@@ -27,11 +27,11 @@ export class ChangePlacementUseCase {
   async execute(command: ChangePlacementCommand): Promise<TranscriptionView> {
     const placement = toPlacement(command.placement);
 
-    // Un worker peut réclamer la demande à l'instant même : le second essai repart d'une
-    // lecture fraîche et refusera alors le déplacement, au lieu d'écraser son démarrage.
+    // A worker may claim the request at that very instant: the second attempt starts again
+    // from a fresh read and will then refuse the move, instead of overwriting its start.
     return retryOnConcurrentWrite(async () => {
       const transcription = await this.repository.findById(command.transcriptionId);
-      // Une transcription qui n'est pas la sienne est, pour lui, inexistante.
+      // A transcription that is not theirs is, for them, non-existent.
       if (transcription === null || transcription.ownerId !== command.ownerId) {
         throw new TranscriptionNotFoundError();
       }

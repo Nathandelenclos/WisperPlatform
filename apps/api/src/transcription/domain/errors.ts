@@ -1,8 +1,8 @@
 /**
- * Erreurs du domaine `transcription`.
+ * Errors of the `transcription` domain.
  *
- * Chaque violation d'invariant porte un `code` stable : c'est le seul contrat exposé aux
- * couches externes (le mapping HTTP traduit toute `DomainError` en 422).
+ * Every invariant violation carries a stable `code`: that is the only contract exposed to the
+ * outer layers (the HTTP mapping turns any `DomainError` into a 422).
  */
 export class DomainError extends Error {
   readonly code: string;
@@ -14,112 +14,112 @@ export class DomainError extends Error {
   }
 }
 
-/** Un intervalle de temps invalide (bornes non entières, négatives ou début après la fin). */
+/** An invalid time range (non-integer or negative bounds, or a start after the end). */
 export class InvalidTimeRangeError extends DomainError {
   constructor(message: string) {
     super('INVALID_TIME_RANGE', message);
   }
 }
 
-/** Le texte d'un segment est vide une fois débarrassé de ses espaces. */
+/** A segment's text is empty once stripped of its whitespace. */
 export class InvalidSegmentTextError extends DomainError {
   constructor(message: string) {
     super('INVALID_SEGMENT_TEXT', message);
   }
 }
 
-/** Le modèle demandé ne fait pas partie des modèles whisper connus. */
+/** The requested model is not one of the known whisper models. */
 export class UnsupportedModelError extends DomainError {
   constructor(message: string) {
     super('UNSUPPORTED_MODEL', message);
   }
 }
 
-/** Le placement demandé n'est pas un endroit où la plateforme sait faire calculer. */
+/** The requested placement is not a place where the platform knows how to compute. */
 export class UnsupportedPlacementError extends DomainError {
   constructor(message: string) {
     super('UNSUPPORTED_PLACEMENT', message);
   }
 }
 
-/** La langue demandée ne respecte pas la forme attendue (frontière de confiance). */
+/** The requested language does not match the expected shape (trust boundary). */
 export class InvalidLanguageError extends DomainError {
   constructor(message: string) {
     super('INVALID_LANGUAGE', message);
   }
 }
 
-/** Le média décrit est inexploitable (clé, type ou taille absurde). */
+/** The described media is unusable (absurd key, type or size). */
 export class InvalidMediaError extends DomainError {
   constructor(message: string) {
     super('INVALID_MEDIA', message);
   }
 }
 
-/** La transition demandée est illégale depuis le statut courant. */
+/** The requested transition is illegal from the current status. */
 export class IllegalTranscriptionStateError extends DomainError {
   constructor(message: string) {
     super('ILLEGAL_TRANSCRIPTION_STATE', message);
   }
 }
 
-/** Le run qui parle n'est plus le run courant : sa tentative a été remplacée. */
+/** The run that speaks is no longer the current run — its attempt has been replaced. */
 export class StaleRunError extends DomainError {
   constructor(message: string) {
     super('STALE_RUN', message);
   }
 }
 
-/** Un lot de segments est arrivé hors séquence : il manque le lot précédent. */
+/** A batch of segments arrived out of order — the previous batch is missing. */
 export class OutOfOrderBatchError extends DomainError {
   constructor(message: string) {
     super('OUT_OF_ORDER_BATCH', message);
   }
 }
 
-/** Les segments d'un lot se chevauchent ou reviennent en arrière dans le temps. */
+/** The segments of a batch overlap or go backwards in time. */
 export class OverlappingSegmentsError extends DomainError {
   constructor(message: string) {
     super('OVERLAPPING_SEGMENTS', message);
   }
 }
 
-/** Aucun segment ne porte l'ordinal demandé. */
+/** No segment carries the requested ordinal. */
 export class SegmentNotFoundError extends DomainError {
   constructor(message: string) {
     super('SEGMENT_NOT_FOUND', message);
   }
 }
 
-/** On ne corrige que le texte d'une transcription achevée. */
+/** Only the text of a completed transcription can be corrected. */
 export class TranscriptionNotCorrectableError extends DomainError {
   constructor(message: string) {
     super('TRANSCRIPTION_NOT_CORRECTABLE', message);
   }
 }
 
-/** Un bail dure un nombre positif de secondes : rien d'autre n'est une fenêtre de travail. */
+/** A lease lasts a positive number of seconds — nothing else is a window of work. */
 export class InvalidLeaseDurationError extends DomainError {
   constructor(message: string) {
     super('INVALID_LEASE_DURATION', message);
   }
 }
 
-/** L'indice d'un locuteur est un entier positif ou nul : c'est ce que produit le clustering. */
+/** A speaker index is a non-negative integer — that is what the clustering produces. */
 export class InvalidSpeakerError extends DomainError {
   constructor(message: string) {
     super('INVALID_SPEAKER', message);
   }
 }
 
-/** Le nom donné à un locuteur ne respecte pas ses invariants (vide, trop long, multiligne). */
+/** The name given to a speaker breaks its invariants (empty, too long, multiline). */
 export class InvalidSpeakerNameError extends DomainError {
   constructor(message: string) {
     super('INVALID_SPEAKER_NAME', message);
   }
 }
 
-/** Aucun locuteur découvert ne porte l'indice demandé. */
+/** No discovered speaker carries the requested index. */
 export class SpeakerNotFoundError extends DomainError {
   constructor(message: string) {
     super('SPEAKER_NOT_FOUND', message);

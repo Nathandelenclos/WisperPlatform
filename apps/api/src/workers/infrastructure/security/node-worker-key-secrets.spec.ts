@@ -5,20 +5,20 @@ import { NodeWorkerKeySecrets } from './node-worker-key-secrets';
 describe('NodeWorkerKeySecrets', () => {
   const secrets = new NodeWorkerKeySecrets();
 
-  it('tire un secret de 256 bits, transportable tel quel', () => {
+  it('draws a 256-bit secret, transportable as-is', () => {
     const secret = secrets.generate();
 
-    // 32 octets en base64url sans remplissage : 43 caractères, aucun `+`, `/` ni `=`.
+    // 32 bytes in base64url without padding: 43 characters, no `+`, `/` or `=`.
     expect(secret).toMatch(/^[A-Za-z0-9_-]{43}$/);
   });
 
-  it('ne tire jamais deux fois le même secret', () => {
+  it('never draws the same secret twice', () => {
     const drawn = new Set(Array.from({ length: 100 }, () => secrets.generate()));
 
     expect(drawn.size).toBe(100);
   });
 
-  it('rend une empreinte stable, de longueur fixe, qui ne contient pas le secret', () => {
+  it('returns a stable, fixed-length fingerprint that does not contain the secret', () => {
     const secret = secrets.generate();
 
     const fingerprint = secrets.fingerprint(secret);

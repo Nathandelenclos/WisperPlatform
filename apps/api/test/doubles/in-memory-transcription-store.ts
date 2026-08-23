@@ -1,14 +1,14 @@
 import type { TranscriptionState } from '../../src/transcription/domain/transcription';
 
 /**
- * Une ligne du magasin : l'état de l'aggregate et les deux colonnes techniques de file
- * (`reserved_at`, `reserved_by`), exactement comme la table `transcriptions`.
+ * One row of the store: the aggregate state and the two technical queue columns
+ * (`reserved_at`, `reserved_by`), exactly like the `transcriptions` table.
  */
 type StoredRow = {
   state: TranscriptionState;
   reservedAt: Date | null;
   reservedBy: string | null;
-  /** Verrou optimiste, comme la colonne `version` de la table. */
+  /** Optimistic lock, like the table's `version` column. */
   version: number;
 };
 
@@ -24,17 +24,17 @@ function cloneState(state: TranscriptionState): TranscriptionState {
 }
 
 /**
- * Magasin partagé par les trois doubles de lecture/écriture, comme la table l'est par les trois
- * adaptateurs réels. Les états entrent et sortent copiés : aucun test ne peut muter la mémoire
- * du magasin par un aliasing accidentel.
+ * Store shared by the three read/write doubles, as the table is by the three real adapters.
+ * States are copied on the way in and on the way out: no test can mutate the store's memory
+ * through accidental aliasing.
  */
 export class InMemoryTranscriptionStore {
   private readonly byId = new Map<string, StoredRow>();
 
   /**
-   * Écrit l'aggregate entier sans toucher aux colonnes de file. `expectedVersion` porte le
-   * verrou optimiste : `null` pour une création, sinon la version lue. Rend la nouvelle
-   * version, ou `null` si un autre écrivain est passé entre-temps.
+   * Writes the whole aggregate without touching the queue columns. `expectedVersion` carries the
+   * optimistic lock: `null` for a creation, otherwise the version that was read. Returns the new
+   * version, or `null` if another writer got in between.
    */
   write(state: TranscriptionState, expectedVersion: number | null): number | null {
     const existing = this.byId.get(state.id);
@@ -58,7 +58,7 @@ export class InMemoryTranscriptionStore {
     return row === undefined ? null : cloneState(row.state);
   }
 
-  /** Version courante d'une ligne, pour que le dépôt sache ce qu'il a lu. */
+  /** Current version of a row, so the repository knows what it read. */
   versionOf(id: string): number | null {
     return this.byId.get(id)?.version ?? null;
   }
@@ -67,7 +67,7 @@ export class InMemoryTranscriptionStore {
     return [...this.byId.values()].map((row) => cloneState(row.state));
   }
 
-  /** Lignes vivantes, réservées à l'usage interne des doubles (la file écrit dessus). */
+  /** Live rows, reserved for the doubles' internal use (the queue writes on them). */
   rows(): StoredRow[] {
     return [...this.byId.values()];
   }

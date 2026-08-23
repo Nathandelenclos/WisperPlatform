@@ -10,7 +10,7 @@ import type { Claimant } from '../ports/worker-identities';
 import type { ClaimedJobView } from '../views';
 
 export type ClaimNextTranscriptionCommand = {
-  /** Pour qui ce worker travaille : la file ne lui proposera rien d'autre. */
+  /** Who this worker works for: the queue will offer it nothing else. */
   claimant: Claimant;
   workerId: string;
   models: string[];
@@ -30,7 +30,7 @@ export class ClaimNextTranscriptionUseCase {
   async execute(command: ClaimNextTranscriptionCommand): Promise<ClaimedJobView | null> {
     const models: WhisperModel[] = command.models.map((model) => {
       if (!isWhisperModel(model)) {
-        throw new UnsupportedModelError(`ce worker annonce un modèle inconnu : ${model}`);
+        throw new UnsupportedModelError(`this worker announces an unknown model: ${model}`);
       }
       return model;
     });
@@ -59,10 +59,10 @@ export class ClaimNextTranscriptionUseCase {
       leaseSeconds: this.options.leaseSeconds,
       at: now,
     });
-    // L'échéance est celle que l'aggregate a posée, pas une seconde copie du même calcul.
+    // The deadline is the one the aggregate set, not a second copy of the same computation.
     const leaseExpiresAt = transcription.leaseExpiry;
     if (leaseExpiresAt === null) {
-      throw new Error('une tentative qui démarre porte toujours un bail');
+      throw new Error('a run that starts always carries a lease');
     }
     await this.repository.save(transcription);
     await this.publisher.publish(transcription.pullEvents());
@@ -72,7 +72,7 @@ export class ClaimNextTranscriptionUseCase {
       runId,
       model: transcription.settings.model,
       language: transcription.settings.language,
-      // Le laissez-passer meurt avec le bail : un worker qui a perdu son run perd son accès.
+      // The pass dies with the lease: a worker that has lost its run loses its access.
       mediaToken: this.mediaAccessTokens.issue({
         transcriptionId: transcription.id,
         runId,

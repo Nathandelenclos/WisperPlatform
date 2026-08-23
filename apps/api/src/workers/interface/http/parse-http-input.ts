@@ -3,11 +3,11 @@ import { prettifyError } from 'zod';
 import type { ZodType, output } from 'zod';
 
 /**
- * Valide une entrée HTTP (corps, paramètre de route) et transforme un échec en 400. Le message
- * décrit la contrainte violée ; rien n'est journalisé ici.
+ * Validates an HTTP input (body, route parameter) and turns a failure into a 400. The message
+ * describes the violated constraint — nothing is logged here.
  *
- * Jumeau de celui du contexte `transcription` : la frontière HTTP d'un contexte borné ne
- * dépend pas de celle d'un autre, et cette traduction-là n'est que de la colle de framework.
+ * Twin of the one in the `transcription` context: the HTTP boundary of a bounded context does
+ * not depend on another's, and this particular translation is nothing but framework glue.
  */
 export function parseHttpInput<S extends ZodType>(schema: S, input: unknown): output<S> {
   const result = schema.safeParse(input);

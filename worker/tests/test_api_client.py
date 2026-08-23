@@ -1,4 +1,4 @@
-"""Résilience du client HTTP : timeouts, rejeux bornés, 4xx non rejouées."""
+"""Resilience of the HTTP client: timeouts, bounded retries, 4xx never replayed."""
 
 import io
 import json
@@ -36,7 +36,7 @@ class FakeResponse:
 
 
 class FakeOpener:
-    """Rejoue les issues fournies dans l'ordre, puis répète la dernière."""
+    """Replays the given outcomes in order, then repeats the last one."""
 
     def __init__(self, *outcomes):
         self._outcomes = list(outcomes) or [FakeResponse(204)]
@@ -105,7 +105,7 @@ class RequestShapeTest(ClientFixture):
 
     def test_post_segments_carries_the_batch_sequence(self):
         client = self.build(FakeResponse(204))
-        batch = [{"startMs": 0, "endMs": 900, "text": "Bonjour."}]
+        batch = [{"startMs": 0, "endMs": 900, "text": "Hello."}]
 
         client.post_segments("run-1", "t-1", 4, batch)
 

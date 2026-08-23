@@ -2,20 +2,20 @@ import { InvalidSegmentTextError } from './errors';
 import { assertSpeakerIndex } from './speaker';
 import { TimeRange } from './time-range';
 
-/** Forme sérialisable d'un segment, telle que persistée et telle qu'exposée dans les vues. */
+/** Serializable form of a segment, as persisted and as exposed in the views. */
 export type SegmentState = {
   ordinal: number;
   startMs: number;
   endMs: number;
   text: string;
   corrected: boolean;
-  /** Locuteur attribué par la passe de diarisation ; `null` tant qu'elle n'a pas eu lieu. */
+  /** Speaker assigned by the diarization pass — `null` for as long as it has not happened. */
   speakerIndex: number | null;
 };
 
 /**
- * Un segment de transcription : un intervalle de temps et le texte prononcé.
- * Value object immuable ; une correction produit une nouvelle instance.
+ * A transcription segment: a time range and the text spoken.
+ * Immutable value object — a correction produces a new instance.
  */
 export class Segment {
   private constructor(
@@ -29,18 +29,18 @@ export class Segment {
   }
 
   /**
-   * Segment tel que produit par le moteur de transcription : jamais corrigé à la naissance,
-   * et sans locuteur — la diarisation est une passe distincte, qui peut ne jamais venir.
+   * Segment as produced by the transcription engine: never corrected at birth, and without a
+   * speaker — diarization is a separate pass, which may never come.
    */
   static transcribed(ordinal: number, range: TimeRange, text: string): Segment {
     const trimmed = text.trim();
     if (trimmed.length === 0) {
-      throw new InvalidSegmentTextError('le texte d\'un segment ne peut pas être vide');
+      throw new InvalidSegmentTextError('the text of a segment cannot be empty');
     }
     return new Segment(ordinal, range, trimmed, false, null);
   }
 
-  /** Relecture fidèle depuis le stockage : aucune normalisation, l'état revient tel quel. */
+  /** Faithful read-back from storage: no normalization, the state comes back as it was. */
   static restore(state: SegmentState): Segment {
     return new Segment(
       state.ordinal,
@@ -54,12 +54,12 @@ export class Segment {
   withCorrectedText(text: string): Segment {
     const trimmed = text.trim();
     if (trimmed.length === 0) {
-      throw new InvalidSegmentTextError('une correction ne peut pas vider le texte d\'un segment');
+      throw new InvalidSegmentTextError('a correction cannot empty the text of a segment');
     }
     return new Segment(this.ordinal, this.range, trimmed, true, this.speakerIndex);
   }
 
-  /** Attribution de la passe de diarisation ; `null` quand aucun tour ne recouvre le segment. */
+  /** Assignment from the diarization pass — `null` when no turn overlaps the segment. */
   withSpeaker(speakerIndex: number | null): Segment {
     if (speakerIndex !== null) assertSpeakerIndex(speakerIndex);
     return new Segment(this.ordinal, this.range, this.text, this.corrected, speakerIndex);

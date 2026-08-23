@@ -1,8 +1,8 @@
-"""Suite de tests du worker (`python3 -m unittest discover -s worker/tests -t .`).
+"""Worker test suite (`python3 -m unittest discover -s worker/tests -t .`).
 
-Le worker s'exécute comme un script : ses modules s'importent à plat (`api_client`,
-`whisper_output`, `wisper_worker`). On rend donc `worker/` importable de la même façon
-depuis les tests, quel que soit le répertoire de découverte.
+The worker runs as a script: its modules import flat (`api_client`, `whisper_output`,
+`wisper_worker`). So we make `worker/` importable the same way from the tests, whatever the
+discovery directory is.
 """
 
 import os

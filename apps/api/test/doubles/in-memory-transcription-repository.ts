@@ -5,8 +5,8 @@ import { Transcription } from '../../src/transcription/domain/transcription';
 import type { InMemoryTranscriptionStore } from './in-memory-transcription-store';
 
 /**
- * Dépôt en mémoire, verrou optimiste compris : sans lui, les scénarios d'acceptation
- * prouveraient une sûreté au rejeu que la base, elle, refuse.
+ * In-memory repository, optimistic lock included: without it, the acceptance scenarios would
+ * prove a safety under replay that the database itself refuses.
  */
 export class InMemoryTranscriptionRepository implements TranscriptionRepository {
   private readonly loadedVersions = new WeakMap<Transcription, number>();

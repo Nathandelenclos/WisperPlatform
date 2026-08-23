@@ -13,7 +13,7 @@ export type RequestTranscriptionCommand = {
   media: { tempPath: string; originalName: string; contentType: string; byteSize: number };
   model: string;
   language: string;
-  /** Omis, le calcul revient au service : voir `DEFAULT_PLACEMENT`. */
+  /** Omitted, the computation goes to the service: see `DEFAULT_PLACEMENT`. */
   placement?: string;
 };
 
@@ -27,7 +27,7 @@ export class RequestTranscriptionUseCase {
   ) {}
 
   async execute(command: RequestTranscriptionCommand): Promise<{ transcriptionId: string }> {
-    // On valide avant de toucher au magasin : un média n'est rangé que pour une demande recevable.
+    // We validate before touching the store: media is only filed for an acceptable request.
     const settings = TranscriptionSettings.of(command.model, command.language);
     const placement =
       command.placement === undefined ? DEFAULT_PLACEMENT : toPlacement(command.placement);

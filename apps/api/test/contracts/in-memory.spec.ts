@@ -11,7 +11,7 @@ import { describeMediaStorageContract } from './media-storage.contract';
 import { describeTranscriptionRepositoryContract } from './transcription-repository.contract';
 import { describeWorkerKeyRepositoryContract } from './worker-key-repository.contract';
 
-describeTranscriptionRepositoryContract('doubles en mémoire', async () => {
+describeTranscriptionRepositoryContract('in-memory doubles', async () => {
   const store = new InMemoryTranscriptionStore();
   return {
     repository: new InMemoryTranscriptionRepository(store),
@@ -21,7 +21,7 @@ describeTranscriptionRepositoryContract('doubles en mémoire', async () => {
   };
 });
 
-describeMediaStorageContract('double en mémoire', async () => {
+describeMediaStorageContract('in-memory double', async () => {
   const storage = new InMemoryMediaStorage();
   return {
     storage,
@@ -31,9 +31,9 @@ describeMediaStorageContract('double en mémoire', async () => {
   };
 });
 
-describeMediaAccessTokensContract('double signé', () => new FakeMediaAccessTokens());
+describeMediaAccessTokensContract('signed double', () => new FakeMediaAccessTokens());
 
-describeWorkerKeyRepositoryContract('double en mémoire', async () => ({
+describeWorkerKeyRepositoryContract('in-memory double', async () => ({
   repository: new InMemoryWorkerKeyRepository(),
   cleanup: async () => {},
 }));

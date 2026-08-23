@@ -30,8 +30,8 @@ import {
 } from '../contracts/transcription-repository.contract';
 import { describeWorkerKeyRepositoryContract } from '../contracts/worker-key-repository.contract';
 
-// Même image que le compose, digest figé : la persistance doit être vérifiée contre
-// exactement le Postgres qui tourne en production, sans dérive entre deux exécutions.
+// Same image as the compose file, frozen digest: persistence must be verified against exactly
+// the Postgres that runs in production, with no drift between two runs.
 const POSTGRES_IMAGE =
   'postgres:17-alpine@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73';
 const POSTGRES_USER = 'wisper';
@@ -44,8 +44,8 @@ type Harness = {
 };
 
 /**
- * Un seul conteneur pour tout le fichier : démarrer Postgres coûte des secondes, et les
- * suites se nettoient entre elles par `truncate`.
+ * A single container for the whole file: starting Postgres costs seconds, and the suites clean
+ * up after each other through `truncate`.
  */
 let harness: Promise<Harness> | undefined;
 
@@ -57,8 +57,8 @@ async function startPostgres(): Promise<Harness> {
       POSTGRES_DB,
     })
     .withExposedPorts(5432)
-    // L'image journalise deux fois « ready to accept connections » : une fois pendant
-    // l'initialisation du cluster, une fois pour de bon.
+    // The image logs "ready to accept connections" twice: once during the cluster
+    // initialization, once for real.
     .withWaitStrategy(Wait.forLogMessage(/database system is ready to accept connections/, 2))
     .start();
 
@@ -66,14 +66,14 @@ async function startPostgres(): Promise<Harness> {
     5432,
   )}/${POSTGRES_DB}`;
 
-  // On joue les migrations versionnées, pas un `push` du schéma : c'est le SQL de production
-  // qui est vérifié ici.
+  // We play the versioned migrations, not a schema `push`: it is the production SQL that is
+  // verified here.
   await runMigrations({ DATABASE_URL: databaseUrl });
 
   const connection = createDatabaseConnection({ DATABASE_URL: databaseUrl });
 
-  // Les propriétaires utilisés par la suite de contrat doivent exister : `owner_id` porte une
-  // clé étrangère vers `user`.
+  // The owners used by the contract suite must exist: `owner_id` carries a foreign key towards
+  // `user`.
   const now = new Date('2024-01-01T00:00:00.000Z');
   await connection.db
     .insert(user)
@@ -103,7 +103,7 @@ async function truncateTranscriptions(connection: DatabaseConnection): Promise<v
   );
 }
 
-describeTranscriptionRepositoryContract('drizzle sur Postgres', async () => {
+describeTranscriptionRepositoryContract('drizzle on Postgres', async () => {
   const { connection } = await postgres();
   return {
     repository: new DrizzleTranscriptionRepository(connection.db),
@@ -113,7 +113,7 @@ describeTranscriptionRepositoryContract('drizzle sur Postgres', async () => {
   };
 });
 
-describeWorkerKeyRepositoryContract('drizzle sur Postgres', async () => {
+describeWorkerKeyRepositoryContract('drizzle on Postgres', async () => {
   const { connection } = await postgres();
   return {
     repository: new DrizzleWorkerKeyRepository(connection.db),
@@ -123,8 +123,8 @@ describeWorkerKeyRepositoryContract('drizzle sur Postgres', async () => {
   };
 });
 
-describe('réservation concurrente sur Postgres', () => {
-  it("ne rend une transcription en attente qu'à un seul des workers en concurrence", async () => {
+describe('concurrent reservation on Postgres', () => {
+  it('hands a pending transcription to only one of the competing workers', async () => {
     const { connection } = await postgres();
     await truncateTranscriptions(connection);
 
@@ -148,8 +148,8 @@ describe('réservation concurrente sur Postgres', () => {
     );
 
     const now = new Date('2024-05-01T10:00:05.000Z');
-    // Quatre réservations réellement simultanées, chacune sur sa propre connexion du pool :
-    // c'est `for update skip locked` qui doit trancher, pas l'ordonnancement.
+    // Four genuinely simultaneous reservations, each on its own connection from the pool:
+    // it is `for update skip locked` that must decide, not the scheduling.
     const outcomes = await Promise.all(
       ['worker-a', 'worker-b', 'worker-c', 'worker-d'].map((workerId) =>
         queue.reserveNextPending({

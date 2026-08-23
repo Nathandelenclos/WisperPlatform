@@ -1,14 +1,14 @@
 import { InvalidMediaError } from './errors';
 
-/** Caractères de contrôle : bannis d'un nom affiché ou d'un en-tête HTTP. */
+/** Control characters: banned from a displayed name or from an HTTP header. */
 const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f]/g;
 const MAX_ORIGINAL_NAME_LENGTH = 255;
 
 /**
- * Le nom d'origine ne sert qu'à l'affichage et à l'export : il n'est jamais un chemin.
- * On le ramène à son basename, on retire les caractères de contrôle puis on tronque.
- * La normalisation est idempotente : un nom déjà normalisé traverse `stored` inchangé,
- * ce qui garantit le tour complet `restore` → `state`.
+ * The original name only serves display and export: it is never a path.
+ * We reduce it to its basename, strip the control characters, then truncate.
+ * Normalization is idempotent: an already normalized name goes through `stored` unchanged,
+ * which guarantees the full `restore` → `state` round trip.
  */
 function normalizeOriginalName(raw: string): string {
   const printable = raw.replace(CONTROL_CHARACTERS, '');
@@ -17,7 +17,7 @@ function normalizeOriginalName(raw: string): string {
   return basename.slice(0, MAX_ORIGINAL_NAME_LENGTH).trim();
 }
 
-/** Le média déposé par l'utilisateur, une fois rangé dans le magasin. */
+/** The media uploaded by the user, once filed away in the store. */
 export class MediaAsset {
   private constructor(
     readonly storageKey: string,
@@ -35,17 +35,17 @@ export class MediaAsset {
     byteSize: number;
   }): MediaAsset {
     if (p.storageKey.trim().length === 0) {
-      throw new InvalidMediaError('un média rangé doit porter une clé de stockage');
+      throw new InvalidMediaError('a stored media must carry a storage key');
     }
     if (p.contentType.trim().length === 0) {
-      throw new InvalidMediaError('un média doit déclarer son type de contenu');
+      throw new InvalidMediaError('a media must declare its content type');
     }
     if (!Number.isInteger(p.byteSize) || p.byteSize <= 0) {
-      throw new InvalidMediaError('la taille d\'un média doit être un nombre entier d\'octets');
+      throw new InvalidMediaError('the size of a media must be a whole number of bytes');
     }
     const originalName = normalizeOriginalName(p.originalName);
     if (originalName.length === 0) {
-      throw new InvalidMediaError('le nom du média est vide une fois nettoyé');
+      throw new InvalidMediaError('the media name is empty once cleaned up');
     }
     return new MediaAsset(p.storageKey, originalName, p.contentType, p.byteSize);
   }

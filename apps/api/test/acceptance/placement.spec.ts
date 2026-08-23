@@ -6,11 +6,11 @@ import type { Claimant } from '../../src/transcription/application/ports/worker-
 
 import { OTHER_OWNER, OWNER, SERVICE_CLAIMANT, aPlatform } from './platform';
 
-/** Le réclamant qu'un worker lancé par le propriétaire présente à la file. */
+/** The claimant that a worker started by the owner presents to the queue. */
 const OWNER_CLAIMANT: Claimant = { kind: 'owner', ownerId: OWNER };
 
-describe('Scénario : choisir où la transcription est calculée', () => {
-  it('place la demande sur le service par défaut', async () => {
+describe('Scenario: choosing where the transcription is computed', () => {
+  it('places the request on the service by default', async () => {
     const platform = aPlatform();
     const transcriptionId = await platform.upload();
 
@@ -21,19 +21,19 @@ describe('Scénario : choisir où la transcription est calculée', () => {
     expect(summary.placement).toBe('service');
   });
 
-  it('ne propose une demande placée sur la machine du propriétaire qu\'à ses machines', async () => {
+  it('only offers a request placed on the owner\'s machine to that owner\'s machines', async () => {
     const platform = aPlatform();
     const transcriptionId = await platform.upload({ placement: 'owner' });
 
-    // Le service, lui, ne la voit jamais : elle n'est pas pour lui, même s'il est libre.
+    // The service never sees it: it is not for the service, even when the service is idle.
     expect(
       await platform.claimNextTranscription.execute({
         claimant: SERVICE_CLAIMANT,
-        workerId: 'worker-du-service',
+        workerId: 'service-worker',
         models: ['small'],
       }),
     ).toBeNull();
-    // La machine d'un autre propriétaire non plus.
+    // Nor does the machine of another owner.
     expect(
       await platform.claimNextTranscription.execute({
         claimant: { kind: 'owner', ownerId: OTHER_OWNER },
@@ -51,7 +51,7 @@ describe('Scénario : choisir où la transcription est calculée', () => {
     expect(job?.transcriptionId).toBe(transcriptionId);
   });
 
-  it('ne propose jamais une demande placée sur le service à la machine du propriétaire', async () => {
+  it('never offers a request placed on the service to an owner\'s machine', async () => {
     const platform = aPlatform();
     const transcriptionId = await platform.upload({ placement: 'service' });
 
@@ -65,14 +65,14 @@ describe('Scénario : choisir où la transcription est calculée', () => {
 
     const job = await platform.claimNextTranscription.execute({
       claimant: SERVICE_CLAIMANT,
-      workerId: 'worker-du-service',
+      workerId: 'service-worker',
       models: ['small'],
     });
 
     expect(job?.transcriptionId).toBe(transcriptionId);
   });
 
-  it('bascule une demande en attente vers le service, qui la réclame alors', async () => {
+  it('switches a pending request over to the service, which then claims it', async () => {
     const platform = aPlatform();
     const transcriptionId = await platform.upload({ placement: 'owner' });
     platform.publisher.clear();
@@ -87,13 +87,13 @@ describe('Scénario : choisir où la transcription est calculée', () => {
     expect(platform.publisher.names()).toEqual(['transcription.placement-changed']);
     const job = await platform.claimNextTranscription.execute({
       claimant: SERVICE_CLAIMANT,
-      workerId: 'worker-du-service',
+      workerId: 'service-worker',
       models: ['small'],
     });
     expect(job?.transcriptionId).toBe(transcriptionId);
   });
 
-  it('ne fait rien quand le placement demandé est déjà le placement courant', async () => {
+  it('does nothing when the requested placement is already the current one', async () => {
     const platform = aPlatform();
     const transcriptionId = await platform.upload({ placement: 'owner' });
     platform.publisher.clear();
@@ -108,7 +108,7 @@ describe('Scénario : choisir où la transcription est calculée', () => {
     expect(platform.publisher.names()).toEqual([]);
   });
 
-  it('refuse de basculer une transcription déjà démarrée', async () => {
+  it('refuses to switch a transcription that has already started', async () => {
     const platform = aPlatform();
     const transcriptionId = await platform.upload({ placement: 'owner' });
     await platform.claimNextTranscription.execute({
@@ -128,7 +128,7 @@ describe('Scénario : choisir où la transcription est calculée', () => {
     expect(view.placement).toBe('owner');
   });
 
-  it('ne laisse personne d\'autre changer le placement, ni le découvrir', async () => {
+  it('lets nobody else change the placement, nor discover it', async () => {
     const platform = aPlatform();
     const transcriptionId = await platform.upload({ placement: 'owner' });
 
@@ -141,7 +141,7 @@ describe('Scénario : choisir où la transcription est calculée', () => {
     ).rejects.toThrow(TranscriptionNotFoundError);
   });
 
-  it('refuse un placement inconnu', async () => {
+  it('refuses an unknown placement', async () => {
     const platform = aPlatform();
     const transcriptionId = await platform.upload();
 
@@ -155,23 +155,23 @@ describe('Scénario : choisir où la transcription est calculée', () => {
   });
 });
 
-describe('Scénario : la machine du propriétaire prend le travail de son propriétaire', () => {
-  it('ne réclame plus rien une fois sa clé révoquée', async () => {
+describe('Scenario: the owner\'s machine takes its owner\'s work', () => {
+  it('claims nothing more once its key is revoked', async () => {
     const platform = aPlatform();
     await platform.upload({ placement: 'owner' });
     const { id, secret } = await platform.registerWorkerKey.execute({
       ownerId: OWNER,
-      label: 'portable',
+      label: 'laptop',
     });
 
-    // Le worker présente sa clé, la plateforme en déduit le réclamant, il travaille.
+    // The worker presents its key, the platform derives the claimant from it, and it works.
     const claimant = await platform.workerIdentities.resolve(secret);
     expect(claimant).toEqual(OWNER_CLAIMANT);
 
     await platform.revokeWorkerKey.execute({ ownerId: OWNER, workerKeyId: id });
 
-    // Clé révoquée : plus de réclamant, donc plus rien à réclamer — le 401 est prononcé
-    // par la frontière HTTP, qui ne sait plus qui parle.
+    // Key revoked: no claimant any more, so nothing left to claim — the 401 is issued by the
+    // HTTP boundary, which no longer knows who is speaking.
     expect(await platform.workerIdentities.resolve(secret)).toBeNull();
   });
 });

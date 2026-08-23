@@ -1,26 +1,26 @@
 import { z } from 'zod';
 
 /**
- * Longueur minimale d'un secret. 32 caractères correspondent à la sortie de
- * `openssl rand -hex 16` ; la documentation d'exploitation recommande 64 (rand -hex 32).
+ * Minimum length of a secret. 32 characters match the output of `openssl rand -hex 16`;
+ * the operations documentation recommends 64 (rand -hex 32).
  */
 const MIN_SECRET_LENGTH = 32;
 
 /**
- * Un secret n'a jamais de valeur par défaut : une plateforme qui démarre avec un secret
- * connu de tous est une plateforme sans authentification.
+ * A secret never has a default value: a platform that starts with a secret everybody knows
+ * is a platform without authentication.
  */
 const secret = z
   .string()
   .trim()
-  .min(MIN_SECRET_LENGTH, `doit compter au moins ${MIN_SECRET_LENGTH} caractères`);
+  .min(MIN_SECRET_LENGTH, `must be at least ${MIN_SECRET_LENGTH} characters long`);
 
 const positiveInteger = z.coerce.number().int().positive();
 
 /**
- * Une option laissée vide vaut « pas posée ». `.env.example` livre ces lignes vides pour
- * qu'on sache qu'elles existent ; sans cette équivalence, copier l'exemple tel quel ferait
- * refuser le démarrage sur une valeur que personne n'a voulu donner.
+ * An option left empty means "not set". `.env.example` ships those lines empty so that one
+ * knows they exist — without that equivalence, copying the example as-is would make startup
+ * be refused over a value nobody meant to give.
  */
 const optional = z
   .string()
@@ -39,10 +39,9 @@ const envSchema = z.object({
   WORKER_SHARED_TOKEN: secret,
 
   /**
-   * Identifiants OAuth Google, optionnels : sans eux, la connexion Google n'est simplement
-   * pas proposée et le mot de passe reste la seule voie. Les deux vont ensemble — n'en poser
-   * qu'un est une configuration à moitié faite, donc un refus au démarrage plutôt qu'un
-   * bouton qui échoue au clic.
+   * Google OAuth credentials, optional: without them Google sign-in is simply not offered and
+   * the password stays the only way in. The two go together — setting only one is a half-done
+   * configuration, hence a refusal at startup rather than a button that fails on click.
    */
   GOOGLE_CLIENT_ID: optional,
   GOOGLE_CLIENT_SECRET: optional,
@@ -56,15 +55,14 @@ const envSchema = z.object({
     (env) =>
       (env.GOOGLE_CLIENT_ID === undefined) === (env.GOOGLE_CLIENT_SECRET === undefined),
     {
-      error:
-        'GOOGLE_CLIENT_ID et GOOGLE_CLIENT_SECRET vont ensemble : posez les deux, ou aucun',
+      error: 'GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET go together: set both, or neither',
       path: ['GOOGLE_CLIENT_ID'],
     },
   );
 
 export type Env = z.infer<typeof envSchema>;
 
-/** Jeton d'injection canonique de la configuration validée. */
+/** Canonical injection token for the validated configuration. */
 export const ENV = Symbol('Env');
 
 export class InvalidEnvironmentError extends Error {
@@ -77,22 +75,22 @@ export class InvalidEnvironmentError extends Error {
 }
 
 /**
- * Valide l'environnement au démarrage et échoue bruyamment s'il est incomplet.
- * Le message d'erreur ne contient QUE des noms de variables et des raisons :
- * jamais une valeur, pour qu'un secret mal formé ne finisse pas dans les logs.
+ * Validates the environment at startup and fails loudly when it is incomplete.
+ * The error message carries ONLY variable names and reasons: never a value, so that a
+ * malformed secret does not end up in the logs.
  */
 export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
   const result = envSchema.safeParse(source);
   if (result.success) return result.data;
 
   const problems = result.error.issues.map((issue) => {
-    const key = issue.path.join('.') || '(racine)';
-    return `${key} : ${issue.message}`;
+    const key = issue.path.join('.') || '(root)';
+    return `${key}: ${issue.message}`;
   });
   const invalidKeys = [...new Set(result.error.issues.map((issue) => String(issue.path[0])))];
 
   throw new InvalidEnvironmentError(
     invalidKeys,
-    `Configuration invalide, l'application ne peut pas démarrer :\n  - ${problems.join('\n  - ')}`,
+    `Invalid configuration, the application cannot start:\n  - ${problems.join('\n  - ')}`,
   );
 }

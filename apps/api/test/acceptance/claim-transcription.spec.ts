@@ -4,8 +4,8 @@ import { MediaAccessDeniedError } from '../../src/transcription/application/erro
 
 import { LEASE_SECONDS, NOW, OWNER, SERVICE_CLAIMANT, aPlatform, readAll } from './platform';
 
-describe('Scénario : un worker réclame du travail', () => {
-  it('remet un seul travail, pose le bail et n\'apprend rien de l\'utilisateur', async () => {
+describe('Scenario: a worker claims work', () => {
+  it('hands out a single job, sets the lease and reveals nothing about the user', async () => {
     const platform = aPlatform();
     const transcriptionId = await platform.upload({ originalName: 'secret.mp3', model: 'turbo' });
     platform.publisher.clear();
@@ -29,7 +29,7 @@ describe('Scénario : un worker réclame du travail', () => {
     expect(view.status).toBe('transcribing');
   });
 
-  it('ne donne pas deux fois le même travail à deux workers', async () => {
+  it('never gives the same job to two workers', async () => {
     const platform = aPlatform();
     await platform.upload();
 
@@ -48,7 +48,7 @@ describe('Scénario : un worker réclame du travail', () => {
     expect(second).toBeNull();
   });
 
-  it('ne rend rien quand aucun travail n\'attend pour ses modèles', async () => {
+  it('returns nothing when no job is waiting for its models', async () => {
     const platform = aPlatform();
     await platform.upload({ model: 'large' });
 
@@ -57,7 +57,7 @@ describe('Scénario : un worker réclame du travail', () => {
     ).toBeNull();
   });
 
-  it('donne accès au média avec le laissez-passer du travail, sans nom de fichier', async () => {
+  it('grants access to the media with the job pass, and without the file name', async () => {
     const platform = aPlatform();
     await platform.upload({ originalName: 'secret.mp3', content: 'octets audio' });
     const job = await platform.claimNextTranscription.execute({
@@ -71,12 +71,12 @@ describe('Scénario : un worker réclame du travail', () => {
     expect(await readAll(media.stream)).toBe('octets audio');
     expect(media.contentType).toBe('audio/mpeg');
     expect(media.byteSize).toBe('octets audio'.length);
-    // Ce que le worker ne doit pas apprendre : le nom du fichier déposé et le propriétaire.
+    // What the worker must not learn: the name of the uploaded file, and the owner.
     expect(JSON.stringify(media)).not.toContain('secret.mp3');
     expect(JSON.stringify(media)).not.toContain(OWNER);
   });
 
-  it('refuse le média à un laissez-passer que nous n\'avons pas émis', async () => {
+  it('refuses the media to a pass we did not issue', async () => {
     const platform = aPlatform();
     await platform.upload();
     const job = await platform.claimNextTranscription.execute({
@@ -84,8 +84,8 @@ describe('Scénario : un worker réclame du travail', () => {
       workerId: 'worker-1',
       models: ['small'],
     });
-    // Même forme qu'un vrai laissez-passer, mais sans signature : tout ce qu'un attaquant
-    // peut fabriquer en connaissant deux identifiants.
+    // Same shape as a real pass, but with no signature: all an attacker can forge knowing
+    // two identifiers.
     const forged = (job?.mediaToken ?? '').split('::').slice(0, 3).join('::');
 
     await expect(platform.openMediaForRun.execute({ token: forged })).rejects.toThrow(
@@ -93,7 +93,7 @@ describe('Scénario : un worker réclame du travail', () => {
     );
   });
 
-  it('refuse le média au laissez-passer d\'une tentative achevée', async () => {
+  it('refuses the media to the pass of a completed attempt', async () => {
     const platform = aPlatform();
     const transcriptionId = await platform.upload();
     const job = await platform.claimNextTranscription.execute({
@@ -109,7 +109,7 @@ describe('Scénario : un worker réclame du travail', () => {
     ).rejects.toThrow(MediaAccessDeniedError);
   });
 
-  it('refuse le média une fois le bail éteint', async () => {
+  it('refuses the media once the lease has expired', async () => {
     const platform = aPlatform();
     await platform.upload();
     const job = await platform.claimNextTranscription.execute({

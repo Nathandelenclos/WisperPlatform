@@ -14,7 +14,7 @@ export class CompleteTranscriptionUseCase {
   ) {}
 
   async execute(command: CompleteTranscriptionCommand): Promise<void> {
-    // La balayeuse des bails expirés peut écrire la même ligne au même instant.
+    // The expired-lease sweeper may write the same row at the very same instant.
     await retryOnConcurrentWrite(async () => {
       const transcription = await this.repository.findById(command.transcriptionId);
       if (transcription === null) {

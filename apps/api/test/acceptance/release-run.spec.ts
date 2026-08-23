@@ -4,8 +4,8 @@ import { StaleRunError } from '../../src/transcription/domain/errors';
 
 import { NOW, OWNER, SERVICE_CLAIMANT, aClaimedTranscription, aPlatform } from './platform';
 
-describe('Scénario : un worker rend sa tentative en s\'arrêtant', () => {
-  it('remet la demande en file tout de suite, sans attendre l\'extinction du bail', async () => {
+describe('Scenario: a worker releases its attempt as it shuts down', () => {
+  it('requeues the request right away, without waiting for the lease to expire', async () => {
     const platform = aPlatform();
     const { transcriptionId, runId } = await aClaimedTranscription(platform);
     await platform.appendTranscribedSegments.execute({
@@ -23,7 +23,7 @@ describe('Scénario : un worker rend sa tentative en s\'arrêtant', () => {
     expect(platform.publisher.names()).toEqual(['transcription.requeued']);
   });
 
-  it('rend la demande réclamable immédiatement par un autre worker', async () => {
+  it('makes the request claimable immediately by another worker', async () => {
     const platform = aPlatform();
     const { transcriptionId, runId } = await aClaimedTranscription(platform);
 
@@ -35,12 +35,12 @@ describe('Scénario : un worker rend sa tentative en s\'arrêtant', () => {
     });
 
     expect(job?.transcriptionId).toBe(transcriptionId);
-    // La tentative rendue reste comptée : une machine qui redémarre en boucle finit par
-    // épuiser ses essais au lieu de tourner indéfiniment sur la même demande.
+    // The released attempt still counts: a machine that restarts in a loop ends up exhausting
+    // its attempts instead of spinning forever on the same request.
     expect(job?.runId).not.toBe(runId);
   });
 
-  it('refuse de rendre une tentative qui n\'est plus la tentative en cours', async () => {
+  it('refuses to release an attempt that is no longer the current one', async () => {
     const platform = aPlatform();
     const { transcriptionId, runId } = await aClaimedTranscription(platform);
     await platform.releaseTranscriptionRun.execute({ transcriptionId, runId });

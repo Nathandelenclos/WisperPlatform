@@ -9,8 +9,8 @@ import {
   aPlatform,
 } from './platform';
 
-describe('Scénario : un worker disparaît et son bail s\'éteint', () => {
-  it('remet la demande en file et l\'annonce', async () => {
+describe('Scenario: a worker disappears and its lease expires', () => {
+  it('requeues the request and announces it', async () => {
     const platform = aPlatform();
     const { transcriptionId } = await aClaimedTranscription(platform);
 
@@ -23,14 +23,14 @@ describe('Scénario : un worker disparaît et son bail s\'éteint', () => {
     expect(platform.publisher.names()).toEqual(['transcription.requeued']);
   });
 
-  it('laisse un autre worker reprendre le travail depuis zéro', async () => {
+  it('lets another worker take the work over from scratch', async () => {
     const platform = aPlatform();
     const { transcriptionId, runId } = await aClaimedTranscription(platform);
     await platform.appendTranscribedSegments.execute({
       transcriptionId,
       runId,
       batchSequence: 1,
-      segments: [{ startMs: 0, endMs: 1_000, text: 'travail perdu' }],
+      segments: [{ startMs: 0, endMs: 1_000, text: 'lost work' }],
     });
     platform.clock.advanceSeconds(LEASE_SECONDS + 1);
     await platform.requeueStalledTranscriptions.execute();
@@ -49,7 +49,7 @@ describe('Scénario : un worker disparaît et son bail s\'éteint', () => {
     expect(view.segments).toEqual([]);
   });
 
-  it('ne touche pas à une transcription dont le bail court encore', async () => {
+  it('does not touch a transcription whose lease is still running', async () => {
     const platform = aPlatform();
     const { transcriptionId } = await aClaimedTranscription(platform);
 
@@ -62,7 +62,7 @@ describe('Scénario : un worker disparaît et son bail s\'éteint', () => {
     expect(platform.publisher.published).toEqual([]);
   });
 
-  it('ne touche pas à une transcription dont le bail vient d\'être renouvelé', async () => {
+  it('does not touch a transcription whose lease was just renewed', async () => {
     const platform = aPlatform();
     const { transcriptionId, runId } = await aClaimedTranscription(platform);
 
@@ -78,12 +78,12 @@ describe('Scénario : un worker disparaît et son bail s\'éteint', () => {
   });
 });
 
-describe('Scénario : les tentatives d\'une transcription sont épuisées', () => {
-  it('abandonne la demande après la dernière tentative', async () => {
+describe('Scenario: the attempts of a transcription are exhausted', () => {
+  it('gives the request up after the last attempt', async () => {
     const platform = aPlatform();
     const { transcriptionId } = await aClaimedTranscription(platform);
 
-    // Chaque cycle consomme une tentative : bail éteint, remise en file, nouvelle réclamation.
+    // Each cycle consumes one attempt: lease expired, requeue, fresh claim.
     for (let attempt = 1; attempt < MAX_ATTEMPTS; attempt += 1) {
       platform.clock.advanceSeconds(LEASE_SECONDS + 1);
       expect(await platform.requeueStalledTranscriptions.execute()).toEqual({ requeued: 1 });
@@ -106,7 +106,7 @@ describe('Scénario : les tentatives d\'une transcription sont épuisées', () =
     expect(platform.publisher.names()).toEqual(['transcription.failed']);
   });
 
-  it('ne propose plus une demande abandonnée à un worker', async () => {
+  it('no longer offers an abandoned request to a worker', async () => {
     const platform = aPlatform();
     await aClaimedTranscription(platform);
 

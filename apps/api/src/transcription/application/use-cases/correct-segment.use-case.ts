@@ -19,11 +19,11 @@ export class CorrectSegmentUseCase {
   ) {}
 
   async execute(command: CorrectSegmentCommand): Promise<void> {
-    // Deux onglets qui corrigent le même segment partent du même état : le second repart
-    // d'une lecture fraîche plutôt que de perdre la correction.
+    // Two tabs correcting the same segment start from the same state: the second one starts
+    // again from a fresh read rather than losing the correction.
     await retryOnConcurrentWrite(async () => {
       const transcription = await this.repository.findById(command.transcriptionId);
-      // Une transcription qui n'est pas la sienne est, pour vous, inexistante.
+      // A transcription that is not theirs is, for you, non-existent.
       if (transcription === null || transcription.ownerId !== command.ownerId) {
         throw new TranscriptionNotFoundError();
       }

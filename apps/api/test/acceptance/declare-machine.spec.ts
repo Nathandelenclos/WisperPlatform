@@ -5,43 +5,43 @@ import { InvalidWorkerKeyLabelError } from '../../src/workers/domain/errors';
 
 import { NOW, OTHER_OWNER, OWNER, SERVICE_TOKEN, aPlatform } from './platform';
 
-describe('Scénario : un utilisateur déclare sa machine', () => {
-  it('rend le secret une seule fois, puis la liste ne le porte plus', async () => {
+describe('Scenario: a user declares their machine', () => {
+  it('returns the secret exactly once, and the list never carries it again', async () => {
     const platform = aPlatform();
 
     const created = await platform.registerWorkerKey.execute({
       ownerId: OWNER,
-      label: 'Mon portable',
+      label: 'My laptop',
     });
 
-    expect(created.label).toBe('Mon portable');
+    expect(created.label).toBe('My laptop');
     expect(created.createdAt).toEqual(NOW);
     expect(created.secret.length).toBeGreaterThan(0);
 
     const keys = await platform.listWorkerKeys.execute({ ownerId: OWNER });
 
     expect(keys).toEqual([
-      { id: created.id, label: 'Mon portable', createdAt: NOW, lastSeenAt: null, revokedAt: null },
+      { id: created.id, label: 'My laptop', createdAt: NOW, lastSeenAt: null, revokedAt: null },
     ]);
-    // Ni le secret ni son empreinte : la liste ne rend que ce qui identifie la machine.
+    // Neither the secret nor its fingerprint: the list returns only what identifies the machine.
     expect(JSON.stringify(keys)).not.toContain(created.secret);
   });
 
-  it('donne un secret différent à chaque machine déclarée', async () => {
+  it('gives a different secret to each declared machine', async () => {
     const platform = aPlatform();
 
-    const first = await platform.registerWorkerKey.execute({ ownerId: OWNER, label: 'portable' });
-    const second = await platform.registerWorkerKey.execute({ ownerId: OWNER, label: 'tour' });
+    const first = await platform.registerWorkerKey.execute({ ownerId: OWNER, label: 'laptop' });
+    const second = await platform.registerWorkerKey.execute({ ownerId: OWNER, label: 'desktop' });
 
     expect(second.secret).not.toBe(first.secret);
     expect(second.id).not.toBe(first.id);
   });
 
-  it('reconnaît la machine à son secret, et le secret partagé reste celui du service', async () => {
+  it('recognizes the machine by its secret, and the shared secret stays the service one', async () => {
     const platform = aPlatform();
     const { secret } = await platform.registerWorkerKey.execute({
       ownerId: OWNER,
-      label: 'portable',
+      label: 'laptop',
     });
 
     expect(await platform.workerIdentities.resolve(secret)).toEqual({
@@ -49,14 +49,14 @@ describe('Scénario : un utilisateur déclare sa machine', () => {
       ownerId: OWNER,
     });
     expect(await platform.workerIdentities.resolve(SERVICE_TOKEN)).toEqual({ kind: 'service' });
-    expect(await platform.workerIdentities.resolve('un-jeton-inventé')).toBeNull();
+    expect(await platform.workerIdentities.resolve('a-made-up-token')).toBeNull();
   });
 
-  it('note le passage de la machine, mais pas à chaque battement de cœur', async () => {
+  it('records when the machine was last seen, but not on every heartbeat', async () => {
     const platform = aPlatform();
     const { id, secret } = await platform.registerWorkerKey.execute({
       ownerId: OWNER,
-      label: 'portable',
+      label: 'laptop',
     });
 
     await platform.workerIdentities.resolve(secret);
@@ -65,7 +65,7 @@ describe('Scénario : un utilisateur déclare sa machine', () => {
     );
     expect(seenOnce?.lastSeenAt).toEqual(NOW);
 
-    // Battement de cœur suivant, quelques secondes plus tard : rien n'est réécrit.
+    // Next heartbeat, a few seconds later: nothing is rewritten.
     platform.clock.advanceSeconds(5);
     await platform.workerIdentities.resolve(secret);
     expect(
@@ -73,7 +73,7 @@ describe('Scénario : un utilisateur déclare sa machine', () => {
         ?.lastSeenAt,
     ).toEqual(NOW);
 
-    // Une minute passée, le passage est de nouveau noté.
+    // Once a minute has passed, `lastSeenAt` moves again.
     platform.clock.advanceSeconds(60);
     await platform.workerIdentities.resolve(secret);
     expect(
@@ -82,11 +82,11 @@ describe('Scénario : un utilisateur déclare sa machine', () => {
     ).toEqual(new Date(NOW.getTime() + 65_000));
   });
 
-  it('cesse de reconnaître une clé révoquée', async () => {
+  it('stops recognizing a revoked key', async () => {
     const platform = aPlatform();
     const { id, secret } = await platform.registerWorkerKey.execute({
       ownerId: OWNER,
-      label: 'portable volé',
+      label: 'stolen laptop',
     });
 
     await platform.revokeWorkerKey.execute({ ownerId: OWNER, workerKeyId: id });
@@ -96,9 +96,9 @@ describe('Scénario : un utilisateur déclare sa machine', () => {
     expect(keys[0].revokedAt).toEqual(NOW);
   });
 
-  it('accepte de révoquer deux fois la même clé sans rien changer', async () => {
+  it('accepts revoking the same key twice without changing anything', async () => {
     const platform = aPlatform();
-    const { id } = await platform.registerWorkerKey.execute({ ownerId: OWNER, label: 'portable' });
+    const { id } = await platform.registerWorkerKey.execute({ ownerId: OWNER, label: 'laptop' });
 
     await platform.revokeWorkerKey.execute({ ownerId: OWNER, workerKeyId: id });
     platform.clock.advanceSeconds(3_600);
@@ -109,12 +109,12 @@ describe('Scénario : un utilisateur déclare sa machine', () => {
     expect((await platform.listWorkerKeys.execute({ ownerId: OWNER }))[0].revokedAt).toEqual(NOW);
   });
 
-  it('ne montre pas la clé d\'autrui et ne révèle pas son existence', async () => {
+  it('never shows a key that belongs to someone else, nor reveals that it exists', async () => {
     const platform = aPlatform();
-    const { id } = await platform.registerWorkerKey.execute({ ownerId: OWNER, label: 'portable' });
+    const { id } = await platform.registerWorkerKey.execute({ ownerId: OWNER, label: 'laptop' });
 
     expect(await platform.listWorkerKeys.execute({ ownerId: OTHER_OWNER })).toEqual([]);
-    // Le même refus qu'une clé inexistante : rien ne distingue les deux.
+    // The same refusal as for a key that does not exist: nothing tells the two apart.
     await expect(
       platform.revokeWorkerKey.execute({ ownerId: OTHER_OWNER, workerKeyId: id }),
     ).rejects.toThrow(WorkerKeyNotFoundError);
@@ -123,10 +123,10 @@ describe('Scénario : un utilisateur déclare sa machine', () => {
     ).rejects.toThrow(expect.objectContaining({ code: 'WORKER_KEY_NOT_FOUND' }));
   });
 
-  it('refuse un libellé vide, trop long ou coupé en deux lignes', async () => {
+  it('refuses a label that is empty, too long, or split over two lines', async () => {
     const platform = aPlatform();
 
-    for (const label of ['', '   ', 'x'.repeat(61), 'mon\nportable']) {
+    for (const label of ['', '   ', 'x'.repeat(61), 'my\nlaptop']) {
       await expect(platform.registerWorkerKey.execute({ ownerId: OWNER, label })).rejects.toThrow(
         InvalidWorkerKeyLabelError,
       );

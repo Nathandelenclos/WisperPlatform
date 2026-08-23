@@ -2,8 +2,8 @@ import type { WorkerKeyRepository } from '../../src/workers/application/ports/wo
 import { WorkerKey, type WorkerKeyState } from '../../src/workers/domain/worker-key';
 
 /**
- * Dépôt en mémoire des clés de machine. Les états entrent et sortent copiés : aucun test ne
- * peut muter la mémoire du magasin par un aliasing accidentel, exactement comme une base.
+ * In-memory repository of machine keys. States are copied on the way in and on the way out: no
+ * test can mutate the store's memory through accidental aliasing, exactly like a database.
  */
 export class InMemoryWorkerKeyRepository implements WorkerKeyRepository {
   private readonly byId = new Map<string, WorkerKeyState>();

@@ -8,16 +8,16 @@ const ISSUED_AT = new Date('2026-05-04T09:00:00.000Z');
 const EXPIRES_AT = new Date('2026-05-04T09:02:00.000Z');
 
 /**
- * Contrat du port `MediaAccessTokens`. C'est le seul contrôle d'accès du téléchargement média :
- * la même suite tourne sur le double et sur l'adaptateur signé, sinon les scénarios
- * d'acceptation prouveraient une sécurité que la production n'a pas.
+ * Contract of the `MediaAccessTokens` port. This is the only access control on the media
+ * download: the same suite runs on the double and on the signed adapter, otherwise the
+ * acceptance scenarios would prove a security that production does not have.
  */
 export function describeMediaAccessTokensContract(
   name: string,
   factory: () => MediaAccessTokens,
 ): void {
   describe(`MediaAccessTokens — ${name}`, () => {
-    it('rouvre ce qu\'il a lui-même émis', () => {
+    it('reopens what it issued itself', () => {
       const tokens = factory();
 
       const token = tokens.issue({
@@ -32,7 +32,7 @@ export function describeMediaAccessTokensContract(
       });
     });
 
-    it('refuse un laissez-passer expiré', () => {
+    it('refuses an expired access token', () => {
       const tokens = factory();
       const token = tokens.issue({
         transcriptionId: TRANSCRIPTION_ID,
@@ -45,7 +45,7 @@ export function describeMediaAccessTokensContract(
       ).toBeNull();
     });
 
-    it('accepte encore un laissez-passer à l\'instant exact de son expiration', () => {
+    it('still accepts an access token at the exact instant of its expiry', () => {
       const tokens = factory();
       const token = tokens.issue({
         transcriptionId: TRANSCRIPTION_ID,
@@ -56,15 +56,15 @@ export function describeMediaAccessTokensContract(
       expect(tokens.verify({ token, now: EXPIRES_AT })).not.toBeNull();
     });
 
-    it('refuse un laissez-passer bien formé que nous n\'avons pas émis', () => {
+    it('refuses a well-formed access token we did not issue', () => {
       const tokens = factory();
       const legitimate = tokens.issue({
         transcriptionId: TRANSCRIPTION_ID,
         runId: RUN_ID,
         expiresAt: EXPIRES_AT,
       });
-      // Même forme, mêmes séparateurs, une expiration lointaine : tout ce qu'un attaquant peut
-      // fabriquer en connaissant deux identifiants. Seule la signature lui manque.
+      // Same shape, same separators, a distant expiry: everything an attacker can fabricate
+      // knowing two identifiers. Only the signature is missing.
       const separator = legitimate.includes('::') ? '::' : '.';
       const forged = [
         TRANSCRIPTION_ID,
@@ -75,7 +75,7 @@ export function describeMediaAccessTokensContract(
       expect(tokens.verify({ token: forged, now: ISSUED_AT })).toBeNull();
     });
 
-    it('refuse un laissez-passer dont on a prolongé l\'expiration', () => {
+    it('refuses an access token whose expiry was extended', () => {
       const tokens = factory();
       const token = tokens.issue({
         transcriptionId: TRANSCRIPTION_ID,
@@ -89,10 +89,10 @@ export function describeMediaAccessTokensContract(
       expect(tokens.verify({ token: parts.join(separator), now: ISSUED_AT })).toBeNull();
     });
 
-    it('refuse une chaîne qui n\'a pas la forme d\'un laissez-passer', () => {
+    it('refuses a string that does not have the shape of an access token', () => {
       const tokens = factory();
 
-      for (const token of ['', 'inventé', 'a.b', '::::']) {
+      for (const token of ['', 'made-up', 'a.b', '::::']) {
         expect(tokens.verify({ token, now: ISSUED_AT })).toBeNull();
       }
     });

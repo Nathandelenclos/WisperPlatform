@@ -3,10 +3,10 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { MediaAccessTokens } from '../../application/ports/media-access-tokens';
 
 /**
- * Jeton de téléchargement remis à un worker : `<transcriptionId>.<runId>.<expiresAtMs>.<signature>`.
- * La signature est un HMAC-SHA256 base64url du préfixe signé. Le jeton ne transporte donc
- * aucune information sur l'utilisateur (ni identité, ni nom de fichier), il voyage dans un
- * segment d'URL et il expire seul.
+ * Download token handed to a worker: `<transcriptionId>.<runId>.<expiresAtMs>.<signature>`.
+ * The signature is a base64url HMAC-SHA256 of the signed prefix. The token therefore carries
+ * no information about the user (neither identity nor file name), it travels inside a URL
+ * segment and it expires on its own.
  */
 export class HmacMediaAccessTokens implements MediaAccessTokens {
   constructor(private readonly secret: string) {}
@@ -17,8 +17,8 @@ export class HmacMediaAccessTokens implements MediaAccessTokens {
   }
 
   verify(p: { token: string; now: Date }): { transcriptionId: string; runId: string } | null {
-    // Un jeton invalide n'est jamais une exception : c'est une absence d'autorisation, et
-    // aucun message d'erreur ne doit renseigner l'appelant (ni, a fortiori, révéler le secret).
+    // An invalid token is never an exception: it is an absence of authorization, and no error
+    // message must tell the caller anything (let alone reveal the secret).
     const parts = p.token.split('.');
     if (parts.length !== 4) return null;
     const [transcriptionId, runId, expiresAtMs, signature] = parts as [
@@ -34,8 +34,8 @@ export class HmacMediaAccessTokens implements MediaAccessTokens {
     const expected = this.sign(`${transcriptionId}.${runId}.${expiresAtMs}`);
     const expectedBytes = Buffer.from(expected, 'utf8');
     const providedBytes = Buffer.from(signature, 'utf8');
-    // `timingSafeEqual` exige des longueurs égales : la comparaison de longueur est faite
-    // avant, et ne fuit rien qu'un attaquant ne puisse déjà déduire du format du jeton.
+    // `timingSafeEqual` requires equal lengths: the length comparison happens first, and leaks
+    // nothing an attacker could not already deduce from the token format.
     if (expectedBytes.length !== providedBytes.length) return null;
     if (!timingSafeEqual(expectedBytes, providedBytes)) return null;
 

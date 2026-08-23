@@ -13,8 +13,8 @@ export type AssignSpeakersCommand = {
 };
 
 /**
- * Le worker publie le résultat de sa passe de diarisation. La passe est optionnelle : un
- * worker qui n'en est pas capable n'appelle simplement jamais ce cas d'utilisation.
+ * The worker publishes the result of its diarization pass. The pass is optional: a worker
+ * that is not capable of it simply never calls this use case.
  */
 export class AssignSpeakersUseCase {
   constructor(
@@ -24,8 +24,8 @@ export class AssignSpeakersUseCase {
   ) {}
 
   async execute(command: AssignSpeakersCommand): Promise<void> {
-    // La publication est déjà rejouable sans effet ; ce nouvel essai couvre l'autre course :
-    // le propriétaire qui corrige un segment au moment où la diarisation arrive.
+    // Publishing is already replayable without effect — this retry covers the other race:
+    // the owner correcting a segment at the moment the diarization arrives.
     await retryOnConcurrentWrite(async () => {
       const transcription = await this.repository.findById(command.transcriptionId);
       if (transcription === null) {

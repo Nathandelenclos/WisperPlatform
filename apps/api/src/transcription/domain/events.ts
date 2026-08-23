@@ -3,8 +3,8 @@ import type { SegmentState } from './segment';
 import type { SpeakerState } from './speaker';
 
 /**
- * Événements de domaine produits par l'aggregate `Transcription`. Immuables, sans PII :
- * ils sont diffusés tels quels au navigateur du propriétaire via SSE.
+ * Domain events produced by the `Transcription` aggregate. Immutable, free of PII:
+ * they are broadcast as they are to the owner's browser over SSE.
  */
 export type TranscriptionEvent =
   | { name: 'transcription.requested'; transcriptionId: string; ownerId: string; occurredAt: Date }
@@ -39,8 +39,8 @@ export type TranscriptionEvent =
       occurredAt: Date;
     }
   /**
-   * Le propriétaire a choisi où sa demande serait calculée. Aucun worker n'y a encore touché :
-   * c'est un aiguillage, pas un déplacement de travail en cours.
+   * The owner chose where their request would be computed. No worker has touched it yet:
+   * this is a routing decision, not work in progress being moved.
    */
   | {
       name: 'transcription.placement-changed';
@@ -50,8 +50,8 @@ export type TranscriptionEvent =
       occurredAt: Date;
     }
   /**
-   * La diarisation a parlé : les locuteurs découverts, et tous les segments avec le locuteur
-   * qu'ils portent désormais — une attribution rebat les cartes de la transcription entière.
+   * Diarization has spoken: the speakers discovered, and every segment with the speaker it
+   * now carries — one assignment reshuffles the whole transcription.
    */
   | {
       name: 'transcription.speakers-assigned';
@@ -61,7 +61,7 @@ export type TranscriptionEvent =
       segments: SegmentState[];
       occurredAt: Date;
     }
-  /** `speakerName` et non `name` : `name` désigne déjà le type de l'événement. */
+  /** `speakerName` and not `name`: `name` already denotes the type of the event. */
   | {
       name: 'transcription.speaker-renamed';
       transcriptionId: string;

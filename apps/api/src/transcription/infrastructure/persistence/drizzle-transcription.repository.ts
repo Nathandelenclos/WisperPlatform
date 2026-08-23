@@ -23,24 +23,24 @@ type SegmentRow = typeof transcriptionSegments.$inferSelect;
 type SpeakerRow = typeof transcriptionSpeakers.$inferSelect;
 
 /**
- * Traduction état de l'aggregate ↔ colonnes. Ce mapping vit ici et nulle part ailleurs :
- * le domaine ignore qu'une base existe.
+ * Translation between aggregate state and columns. This mapping lives here and nowhere else:
+ * the domain has no idea a database exists.
  */
 export class DrizzleTranscriptionRepository implements TranscriptionRepository {
   /**
-   * Version lue pour chaque aggregate chargé. Le compteur est une préoccupation de
-   * persistance : le domaine n'a pas à le porter, et une `WeakMap` le libère avec l'aggregate.
+   * Version read for each loaded aggregate. The counter is a persistence concern: the domain
+   * does not have to carry it, and a `WeakMap` releases it along with the aggregate.
    */
   private readonly loadedVersions = new WeakMap<Transcription, number>();
 
   constructor(private readonly db: Database) {}
 
   /**
-   * Écrit l'aggregate ENTIER en une seule transaction : la ligne d'en-tête, le jeu complet de
-   * segments et celui des locuteurs. Ils sont remplacés plutôt que fusionnés, parce que
-   * l'aggregate est la seule autorité sur leur contenu ; la déduplication d'un lot rejoué est
-   * déjà portée par `lastAppliedBatchSequence`, persisté dans la même transaction — d'où
-   * l'idempotence.
+   * Writes the WHOLE aggregate in a single transaction: the header row, the complete set of
+   * segments and the complete set of speakers. They are replaced rather than merged, because
+   * the aggregate is the only authority on their content — deduplication of a replayed batch
+   * is already carried by `lastAppliedBatchSequence`, persisted in the same transaction, hence
+   * the idempotence.
    */
   async save(transcription: Transcription): Promise<void> {
     const state = transcription.state();
@@ -69,8 +69,8 @@ export class DrizzleTranscriptionRepository implements TranscriptionRepository {
 
     await this.db.transaction(async (tx) => {
       if (expectedVersion === null) {
-        // Aggregate jamais chargé : c'est une création. Une collision de clé signifie qu'un
-        // autre écrivain l'a devancé.
+        // Aggregate never loaded: this is a creation. A key collision means another writer
+        // got there first.
         const inserted = await tx
           .insert(transcriptions)
           .values({ ...row, version: 1 })
@@ -81,9 +81,9 @@ export class DrizzleTranscriptionRepository implements TranscriptionRepository {
         }
         this.loadedVersions.set(transcription, 1);
       } else {
-        // Verrou optimiste : l'écriture n'aboutit que si personne n'a touché la ligne depuis
-        // la lecture. Sans lui, une correction utilisateur et un lot de segments arrivés en
-        // même temps s'écrasent l'un l'autre en silence.
+        // Optimistic lock: the write only lands if nobody touched the row since it was read.
+        // Without it, a user correction and a batch of segments arriving at the same time
+        // overwrite each other in silence.
         const updated = await tx
           .update(transcriptions)
           .set({
@@ -104,8 +104,8 @@ export class DrizzleTranscriptionRepository implements TranscriptionRepository {
             completedAt: row.completedAt,
             version: expectedVersion + 1,
           })
-          // `reservedAt` / `reservedBy` sont volontairement absents : ce sont des colonnes de
-          // file d'attente, invisibles de l'aggregate, qu'une sauvegarde ne doit pas écraser.
+          // `reservedAt` / `reservedBy` are deliberately absent: they are queue columns,
+          // invisible to the aggregate, that a save must not overwrite.
           .where(
             and(eq(transcriptions.id, state.id), eq(transcriptions.version, expectedVersion)),
           )
@@ -151,11 +151,11 @@ export class DrizzleTranscriptionRepository implements TranscriptionRepository {
   }
 
   /**
-   * Trois tables pour un aggregate : la lecture est transactionnelle comme l'écriture.
-   * Trois `select` indépendants pouvaient rendre un aggregate déchiré — un en-tête d'une
-   * version, des segments et des locuteurs d'une autre — si une écriture commitait entre
-   * deux d'entre eux. Le verrou optimiste rattrapait le cas sur un chemin d'écriture ;
-   * une lecture seule, elle, servait la vue mélangée au propriétaire sans rien détecter.
+   * Three tables for one aggregate: reading is transactional just like writing.
+   * Three independent `select`s could return a torn aggregate — a header from one version,
+   * segments and speakers from another — if a write committed between two of them. The
+   * optimistic lock caught that case on a write path; a plain read, on the other hand, served
+   * the mixed view to the owner without detecting anything.
    */
   async findById(id: string): Promise<Transcription | null> {
     const loaded = await this.db.transaction(async (tx) => {
@@ -191,7 +191,7 @@ function toState(
   return {
     id: row.id,
     ownerId: row.ownerId,
-    // La base garde des `text` : l'aggregate revalide ses propres unions à la reconstitution.
+    // The database keeps `text`: the aggregate revalidates its own unions when restoring.
     status: row.status as TranscriptionStatus,
     placement: row.placement as Placement,
     model: row.model as WhisperModel,
@@ -199,8 +199,8 @@ function toState(
     mediaStorageKey: row.mediaStorageKey,
     mediaOriginalName: row.mediaOriginalName,
     mediaContentType: row.mediaContentType,
-    // `bigint` en `mode: 'number'` : exact jusqu'à ~8 PiO, six ordres de grandeur au-dessus
-    // de la borne d'acceptation d'un média (MEDIA_MAX_BYTES, 2 GiO par défaut).
+    // `bigint` in `mode: 'number'`: exact up to ~8 PiB, six orders of magnitude above the
+    // acceptance bound for a media file (MEDIA_MAX_BYTES, 2 GiB by default).
     mediaByteSize: row.mediaByteSize,
     attempts: row.attempts,
     currentRunId: row.currentRunId,

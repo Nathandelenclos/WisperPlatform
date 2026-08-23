@@ -1,4 +1,4 @@
-/** Source de temps : injectée pour que les instants de création et de passage soient testables. */
+/** Time source: injected so that creation and sighting instants are testable. */
 export interface Clock {
   now(): Date;
 }

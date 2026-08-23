@@ -1,16 +1,16 @@
 import { ConcurrentTranscriptionWriteError } from './errors';
 
 /**
- * Un aggregate écrit par deux acteurs à partir du même état voit sa seconde écriture refusée
- * par le verrou optimiste du dépôt. Les collisions réelles de la plateforme sont brèves et
- * bénignes — la balayeuse des bails expirés croise un worker encore vivant, deux onglets
- * corrigent le même segment — et se règlent en repartant d'une lecture fraîche.
+ * An aggregate written by two actors from the same state has its second write refused by the
+ * repository's optimistic lock. The platform's real collisions are brief and benign — the
+ * expired-lease sweeper crosses a still-alive worker, two tabs correct the same segment — and
+ * they settle by starting again from a fresh read.
  *
- * La tentative doit donc TOUT refaire : relire, décider, écrire. C'est la raison pour laquelle
- * on prend une fonction et non une transcription déjà chargée.
+ * The attempt must therefore redo EVERYTHING: read again, decide, write. That is the reason we
+ * take a function and not an already loaded transcription.
  *
- * ponytail: un seul nouvel essai. Au-delà, l'appelant reçoit le conflit et le traduit en 409 ;
- * une file par transcription serait la sortie si la contention devenait mesurable.
+ * ponytail: a single retry. Beyond that, the caller receives the conflict and turns it into a
+ * 409; a queue per transcription would be the way out if contention became measurable.
  */
 export async function retryOnConcurrentWrite<T>(attempt: () => Promise<T>): Promise<T> {
   try {

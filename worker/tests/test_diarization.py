@@ -1,7 +1,7 @@
-"""Passe de diarisation : capacité optionnelle, décodage, conversion des tours.
+"""Diarization pass: optional capability, decoding, turn conversion.
 
-Aucun modèle ONNX, aucun réseau, aucun ffmpeg réel : le moteur sherpa-onnx et le décodeur
-sont injectés. Ce qui est éprouvé ici, c'est ce que le worker décide, pas ce que sherpa calcule.
+No ONNX model, no network, no real ffmpeg: the sherpa-onnx engine and the decoder are injected.
+What is exercised here is what the worker decides, not what sherpa computes.
 """
 
 import collections
@@ -41,17 +41,17 @@ def installed(_name):
 
 
 class ConfigTest(unittest.TestCase):
-    def test_defauts_surs_quand_rien_n_est_pose(self):
+    def test_safe_defaults_when_nothing_is_set(self):
         config = DiarizationConfig.from_environment({})
 
         self.assertEqual(DEFAULT_THREADS, config.threads)
         self.assertEqual(DEFAULT_CLUSTER_THRESHOLD, config.cluster_threshold)
-        # -1 : le clustering découvre lui-même le nombre de locuteurs.
+        # -1: the clustering discovers the speaker count on its own.
         self.assertEqual(-1, config.max_speakers)
         self.assertTrue(config.segmentation_model)
         self.assertTrue(config.embedding_model)
 
-    def test_l_environnement_gagne_sur_les_defauts(self):
+    def test_the_environment_wins_over_the_defaults(self):
         config = DiarizationConfig.from_environment(
             dict(
                 MODELS,
@@ -67,9 +67,9 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(3, config.max_speakers)
         self.assertEqual(0.7, config.cluster_threshold)
 
-    def test_la_sentinelle_automatique_est_une_valeur_acceptable(self):
-        # -1 est ce que le module désigne comme « laisse le clustering décider » : l'écrire
-        # explicitement dans son .env ne doit pas éteindre la diarisation en silence.
+    def test_the_automatic_sentinel_is_an_acceptable_value(self):
+        # -1 is what the module designates as "let the clustering decide": writing it
+        # explicitly in one's .env must not switch off diarization in silence.
         diarizer = load(
             dict(MODELS, WISPER_DIARIZATION_MAX_SPEAKERS="-1"),
             exists=present,
@@ -78,12 +78,12 @@ class ConfigTest(unittest.TestCase):
 
         self.assertIsNotNone(diarizer)
 
-    def test_une_valeur_illisible_rend_la_capacite_absente_sans_exception(self):
+    def test_an_unreadable_value_makes_the_capability_absent_without_raising(self):
         for variable, value in (
-            ("WISPER_DIARIZATION_THREADS", "deux"),
+            ("WISPER_DIARIZATION_THREADS", "two"),
             ("WISPER_DIARIZATION_THREADS", "0"),
             ("WISPER_DIARIZATION_MAX_SPEAKERS", "0"),
-            ("WISPER_DIARIZATION_CLUSTER_THRESHOLD", "beaucoup"),
+            ("WISPER_DIARIZATION_CLUSTER_THRESHOLD", "plenty"),
         ):
             with self.subTest(variable=variable, value=value):
                 with self.assertLogs(diarization.LOGGER, logging.INFO) as captured:
@@ -95,9 +95,9 @@ class ConfigTest(unittest.TestCase):
 
 
 class CapabilityTest(unittest.TestCase):
-    """Un worker sans diarisation reste un worker : jamais d'exception, une ligne de journal."""
+    """A worker without diarization is still a worker: never an exception, one log line."""
 
-    def test_le_module_sherpa_absent_desactive_la_passe(self):
+    def test_a_missing_sherpa_module_disables_the_pass(self):
         with self.assertLogs(diarization.LOGGER, logging.INFO) as captured:
             self.assertIsNone(load(MODELS, exists=present, find_module=lambda _name: None))
 
@@ -107,7 +107,7 @@ class CapabilityTest(unittest.TestCase):
         self.assertEqual("diarization disabled", record.getMessage())
         self.assertIn("sherpa_onnx", record.fields["reason"])
 
-    def test_numpy_absent_desactive_la_passe(self):
+    def test_a_missing_numpy_disables_the_pass(self):
         with self.assertLogs(diarization.LOGGER, logging.INFO) as captured:
             self.assertIsNone(
                 load(MODELS, exists=present, find_module=lambda name: None if name == "numpy" else object())
@@ -115,7 +115,7 @@ class CapabilityTest(unittest.TestCase):
 
         self.assertIn("numpy", captured.records[0].fields["reason"])
 
-    def test_un_modele_manquant_desactive_la_passe(self):
+    def test_a_missing_model_disables_the_pass(self):
         for missing in ("/models/segmentation.onnx", "/models/embedding.onnx"):
             with self.subTest(missing=missing):
                 with self.assertLogs(diarization.LOGGER, logging.INFO) as captured:
@@ -125,7 +125,7 @@ class CapabilityTest(unittest.TestCase):
                 self.assertEqual(1, len(captured.records))
                 self.assertIn(missing, captured.records[0].fields["reason"])
 
-    def test_un_chemin_de_modele_vide_desactive_la_passe(self):
+    def test_an_empty_model_path_disables_the_pass(self):
         with self.assertLogs(diarization.LOGGER, logging.INFO) as captured:
             self.assertIsNone(
                 load(
@@ -137,7 +137,7 @@ class CapabilityTest(unittest.TestCase):
 
         self.assertIn("WISPER_DIARIZATION_SEGMENTATION_MODEL", captured.records[0].fields["reason"])
 
-    def test_la_capacite_presente_rend_un_diariseur(self):
+    def test_a_present_capability_returns_a_diarizer(self):
         with self.assertLogs(diarization.LOGGER, logging.INFO) as captured:
             diarizer = load(MODELS, exists=present, find_module=installed)
 
@@ -146,7 +146,7 @@ class CapabilityTest(unittest.TestCase):
 
 
 class TurnConversionTest(unittest.TestCase):
-    def test_les_secondes_deviennent_des_millisecondes_arrondies(self):
+    def test_seconds_become_rounded_milliseconds(self):
         turns = to_turns([Segment(0.0, 1.2345, 0), Segment(1.2345, 3.5006, 1)])
 
         self.assertEqual(
@@ -157,31 +157,31 @@ class TurnConversionTest(unittest.TestCase):
             turns,
         )
 
-    def test_les_tours_sont_tries_par_debut(self):
+    def test_the_turns_are_sorted_by_start(self):
         turns = to_turns([Segment(4.0, 5.0, 1), Segment(0.5, 1.0, 0), Segment(2.0, 3.0, 2)])
 
         self.assertEqual([500, 2000, 4000], [turn["startMs"] for turn in turns])
 
-    def test_un_tour_vide_ou_inverse_est_rejete(self):
+    def test_an_empty_or_reversed_turn_is_rejected(self):
         turns = to_turns(
             [
-                Segment(1.0, 1.0, 0),  # durée nulle
-                Segment(3.0, 2.0, 1),  # borné à l'envers
-                Segment(2.0, 2.0004, 2),  # s'écrase à zéro à la milliseconde
+                Segment(1.0, 1.0, 0),  # zero duration
+                Segment(3.0, 2.0, 1),  # bounds the wrong way round
+                Segment(2.0, 2.0004, 2),  # collapses to zero at millisecond resolution
                 Segment(5.0, 6.0, 0),
             ]
         )
 
         self.assertEqual([{"startMs": 5000, "endMs": 6000, "speaker": 0}], turns)
 
-    def test_un_debut_negatif_est_ramene_a_zero(self):
-        # Le contrat HTTP exige `startMs >= 0` ; un modèle qui déborde ne doit pas
-        # transformer une passe réussie en 422.
+    def test_a_negative_start_is_clamped_to_zero(self):
+        # The HTTP contract requires `startMs >= 0`; a model that overshoots must not turn a
+        # successful pass into a 422.
         self.assertEqual(
             [{"startMs": 0, "endMs": 900, "speaker": 0}], to_turns([Segment(-0.05, 0.9, 0)])
         )
 
-    def test_aucun_tour_rend_une_liste_vide(self):
+    def test_no_turn_returns_an_empty_list(self):
         self.assertEqual([], to_turns([]))
 
 
@@ -194,7 +194,7 @@ def write_wav(path, samples, sample_rate=SAMPLE_RATE, channels=1, width=2):
 
 
 class DecodeTest(unittest.TestCase):
-    """`ffmpeg` est injecté : ce qui est éprouvé, c'est la commande, la lecture et le ménage."""
+    """`ffmpeg` is injected: what is exercised is the command, the read and the cleanup."""
 
     def setUp(self):
         self.workdir = tempfile.mkdtemp(prefix="wisper-diar-tests-")
@@ -216,15 +216,15 @@ class DecodeTest(unittest.TestCase):
 
         return run
 
-    def test_decode_en_pcm_16k_mono(self):
+    def test_decodes_to_16k_mono_pcm(self):
         frames, rate = diarization.decode_pcm(self.media, self.workdir, run=self._ffmpeg())
 
         self.assertEqual(SAMPLE_RATE, rate)
-        # Trois échantillons 16 bits signés, petit-boutiens : ce que sherpa recevra après
-        # conversion, et ce que la lecture doit rendre sans dépendre de numpy.
+        # Three signed 16-bit little-endian samples: what sherpa will receive after
+        # conversion, and what the read must return without depending on numpy.
         self.assertEqual(struct.pack("<3h", 0, 16384, -32768), frames)
 
-    def test_la_commande_impose_le_mono_16k_et_ne_lit_pas_stdin(self):
+    def test_the_command_forces_16k_mono_and_does_not_read_stdin(self):
         diarization.decode_pcm(self.media, self.workdir, run=self._ffmpeg())
 
         command = self.commands[0]
@@ -234,21 +234,21 @@ class DecodeTest(unittest.TestCase):
         self.assertEqual(self.media, command[command.index("-i") + 1])
         self.assertEqual("pcm_s16le", command[command.index("-c:a") + 1])
 
-    def test_la_commande_borne_la_duree_decodee(self):
+    def test_the_command_bounds_the_decoded_duration(self):
         diarization.decode_pcm(self.media, self.workdir, run=self._ffmpeg())
 
         command = self.commands[0]
         self.assertEqual(str(diarization.MAX_DECODED_SECONDS), command[command.index("-t") + 1])
 
-    def test_un_wav_plus_long_que_le_plafond_est_refuse_avant_toute_allocation(self):
-        # Ce refus est ce qui sépare un échec rattrapable — la diarisation est sautée, le
-        # transcript se conclut — d'un SIGKILL du noyau, que rien ne rattrape.
+    def test_a_wav_longer_than_the_ceiling_is_refused_before_any_allocation(self):
+        # This refusal is what separates a recoverable failure — diarization is skipped, the
+        # transcript concludes — from a kernel SIGKILL, which nothing catches.
         long_wav = os.path.join(self.workdir, "long.wav")
         with wave.open(long_wav, "wb") as sink:
             sink.setnchannels(1)
             sink.setsampwidth(2)
-            # Une seconde de trames, mais une fréquence déclarée d'un échantillon par
-            # seconde : le fichier prétend durer plus que le plafond sans peser lourd.
+            # One second's worth of frames, but a declared rate of one sample per second:
+            # the file claims to last longer than the ceiling without weighing much.
             sink.setframerate(1)
             sink.writeframes(b"\x00\x00" * (diarization.MAX_DECODED_SECONDS + 1))
 
@@ -257,17 +257,17 @@ class DecodeTest(unittest.TestCase):
 
         self.assertIn(str(diarization.MAX_DECODED_SECONDS), str(raised.exception))
 
-    def test_le_fichier_temporaire_est_efface_meme_en_cas_d_echec(self):
+    def test_removes_the_temporary_file_even_on_failure(self):
         def explode(command, **_kwargs):
             self.commands.append(command)
-            raise OSError("ffmpeg est parti")
+            raise OSError("ffmpeg is gone")
 
         with self.assertRaises(OSError):
             diarization.decode_pcm(self.media, self.workdir, run=explode)
 
         self.assertEqual(["media"], os.listdir(self.workdir))
 
-    def test_le_fichier_temporaire_est_efface_apres_un_decodage_reussi(self):
+    def test_removes_the_temporary_file_after_a_successful_decode(self):
         diarization.decode_pcm(self.media, self.workdir, run=self._ffmpeg())
 
         self.assertEqual(["media"], os.listdir(self.workdir))
@@ -300,11 +300,11 @@ class DiarizerRunTest(unittest.TestCase):
             DiarizationConfig.from_environment(MODELS),
             engine_factory=lambda _config: engine,
             decode=lambda _media, _workdir: (frames, rate),
-            # numpy appartient au moteur réel : ici on suit les trames à la trace.
+            # numpy belongs to the real engine: here we track the frames as they are.
             to_samples=lambda frames: frames,
         )
 
-    def test_rend_les_tours_du_moteur_en_millisecondes(self):
+    def test_returns_the_engine_turns_in_milliseconds(self):
         engine = FakeEngine([Segment(0.0, 1.0, 0), Segment(1.0, 2.0, 1)])
 
         turns = self.build(engine).run("media", "workdir")
@@ -318,7 +318,7 @@ class DiarizerRunTest(unittest.TestCase):
         )
         self.assertTrue(engine.result.sorted)
 
-    def test_le_moteur_n_est_construit_qu_une_fois(self):
+    def test_the_engine_is_built_only_once(self):
         built = []
 
         def factory(config):
@@ -336,7 +336,7 @@ class DiarizerRunTest(unittest.TestCase):
 
         self.assertEqual(1, len(built))
 
-    def test_une_frequence_inattendue_est_refusee(self):
+    def test_an_unexpected_sample_rate_is_refused(self):
         engine = FakeEngine([], sample_rate=8000)
 
         with self.assertRaises(DiarizationError) as raised:

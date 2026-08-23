@@ -3,8 +3,8 @@ import { prettifyError } from 'zod';
 import type { ZodType, output } from 'zod';
 
 /**
- * Valide une entrée HTTP (corps, paramètre de route, chaîne de requête) et transforme un
- * échec en 400. Le message décrit la contrainte violée ; rien n'est journalisé ici.
+ * Validates an HTTP input (body, route parameter, query string) and turns a failure into a
+ * 400. The message describes the violated constraint — nothing is logged here.
  */
 export function parseHttpInput<S extends ZodType>(schema: S, input: unknown): output<S> {
   const result = schema.safeParse(input);

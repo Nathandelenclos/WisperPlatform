@@ -18,7 +18,7 @@ export class FailTranscriptionUseCase {
   ) {}
 
   async execute(command: FailTranscriptionCommand): Promise<void> {
-    // Même course que la complétion : la balayeuse peut avoir remis le travail en file.
+    // Same race as completion: the sweeper may have requeued the work.
     await retryOnConcurrentWrite(async () => {
       const transcription = await this.repository.findById(command.transcriptionId);
       if (transcription === null) {

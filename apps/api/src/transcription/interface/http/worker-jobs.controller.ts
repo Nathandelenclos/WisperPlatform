@@ -36,14 +36,14 @@ import { parseHttpInput } from './parse-http-input';
 import { WorkerTokenGuard } from './worker-token.guard';
 
 /**
- * Routes du worker de transcription. Rien de ce qui transite ici ne décrit l'utilisateur :
- * le média est servi par jeton à durée de vie courte, sans nom de fichier.
+ * Routes of the transcription worker. Nothing that transits here describes the user:
+ * the media is served by short-lived token, with no file name.
  */
 @UseGuards(WorkerTokenGuard)
 @Controller('worker')
 export class WorkerJobsController {
   constructor(
-    // Voir TranscriptionsController : injection par jeton explicite, pas par métadonnée de type.
+    // See TranscriptionsController: injection by explicit token, not by type metadata.
     @Inject(ClaimNextTranscriptionUseCase) private readonly claimNextTranscription: ClaimNextTranscriptionUseCase,
     @Inject(OpenMediaForRunUseCase) private readonly openMediaForRun: OpenMediaForRunUseCase,
     @Inject(AppendTranscribedSegmentsUseCase) private readonly appendSegments: AppendTranscribedSegmentsUseCase,
@@ -55,8 +55,8 @@ export class WorkerJobsController {
   ) {}
 
   /**
-   * La réponse est écrite ici : le contrat distingue 200 (job attribué) de 204 (rien à faire),
-   * ce qu'un statut fixé par décorateur ne permet pas d'exprimer.
+   * The response is written by hand here: the contract distinguishes 200 (job assigned) from
+   * 204 (nothing to do), which a status fixed by decorator cannot express.
    */
   @Post('jobs/claim')
   async claim(
@@ -104,8 +104,8 @@ export class WorkerJobsController {
   }
 
   /**
-   * Passe de diarisation, optionnelle : un worker qui n'en est pas capable n'appelle jamais
-   * cette route et se comporte exactement comme avant.
+   * Diarization pass, optional: a worker that is not capable of it never calls this route and
+   * behaves exactly as before.
    */
   @Post('jobs/:runId/speakers')
   @HttpCode(HttpStatus.NO_CONTENT)
@@ -153,8 +153,8 @@ export class WorkerJobsController {
   }
 
   /**
-   * Le worker s'arrête et rend sa tentative : la demande repart en file immédiatement, au lieu
-   * d'attendre l'extinction de son bail. Ce n'est pas un échec, donc pas de raison à fournir.
+   * The worker shuts down and gives its attempt back: the request is requeued immediately,
+   * instead of waiting for its lease to expire. This is not a failure, so no reason to give.
    */
   @Post('jobs/:runId/release')
   @HttpCode(HttpStatus.NO_CONTENT)

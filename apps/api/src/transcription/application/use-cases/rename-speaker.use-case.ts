@@ -12,7 +12,7 @@ export type RenameSpeakerCommand = {
   name: string;
 };
 
-/** Le propriétaire met un nom sur une voix, pour toute la transcription d'un coup. */
+/** The owner puts a name on a voice, for the whole transcription in one go. */
 export class RenameSpeakerUseCase {
   constructor(
     private readonly repository: TranscriptionRepository,
@@ -21,11 +21,11 @@ export class RenameSpeakerUseCase {
   ) {}
 
   async execute(command: RenameSpeakerCommand): Promise<TranscriptionView> {
-    // Deux onglets qui nomment deux locuteurs de la même transcription partent du même état :
-    // le second repart d'une lecture fraîche plutôt que de perdre son nom.
+    // Two tabs naming two speakers of the same transcription start from the same state:
+    // the second one starts again from a fresh read rather than losing its name.
     return retryOnConcurrentWrite(async () => {
       const transcription = await this.repository.findById(command.transcriptionId);
-      // Une transcription qui n'est pas la sienne est, pour vous, inexistante.
+      // A transcription that is not theirs is, for you, non-existent.
       if (transcription === null || transcription.ownerId !== command.ownerId) {
         throw new TranscriptionNotFoundError();
       }

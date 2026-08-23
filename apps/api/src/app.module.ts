@@ -21,26 +21,26 @@ import { REDACTED_FIELDS } from './transcription/infrastructure/logging/pino-log
 import { TranscriptionModule } from './transcription/transcription.module';
 import { WorkersModule } from './workers/workers.module';
 
-/** Configuration validée une seule fois, au chargement du module racine. */
+/** Configuration validated once only, when the root module is loaded. */
 const env = loadEnv();
 
-/** Connexion partagée : la base et son pool proviennent d'une création unique. */
+/** Shared connection: the database and its pool come from a single creation. */
 const DATABASE_CONNECTION = Symbol('DatabaseConnection');
 
-/** Le jeton média voyage dans le chemin : il ne doit jamais atterrir dans un journal. */
+/** The media token travels in the path: it must never land in a log. */
 const MEDIA_TOKEN_PATH = /^(\/api\/worker\/media\/)[^/]+/;
 
 /**
- * Réduit une URL à ce qui est utile au diagnostic : la chaîne de requête est jetée et le
- * jeton média est masqué. Aucune donnée d'utilisateur ne subsiste.
+ * Reduces a URL to what is useful for diagnosis: the query string is dropped and the media
+ * token is masked. No user data survives.
  */
 function safeRequestPath(url: string): string {
   return url.split('?', 1)[0].replace(MEDIA_TOKEN_PATH, '$1[redacted]');
 }
 
 /**
- * Configuration et persistance partagées par tous les contextes. Global : la connexion à la
- * base est unique pour le processus, et c'est ici que le pool est refermé à l'arrêt.
+ * Configuration and persistence shared by every context. Global: the database connection is
+ * unique for the process, and this is where the pool is closed again on shutdown.
  */
 @Global()
 @Module({
@@ -75,8 +75,8 @@ class PlatformModule implements OnApplicationShutdown {
       pinoHttp: {
         level: env.NODE_ENV === 'production' ? 'info' : 'debug',
         genReqId: (request: IncomingMessage, response: ServerResponse) => {
-          // Une seule source d'identifiant : celui déjà posé dans le contexte asynchrone par
-          // le middleware d'entrée, sinon l'en-tête reçu, sinon un nouvel identifiant.
+          // A single source of identifier: the one already set in the async context by the
+          // entry middleware, otherwise the received header, otherwise a new identifier.
           const id = resolveCorrelationId(
             request.headers[CORRELATION_ID_HEADER],
             correlationStorage.getStore(),
@@ -84,8 +84,8 @@ class PlatformModule implements OnApplicationShutdown {
           response.setHeader(CORRELATION_ID_HEADER, id);
           return id;
         },
-        // Les sérialiseurs par défaut journalisent en-têtes et chaîne de requête : on ne garde
-        // que la méthode, un chemin assaini et le statut.
+        // The default serializers log headers and query string: we keep only the method, a
+        // sanitized path and the status.
         serializers: {
           req: (request: { method?: string; url?: string }) => ({
             method: request.method,
@@ -95,11 +95,11 @@ class PlatformModule implements OnApplicationShutdown {
             statusCode: response.statusCode,
           }),
         },
-        // Défense en profondeur : même si un champ sensible se glisse dans un journal
-        // applicatif, il n'en sort pas en clair.
+        // Defense in depth: even if a sensitive field slips into an application log, it does
+        // not come out of it in the clear.
         redact: {
-          // Une seule liste de champs sensibles pour les deux journaux : celle de
-          // l'adaptateur du port `Logger`, plus les en-têtes propres au journal d'accès.
+          // A single list of sensitive fields for both logs: the one from the `Logger` port
+          // adapter, plus the headers specific to the access log.
           paths: [
             'req.headers.authorization',
             'req.headers.cookie',

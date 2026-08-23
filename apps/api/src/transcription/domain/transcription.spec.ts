@@ -18,9 +18,9 @@ import { TranscriptionSettings } from './transcription-settings';
 
 const REQUESTED_AT = new Date('2026-03-01T10:00:00.000Z');
 const LEASE_UNTIL = new Date('2026-03-01T10:01:00.000Z');
-// Instant fourni par l'horloge applicative quand un lot de segments arrive.
+// Instant supplied by the application clock when a batch of segments arrives.
 const SEGMENTS_AT = new Date('2026-03-01T10:00:30.000Z');
-// Durée d'un bail dans les tests : LEASE_UNTIL = REQUESTED_AT + LEASE_SECONDS.
+// Lease duration in the tests: LEASE_UNTIL = REQUESTED_AT + LEASE_SECONDS.
 const LEASE_SECONDS = 60;
 
 function aPendingTranscription(): Transcription {
@@ -59,8 +59,8 @@ function batch(...spans: [number, number, string][]): { range: TimeRange; text: 
   }));
 }
 
-describe('Transcription — demande', () => {
-  it('naît en attente et annonce la demande', () => {
+describe('Transcription — request', () => {
+  it('is born pending and announces the request', () => {
     const transcription = Transcription.request({
       id: 'id-1',
       ownerId: 'owner-a',
@@ -90,7 +90,7 @@ describe('Transcription — demande', () => {
     ]);
   });
 
-  it('vide sa réserve d\'événements une fois qu\'on les a tirés', () => {
+  it('empties its stash of events once they have been pulled', () => {
     const transcription = aPendingTranscription();
 
     expect(transcription.pullEvents()).toEqual([]);
@@ -98,8 +98,8 @@ describe('Transcription — demande', () => {
 });
 
 // Invariant 1
-describe('Transcription — démarrage d\'une tentative', () => {
-  it('passe en transcription, compte la tentative et pose le bail', () => {
+describe('Transcription — starting an attempt', () => {
+  it('moves to transcribing, counts the attempt and sets the lease', () => {
     const transcription = aPendingTranscription();
 
     transcription.startTranscribing({
@@ -127,13 +127,13 @@ describe('Transcription — démarrage d\'une tentative', () => {
     ]);
   });
 
-  it('abandonne les segments de la tentative précédente', () => {
+  it('drops the segments of the previous attempt', () => {
     const transcription = aStartedTranscription();
     transcription.appendTranscribedSegments({
       at: SEGMENTS_AT,
       runId: 'run-1',
       batchSequence: 1,
-      segments: batch([0, 1_000, 'perdu']),
+      segments: batch([0, 1_000, 'lost']),
     });
     transcription.requeueExpiredLease({ at: LEASE_UNTIL, maxAttempts: 3 });
     transcription.pullEvents();
@@ -151,7 +151,7 @@ describe('Transcription — démarrage d\'une tentative', () => {
     expect(state.attempts).toBe(2);
   });
 
-  it('n\'est légal que depuis l\'attente', () => {
+  it('is legal only from pending', () => {
     const transcription = aStartedTranscription();
 
     expect(() =>
@@ -166,14 +166,14 @@ describe('Transcription — démarrage d\'une tentative', () => {
 });
 
 // Invariant 2
-describe('Transcription — flux de segments', () => {
+describe('Transcription — segment stream', () => {
   let transcription: Transcription;
 
   beforeEach(() => {
     transcription = aStartedTranscription();
   });
 
-  it('numérote les segments dans l\'ordre d\'arrivée, lot après lot', () => {
+  it('numbers the segments in arrival order, batch after batch', () => {
     transcription.appendTranscribedSegments({
       at: SEGMENTS_AT,
       runId: 'run-1',
@@ -209,7 +209,7 @@ describe('Transcription — flux de segments', () => {
     expect(transcription.state().lastAppliedBatchSequence).toBe(2);
   });
 
-  it('annonce uniquement les segments du lot qui vient d\'arriver', () => {
+  it('announces only the segments of the batch that just arrived', () => {
     transcription.appendTranscribedSegments({
       at: SEGMENTS_AT,
       runId: 'run-1',
@@ -227,8 +227,8 @@ describe('Transcription — flux de segments', () => {
 
     const events = transcription.pullEvents();
     expect(events).toHaveLength(1);
-    // `toEqual` et non `toMatchObject` : c'est l'omission d'`occurredAt` qui avait laissé une
-    // horloge murale s'installer dans l'aggregate.
+    // `toEqual` and not `toMatchObject`: it was omitting `occurredAt` that let a wall clock
+    // settle inside the aggregate.
     expect(events[0]).toEqual({
       name: 'transcription.segments-appended',
       transcriptionId: transcription.id,
@@ -247,7 +247,7 @@ describe('Transcription — flux de segments', () => {
     });
   });
 
-  it('ignore en silence le rejeu d\'un lot déjà appliqué', () => {
+  it('silently ignores the replay of an already applied batch', () => {
     const applied = {
       at: SEGMENTS_AT,
       runId: 'run-1',
@@ -263,7 +263,7 @@ describe('Transcription — flux de segments', () => {
     expect(transcription.pullEvents()).toEqual([]);
   });
 
-  it('refuse un lot qui saute une place dans la séquence', () => {
+  it('refuses a batch that skips a place in the sequence', () => {
     expect(() =>
       transcription.appendTranscribedSegments({
         at: SEGMENTS_AT,
@@ -274,7 +274,7 @@ describe('Transcription — flux de segments', () => {
     ).toThrow(OutOfOrderBatchError);
   });
 
-  it('refuse des segments qui se chevauchent dans le lot', () => {
+  it('refuses segments that overlap inside the batch', () => {
     expect(() =>
       transcription.appendTranscribedSegments({
         at: SEGMENTS_AT,
@@ -285,7 +285,7 @@ describe('Transcription — flux de segments', () => {
     ).toThrow(OverlappingSegmentsError);
   });
 
-  it('refuse un lot qui revient avant le dernier segment déjà reçu', () => {
+  it('refuses a batch that goes back before the last segment already received', () => {
     transcription.appendTranscribedSegments({
       at: SEGMENTS_AT,
       runId: 'run-1',
@@ -303,18 +303,18 @@ describe('Transcription — flux de segments', () => {
     ).toThrow(OverlappingSegmentsError);
   });
 
-  it('refuse un lot venu d\'une tentative remplacée', () => {
+  it('refuses a batch coming from a replaced run', () => {
     expect(() =>
       transcription.appendTranscribedSegments({
         at: SEGMENTS_AT,
-        runId: 'run-perime',
+        runId: 'expired-run',
         batchSequence: 1,
         segments: batch([0, 1_000, 'un']),
       }),
     ).toThrow(StaleRunError);
   });
 
-  it('refuse un lot quand la transcription n\'est plus en cours', () => {
+  it('refuses a batch when the transcription is no longer in progress', () => {
     transcription.complete({ runId: 'run-1', at: LEASE_UNTIL });
 
     expect(() =>
@@ -327,7 +327,7 @@ describe('Transcription — flux de segments', () => {
     ).toThrow(IllegalTranscriptionStateError);
   });
 
-  it('fait avancer la séquence même quand le lot est vide de parole', () => {
+  it('advances the sequence even when the batch holds no speech', () => {
     transcription.appendTranscribedSegments({ at: SEGMENTS_AT, runId: 'run-1', batchSequence: 1, segments: [] });
     transcription.appendTranscribedSegments({
       at: SEGMENTS_AT,
@@ -341,10 +341,10 @@ describe('Transcription — flux de segments', () => {
   });
 });
 
-describe('Transcription — bail', () => {
-  it('repousse le bail du run courant sans produire d\'événement', () => {
+describe('Transcription — lease', () => {
+  it('pushes back the lease of the current run without producing an event', () => {
     const transcription = aStartedTranscription();
-    // Le bail court LEASE_SECONDS à partir de l'instant du signe de vie, dérivé par l'aggregate.
+    // The lease runs LEASE_SECONDS from the heartbeat instant, derived by the aggregate.
     const renewedAt = new Date('2026-03-01T10:01:00.000Z');
     const renewed = new Date('2026-03-01T10:02:00.000Z');
 
@@ -355,15 +355,15 @@ describe('Transcription — bail', () => {
     expect(transcription.pullEvents()).toEqual([]);
   });
 
-  it('refuse de repousser le bail d\'une tentative remplacée', () => {
+  it('refuses to push back the lease of a replaced run', () => {
     const transcription = aStartedTranscription();
 
     expect(() =>
-      transcription.renewLease({ runId: 'autre-run', leaseSeconds: LEASE_SECONDS, at: REQUESTED_AT }),
+      transcription.renewLease({ runId: 'other-run', leaseSeconds: LEASE_SECONDS, at: REQUESTED_AT }),
     ).toThrow(StaleRunError);
   });
 
-  it('refuse une durée de bail qui n\'en est pas une', () => {
+  it('refuses a lease duration that is not one', () => {
     const transcription = aStartedTranscription();
 
     for (const leaseSeconds of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
@@ -375,8 +375,8 @@ describe('Transcription — bail', () => {
 });
 
 // Invariant 3
-describe('Transcription — complétion', () => {
-  it('achève la transcription et libère le bail', () => {
+describe('Transcription — completion', () => {
+  it('completes the transcription and releases the lease', () => {
     const transcription = aStartedTranscription();
     transcription.appendTranscribedSegments({
       at: SEGMENTS_AT,
@@ -402,7 +402,7 @@ describe('Transcription — complétion', () => {
     ]);
   });
 
-  it('accepte une transcription sans aucun segment : le média peut être muet', () => {
+  it('accepts a transcription with no segment at all: the media may be silent', () => {
     const transcription = aStartedTranscription();
 
     transcription.complete({ runId: 'run-1', at: LEASE_UNTIL });
@@ -411,53 +411,53 @@ describe('Transcription — complétion', () => {
     expect(transcription.state().segments).toEqual([]);
   });
 
-  it('refuse la complétion hors tentative en cours', () => {
+  it('refuses completion outside a run in progress', () => {
     const pending = aPendingTranscription();
     expect(() => pending.complete({ runId: 'run-1', at: LEASE_UNTIL })).toThrow(
       IllegalTranscriptionStateError,
     );
 
     const started = aStartedTranscription();
-    expect(() => started.complete({ runId: 'autre-run', at: LEASE_UNTIL })).toThrow(StaleRunError);
+    expect(() => started.complete({ runId: 'other-run', at: LEASE_UNTIL })).toThrow(StaleRunError);
   });
 });
 
 // Invariant 4
-describe('Transcription — échec', () => {
-  it('passe en échec, retient la raison et libère le bail', () => {
+describe('Transcription — failure', () => {
+  it('moves to failed, keeps the reason and releases the lease', () => {
     const transcription = aStartedTranscription();
 
-    transcription.fail({ runId: 'run-1', reason: 'whisper a rendu 137', at: LEASE_UNTIL });
+    transcription.fail({ runId: 'run-1', reason: 'whisper returned 137', at: LEASE_UNTIL });
 
     const state = transcription.state();
     expect(state.status).toBe('failed');
-    expect(state.failureReason).toBe('whisper a rendu 137');
+    expect(state.failureReason).toBe('whisper returned 137');
     expect(state.leaseExpiresAt).toBeNull();
     expect(transcription.pullEvents()).toEqual([
       {
         name: 'transcription.failed',
         transcriptionId: transcription.id,
         ownerId: 'owner-a',
-        reason: 'whisper a rendu 137',
+        reason: 'whisper returned 137',
         occurredAt: LEASE_UNTIL,
       },
     ]);
   });
 
-  it('refuse l\'échec hors tentative en cours', () => {
+  it('refuses a failure outside a run in progress', () => {
     const transcription = aStartedTranscription();
 
-    expect(() => transcription.fail({ runId: 'x', reason: 'boum', at: LEASE_UNTIL })).toThrow(
+    expect(() => transcription.fail({ runId: 'x', reason: 'boom', at: LEASE_UNTIL })).toThrow(
       StaleRunError,
     );
   });
 });
 
 // Invariant 5
-describe('Transcription — bail expiré', () => {
+describe('Transcription — expired lease', () => {
   const expired = new Date(LEASE_UNTIL.getTime() + 1);
 
-  it('remet la demande en file quand il reste des tentatives', () => {
+  it('requeues the request when attempts are left', () => {
     const transcription = aStartedTranscription();
 
     transcription.requeueExpiredLease({ at: expired, maxAttempts: 3 });
@@ -478,7 +478,7 @@ describe('Transcription — bail expiré', () => {
     ]);
   });
 
-  it('abandonne quand les tentatives sont épuisées', () => {
+  it('gives up when the attempts are exhausted', () => {
     const transcription = aStartedTranscription();
 
     transcription.requeueExpiredLease({ at: expired, maxAttempts: 1 });
@@ -497,7 +497,7 @@ describe('Transcription — bail expiré', () => {
     ]);
   });
 
-  it('ne fait rien tant que le bail court encore', () => {
+  it('does nothing while the lease is still running', () => {
     const transcription = aStartedTranscription();
 
     transcription.requeueExpiredLease({ at: new Date(LEASE_UNTIL.getTime() - 1), maxAttempts: 3 });
@@ -506,7 +506,7 @@ describe('Transcription — bail expiré', () => {
     expect(transcription.pullEvents()).toEqual([]);
   });
 
-  it('ne fait rien sur une transcription qui n\'est pas en cours', () => {
+  it('does nothing on a transcription that is not in progress', () => {
     const transcription = aPendingTranscription();
 
     transcription.requeueExpiredLease({ at: expired, maxAttempts: 3 });
@@ -531,7 +531,7 @@ describe('Transcription — correction', () => {
     return transcription;
   }
 
-  it('remplace le texte d\'un segment et le marque corrigé', () => {
+  it('replaces the text of a segment and marks it corrected', () => {
     const transcription = aCompletedTranscription();
 
     transcription.correctSegment({ ordinal: 1, text: 'bonjour', at: LEASE_UNTIL });
@@ -556,7 +556,7 @@ describe('Transcription — correction', () => {
     ]);
   });
 
-  it('refuse la correction d\'une transcription qui n\'est pas achevée', () => {
+  it('refuses to correct a transcription that is not completed', () => {
     const transcription = aStartedTranscription();
 
     expect(() => transcription.correctSegment({ ordinal: 1, text: 'x', at: LEASE_UNTIL })).toThrow(
@@ -564,7 +564,7 @@ describe('Transcription — correction', () => {
     );
   });
 
-  it('refuse un ordinal inconnu', () => {
+  it('refuses an unknown ordinal', () => {
     const transcription = aCompletedTranscription();
 
     expect(() => transcription.correctSegment({ ordinal: 99, text: 'x', at: LEASE_UNTIL })).toThrow(
@@ -572,7 +572,7 @@ describe('Transcription — correction', () => {
     );
   });
 
-  it('refuse une correction au texte vide', () => {
+  it('refuses a correction with empty text', () => {
     const transcription = aCompletedTranscription();
 
     expect(() => transcription.correctSegment({ ordinal: 1, text: ' ', at: LEASE_UNTIL })).toThrow(
@@ -580,7 +580,7 @@ describe('Transcription — correction', () => {
     );
   });
 
-  it('rend les sous-titres avec le texte corrigé', () => {
+  it('renders the subtitles with the corrected text', () => {
     const transcription = aCompletedTranscription();
 
     transcription.correctSegment({ ordinal: 1, text: 'bonjour', at: LEASE_UNTIL });
@@ -590,8 +590,8 @@ describe('Transcription — correction', () => {
 });
 
 // Invariant 7
-describe('Transcription — diarisation', () => {
-  /** Trois segments d'une seconde chacun, contigus, sur un run ouvert. */
+describe('Transcription — diarization', () => {
+  /** Three one-second segments, contiguous, on an open run. */
   function aTranscribedTranscription(): Transcription {
     const transcription = aStartedTranscription();
     transcription.appendTranscribedSegments({
@@ -614,7 +614,7 @@ describe('Transcription — diarisation', () => {
     return transcription.state().segments.map((segment) => segment.speakerIndex);
   }
 
-  it('attribue à chaque segment le locuteur qui le recouvre le plus', () => {
+  it('assigns each segment the speaker that covers it the most', () => {
     const transcription = aTranscribedTranscription();
 
     transcription.assignSpeakers({
@@ -623,7 +623,7 @@ describe('Transcription — diarisation', () => {
       at: SEGMENTS_AT,
     });
 
-    // Le deuxième segment est partagé 400/600 ms : il revient au locuteur 1.
+    // The second segment is split 400/600 ms: it goes to speaker 1.
     expect(assignedSpeakers(transcription)).toEqual([0, 1, 1]);
     expect(transcription.state().speakers).toEqual([
       { index: 0, name: null },
@@ -631,7 +631,7 @@ describe('Transcription — diarisation', () => {
     ]);
   });
 
-  it('annonce les locuteurs découverts et les segments réattribués', () => {
+  it('announces the discovered speakers and the reassigned segments', () => {
     const transcription = aTranscribedTranscription();
 
     transcription.assignSpeakers({
@@ -652,7 +652,7 @@ describe('Transcription — diarisation', () => {
     ]);
   });
 
-  it('laisse sans locuteur un segment qu\'aucun tour ne recouvre', () => {
+  it('leaves a segment that no turn covers without a speaker', () => {
     const transcription = aTranscribedTranscription();
 
     transcription.assignSpeakers({
@@ -661,11 +661,11 @@ describe('Transcription — diarisation', () => {
       at: SEGMENTS_AT,
     });
 
-    // Le tour s'arrête exactement où le deuxième segment commence : recouvrement nul.
+    // The turn stops exactly where the second segment starts: zero overlap.
     expect(assignedSpeakers(transcription)).toEqual([0, null, 0]);
   });
 
-  it('ne dépend pas de l\'ordre des tours reçus', () => {
+  it('does not depend on the order of the turns received', () => {
     const ordered = aTranscribedTranscription();
     const shuffled = aTranscribedTranscription();
     const spans: [number, number, number][] = [[0, 1_200, 0], [1_200, 1_800, 2], [1_800, 3_000, 1]];
@@ -680,7 +680,7 @@ describe('Transcription — diarisation', () => {
     expect(assignedSpeakers(shuffled)).toEqual(assignedSpeakers(ordered));
   });
 
-  it('efface l\'attribution quand la diarisation ne rend aucun tour', () => {
+  it('clears the assignment when diarization returns no turn', () => {
     const transcription = aTranscribedTranscription();
     transcription.assignSpeakers({ runId: 'run-1', turns: turns([0, 3_000, 0]), at: SEGMENTS_AT });
 
@@ -690,7 +690,7 @@ describe('Transcription — diarisation', () => {
     expect(transcription.state().speakers).toEqual([]);
   });
 
-  it('rend le même état quand le worker rejoue la même publication', () => {
+  it('yields the same state when the worker replays the same publication', () => {
     const transcription = aTranscribedTranscription();
     const spans: [number, number, number][] = [[0, 1_500, 1], [1_500, 3_000, 0]];
     transcription.assignSpeakers({ runId: 'run-1', turns: turns(...spans), at: SEGMENTS_AT });
@@ -701,7 +701,7 @@ describe('Transcription — diarisation', () => {
     expect(transcription.state()).toEqual(once);
   });
 
-  it('garde le nom déjà donné à un locuteur que la diarisation retrouve', () => {
+  it('keeps the name already given to a speaker that diarization finds again', () => {
     const transcription = aTranscribedTranscription();
     transcription.assignSpeakers({ runId: 'run-1', turns: turns([0, 3_000, 0]), at: SEGMENTS_AT });
     transcription.renameSpeaker({ index: 0, name: 'Marc', at: SEGMENTS_AT });
@@ -718,7 +718,7 @@ describe('Transcription — diarisation', () => {
     ]);
   });
 
-  it('refuse une attribution qui vient d\'une tentative remplacée', () => {
+  it('refuses an assignment coming from a replaced run', () => {
     const transcription = aTranscribedTranscription();
 
     expect(() =>
@@ -730,7 +730,7 @@ describe('Transcription — diarisation', () => {
     ).toThrow(StaleRunError);
   });
 
-  it('oublie les locuteurs quand une nouvelle tentative démarre', () => {
+  it('forgets the speakers when a new attempt starts', () => {
     const transcription = aTranscribedTranscription();
     transcription.assignSpeakers({ runId: 'run-1', turns: turns([0, 3_000, 0]), at: SEGMENTS_AT });
     transcription.releaseRun({ runId: 'run-1', at: LEASE_UNTIL });
@@ -746,7 +746,7 @@ describe('Transcription — diarisation', () => {
     expect(transcription.state().segments).toEqual([]);
   });
 
-  it('renomme un locuteur pour toute la transcription d\'un coup', () => {
+  it('renames a speaker across the whole transcription at once', () => {
     const transcription = aTranscribedTranscription();
     transcription.assignSpeakers({
       runId: 'run-1',
@@ -757,7 +757,7 @@ describe('Transcription — diarisation', () => {
 
     transcription.renameSpeaker({ index: 0, name: '  Marc  ', at: LEASE_UNTIL });
 
-    expect(transcription.render('txt')).toBe('Marc : un\nLocuteur 2 : deux\nMarc : trois\n');
+    expect(transcription.render('txt')).toBe('Marc : un\nSpeaker 2 : deux\nMarc : trois\n');
     expect(transcription.pullEvents()).toEqual([
       {
         name: 'transcription.speaker-renamed',
@@ -770,7 +770,7 @@ describe('Transcription — diarisation', () => {
     ]);
   });
 
-  it('refuse de renommer un locuteur que la diarisation n\'a pas trouvé', () => {
+  it('refuses to rename a speaker that diarization did not find', () => {
     const transcription = aTranscribedTranscription();
     transcription.assignSpeakers({ runId: 'run-1', turns: turns([0, 3_000, 0]), at: SEGMENTS_AT });
 
@@ -779,7 +779,7 @@ describe('Transcription — diarisation', () => {
     );
   });
 
-  it('refuse un nom de locuteur vide', () => {
+  it('refuses an empty speaker name', () => {
     const transcription = aTranscribedTranscription();
     transcription.assignSpeakers({ runId: 'run-1', turns: turns([0, 3_000, 0]), at: SEGMENTS_AT });
 
@@ -790,8 +790,8 @@ describe('Transcription — diarisation', () => {
 });
 
 // Invariant 8
-describe('Transcription — aller-retour de persistance', () => {
-  it('rend exactement l\'état qu\'on lui a confié', () => {
+describe('Transcription — persistence round trip', () => {
+  it('returns exactly the state it was handed', () => {
     const state: TranscriptionState = {
       id: '33333333-3333-4333-8333-333333333333',
       ownerId: 'owner-b',
@@ -824,7 +824,7 @@ describe('Transcription — aller-retour de persistance', () => {
     expect(Transcription.restore(state).state()).toEqual(state);
   });
 
-  it('reprend le fil du flux de segments après une relecture', () => {
+  it('picks the segment stream back up after a reload', () => {
     const original = aStartedTranscription();
     original.appendTranscribedSegments({
       at: SEGMENTS_AT,
@@ -845,7 +845,7 @@ describe('Transcription — aller-retour de persistance', () => {
     expect(reloaded.state().lastAppliedBatchSequence).toBe(2);
   });
 
-  it('ne ressort pas les événements d\'une vie antérieure', () => {
+  it('does not bring back the events of a previous life', () => {
     const original = aPendingTranscription();
 
     expect(Transcription.restore(original.state()).pullEvents()).toEqual([]);
@@ -853,12 +853,12 @@ describe('Transcription — aller-retour de persistance', () => {
 });
 
 // Invariant 9
-describe('Transcription — placement du calcul', () => {
-  it('naît calculée par le service quand personne n\'a choisi', () => {
+describe('Transcription — placement of the computation', () => {
+  it('is born computed by the service when nobody chose', () => {
     expect(aPendingTranscription().state().placement).toBe('service');
   });
 
-  it('retient le placement choisi à la demande', () => {
+  it('keeps the placement chosen at request time', () => {
     const transcription = Transcription.request({
       id: 'id-2',
       ownerId: 'owner-a',
@@ -876,7 +876,7 @@ describe('Transcription — placement du calcul', () => {
     expect(transcription.state().placement).toBe('owner');
   });
 
-  it('bascule une demande en attente et annonce le changement', () => {
+  it('switches a pending request and announces the change', () => {
     const transcription = aPendingTranscription();
 
     transcription.changePlacement({ placement: 'owner', at: SEGMENTS_AT });
@@ -893,7 +893,7 @@ describe('Transcription — placement du calcul', () => {
     ]);
   });
 
-  it('ne fait rien, et n\'annonce rien, quand le placement demandé est déjà le bon', () => {
+  it('does nothing, and announces nothing, when the requested placement is already set', () => {
     const transcription = aPendingTranscription();
 
     transcription.changePlacement({ placement: 'service', at: SEGMENTS_AT });
@@ -901,7 +901,7 @@ describe('Transcription — placement du calcul', () => {
     expect(transcription.pullEvents()).toEqual([]);
   });
 
-  it('refuse de déplacer une tentative en cours', () => {
+  it('refuses to move a run in progress', () => {
     const transcription = aStartedTranscription();
 
     expect(() =>
@@ -910,7 +910,7 @@ describe('Transcription — placement du calcul', () => {
     expect(transcription.state().placement).toBe('service');
   });
 
-  it('laisse une transcription achevée redemander son placement courant, sans lever', () => {
+  it('lets a completed transcription ask for its current placement again without throwing', () => {
     const transcription = aStartedTranscription();
     transcription.complete({ runId: 'run-1', at: LEASE_UNTIL });
 

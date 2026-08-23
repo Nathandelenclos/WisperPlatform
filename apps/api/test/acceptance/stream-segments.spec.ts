@@ -10,7 +10,7 @@ import {
   type TranscriptionPlatform,
 } from './platform';
 
-describe('Scénario : le worker envoie ses segments au fil de l\'eau', () => {
+describe('Scenario: the worker streams its segments as they come', () => {
   let platform: TranscriptionPlatform;
   let transcriptionId: string;
   let runId: string;
@@ -20,7 +20,7 @@ describe('Scénario : le worker envoie ses segments au fil de l\'eau', () => {
     ({ transcriptionId, runId } = await aClaimedTranscription(platform));
   });
 
-  it('accumule deux lots successifs et annonce chaque lot séparément', async () => {
+  it('accumulates two successive batches and announces each batch separately', async () => {
     await platform.appendTranscribedSegments.execute({
       transcriptionId,
       runId,
@@ -71,7 +71,8 @@ describe('Scénario : le worker envoie ses segments au fil de l\'eau', () => {
       'transcription.segments-appended',
     ]);
     const [firstBatch, secondBatch] = platform.publisher.published;
-    // L'instant diffusé au navigateur doit venir de l'horloge applicative, jamais de l'horloge murale.
+    // The instant broadcast to the browser must come from the application clock, never from
+    // the wall clock.
     expect(firstBatch).toMatchObject({
       transcriptionId,
       ownerId: OWNER,
@@ -85,7 +86,7 @@ describe('Scénario : le worker envoie ses segments au fil de l\'eau', () => {
     ).toEqual(view.segments.slice(2));
   });
 
-  it('écarte les segments sans parole sans casser la séquence des lots', async () => {
+  it('drops the segments with no speech without breaking the batch sequence', async () => {
     await platform.appendTranscribedSegments.execute({
       transcriptionId,
       runId,
@@ -105,7 +106,7 @@ describe('Scénario : le worker envoie ses segments au fil de l\'eau', () => {
     expect(platform.publisher.names()).toEqual(['transcription.segments-appended']);
   });
 
-  it('garde le bail vivant sur un signe de vie du worker', async () => {
+  it('keeps the lease alive on a sign of life from the worker', async () => {
     platform.clock.advanceSeconds(30);
 
     const { leaseExpiresAt } = await platform.renewTranscriptionLease.execute({
@@ -117,7 +118,7 @@ describe('Scénario : le worker envoie ses segments au fil de l\'eau', () => {
     expect(platform.publisher.published).toEqual([]);
   });
 
-  it('refuse un lot venu d\'une tentative qui n\'est plus la bonne', async () => {
+  it('refuses a batch coming from an attempt that is no longer the current one', async () => {
     await expect(
       platform.appendTranscribedSegments.execute({
         transcriptionId,
@@ -128,7 +129,7 @@ describe('Scénario : le worker envoie ses segments au fil de l\'eau', () => {
     ).rejects.toThrow(StaleRunError);
   });
 
-  it('refuse un lot qui saute une place dans la séquence', async () => {
+  it('refuses a batch that skips a place in the sequence', async () => {
     await expect(
       platform.appendTranscribedSegments.execute({
         transcriptionId,
@@ -140,8 +141,8 @@ describe('Scénario : le worker envoie ses segments au fil de l\'eau', () => {
   });
 });
 
-describe('Scénario : le worker re-poste un lot après un timeout réseau', () => {
-  it('ne duplique rien et ne réannonce rien', async () => {
+describe('Scenario: the worker re-posts a batch after a network timeout', () => {
+  it('duplicates nothing and re-announces nothing', async () => {
     const platform = aPlatform();
     const { transcriptionId, runId } = await aClaimedTranscription(platform);
     const batch = {
@@ -163,7 +164,7 @@ describe('Scénario : le worker re-poste un lot après un timeout réseau', () =
     expect(platform.publisher.names()).toEqual(['transcription.segments-appended']);
   });
 
-  it('accepte le lot suivant comme si le rejeu n\'avait pas eu lieu', async () => {
+  it('accepts the next batch as if the replay had never happened', async () => {
     const platform = aPlatform();
     const { transcriptionId, runId } = await aClaimedTranscription(platform);
     const batch = {

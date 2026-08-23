@@ -7,27 +7,27 @@ import type { Claimant } from '../../application/ports/worker-identities';
 import type { WhisperModel } from '../../domain/transcription-settings';
 
 /**
- * File d'attente technique. Elle SÉLECTIONNE, elle ne décide rien : aucune transition de
- * statut, aucune tentative incrémentée, aucun bail posé ici. C'est l'aggregate qui transitionne
- * une fois chargé par le use case.
+ * Technical queue. It SELECTS, it decides nothing: no status transition, no incremented
+ * attempt, no lease set here. The aggregate is what transitions, once the use case has loaded
+ * it.
  */
 export class DrizzleTranscriptionQueue implements TranscriptionQueue {
   constructor(private readonly db: Database) {}
 
   /**
-   * Réservation atomique en UN seul aller-retour. Le verrou `for update skip locked` de la
-   * sous-requête garantit que deux workers concurrents ne peuvent pas se voir attribuer la même
-   * ligne : le second saute la ligne verrouillée, sa sous-requête ne rend rien, son `update`
-   * ne touche aucune ligne, et il obtient `null`.
+   * Atomic reservation in ONE single round trip. The `for update skip locked` lock of the
+   * subquery guarantees that two concurrent workers cannot be handed the same row: the second
+   * one skips the locked row, its subquery returns nothing, its `update` touches no row, and
+   * it gets `null`.
    *
-   * Une réservation est purement technique et expire seule : `reserved_at` plus vieux que
-   * `reservationSeconds` redevient réservable. C'est ce qui rend une transcription remise en
-   * file (bail expiré, donc au moins `leaseSeconds` après la réservation) immédiatement
-   * réclamable, sans qu'aucun adaptateur ait à effacer la colonne.
+   * A reservation is purely technical and expires on its own: a `reserved_at` older than
+   * `reservationSeconds` becomes reservable again. That is what makes a requeued transcription
+   * (expired lease, therefore at least `leaseSeconds` after the reservation) immediately
+   * claimable, without any adapter having to clear the column.
    *
-   * Le réclamant est traduit en une condition de sélection, jamais en filtrage après coup :
-   * ce qui n'est pas pour lui ne doit même pas être réservé, sinon deux workers se bloquent
-   * mutuellement sur des lignes qu'aucun des deux n'a le droit de prendre.
+   * The claimant is translated into a selection condition, never into filtering after the
+   * fact: what is not for it must not even be reserved, otherwise two workers block each other
+   * on rows neither of them is allowed to take.
    */
   async reserveNextPending(p: {
     claimant: Claimant;
@@ -69,7 +69,7 @@ export class DrizzleTranscriptionQueue implements TranscriptionQueue {
     return reserved.rows[0]?.id ?? null;
   }
 
-  /** Lève la réservation : la ligne redevient immédiatement visible pour la file. */
+  /** Lifts the reservation: the row becomes visible to the queue again immediately. */
   async clearReservation(transcriptionId: string): Promise<void> {
     await this.db
       .update(transcriptions)

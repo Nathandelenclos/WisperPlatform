@@ -10,11 +10,11 @@ const segments = [
   Segment.transcribed(2, TimeRange.fromMilliseconds(2_500, 3_661_234), 'Et bienvenue.'),
 ];
 
-/** Les mêmes segments, une fois la diarisation passée : deux voix qui alternent. */
+/** The same segments, once diarization has run: two voices taking turns. */
 const diarized = [segments[0].withSpeaker(0), segments[1].withSpeaker(1)];
 
 describe('renderSubtitles', () => {
-  it('rend un SRT numéroté à partir de 1, avec la virgule décimale', () => {
+  it('renders an SRT numbered from 1, with the decimal comma', () => {
     expect(renderSubtitles(segments, 'srt', [])).toBe(
       '1\n' +
         '00:00:00,000 --> 00:00:02,500\n' +
@@ -26,7 +26,7 @@ describe('renderSubtitles', () => {
     );
   });
 
-  it('rend un WebVTT en-têté, avec le point décimal', () => {
+  it('renders a WebVTT with a header, with the decimal dot', () => {
     expect(renderSubtitles(segments, 'vtt', [])).toBe(
       'WEBVTT\n' +
         '\n' +
@@ -38,11 +38,11 @@ describe('renderSubtitles', () => {
     );
   });
 
-  it('rend un texte brut, une ligne par segment', () => {
+  it('renders plain text, one line per segment', () => {
     expect(renderSubtitles(segments, 'txt', [])).toBe('Bonjour à tous.\nEt bienvenue.\n');
   });
 
-  it('écrit toujours les heures sur deux chiffres', () => {
+  it('always writes the hours on two digits', () => {
     const late = [
       Segment.transcribed(1, TimeRange.fromMilliseconds(9 * 3_600_000, 9 * 3_600_000 + 5), 'tard'),
     ];
@@ -50,14 +50,14 @@ describe('renderSubtitles', () => {
     expect(renderSubtitles(late, 'srt', [])).toContain('09:00:00,000 --> 09:00:00,005');
   });
 
-  it('rend un document vide quand il n\'y a aucun segment', () => {
+  it('renders an empty document when there is no segment', () => {
     expect(renderSubtitles([], 'srt', [])).toBe('');
     expect(renderSubtitles([], 'txt', [])).toBe('');
     expect(renderSubtitles([], 'vtt', [])).toBe('WEBVTT\n\n');
   });
 
-  it('ne préfixe rien quand aucun locuteur n\'est connu', () => {
-    // Une transcription sans diarisation rend exactement le document d'avant la diarisation.
+  it('prefixes nothing when no speaker is known', () => {
+    // A transcription without diarization renders exactly the document from before diarization.
     const speakers = [Speaker.discovered(0), Speaker.discovered(1)];
 
     expect(renderSubtitles(segments, 'srt', speakers)).toBe(renderSubtitles(segments, 'srt', []));
@@ -65,7 +65,7 @@ describe('renderSubtitles', () => {
     expect(renderSubtitles(segments, 'txt', speakers)).toBe(renderSubtitles(segments, 'txt', []));
   });
 
-  it('préfixe le SRT du nom du locuteur, « Locuteur N » à défaut', () => {
+  it('prefixes the SRT with the speaker name, "Speaker N" by default', () => {
     const speakers = [
       Speaker.discovered(0).withName(SpeakerName.of('Marc')),
       Speaker.discovered(1),
@@ -78,11 +78,11 @@ describe('renderSubtitles', () => {
         '\n' +
         '2\n' +
         '00:00:02,500 --> 01:01:01,234\n' +
-        'Locuteur 2 : Et bienvenue.\n',
+        'Speaker 2 : Et bienvenue.\n',
     );
   });
 
-  it('préfixe le texte brut de la même façon', () => {
+  it('prefixes the plain text in the same way', () => {
     const speakers = [
       Speaker.discovered(0).withName(SpeakerName.of('Marc')),
       Speaker.discovered(1).withName(SpeakerName.of('Léa')),
@@ -93,7 +93,7 @@ describe('renderSubtitles', () => {
     );
   });
 
-  it('rend le locuteur en balise de voix WebVTT', () => {
+  it('renders the speaker as a WebVTT voice tag', () => {
     const speakers = [
       Speaker.discovered(0).withName(SpeakerName.of('Marc')),
       Speaker.discovered(1),
@@ -106,11 +106,11 @@ describe('renderSubtitles', () => {
         '<v Marc>Bonjour à tous.\n' +
         '\n' +
         '00:00:02.500 --> 01:01:01.234\n' +
-        '<v Locuteur 2>Et bienvenue.\n',
+        '<v Speaker 2>Et bienvenue.\n',
     );
   });
 
-  it('échappe le nom dans la balise de voix, qui se terminerait au premier chevron', () => {
+  it('escapes the name inside the voice tag, which would end at the first angle bracket', () => {
     const speakers = [Speaker.discovered(0).withName(SpeakerName.of('Marc <M&A>'))];
 
     expect(renderSubtitles([diarized[0]], 'vtt', speakers)).toContain(
@@ -118,18 +118,18 @@ describe('renderSubtitles', () => {
     );
   });
 
-  it('échappe aussi le texte du segment, qui partage la ligne avec la balise', () => {
-    // Le texte est corrigeable par le propriétaire : une correction contenant `</v>` ne doit
-    // pas interagir avec le balisage qu'on vient d'introduire dans ce format.
+  it('escapes the segment text too, which shares the line with the tag', () => {
+    // The text is correctable by the owner: a correction containing `</v>` must not interact
+    // with the markup we have just introduced in this format.
     const forged = Segment.transcribed(1, TimeRange.fromMilliseconds(0, 1_000), '</v>fin & <i>');
 
     expect(renderSubtitles([forged], 'vtt', [])).toContain('&lt;/v&gt;fin &amp; &lt;i&gt;');
-    // SRT et texte brut ne portent aucun balisage : le texte y reste tel qu'il a été écrit.
+    // SRT and plain text carry no markup: the text stays there just as it was written.
     expect(renderSubtitles([forged], 'srt', [])).toContain('</v>fin & <i>');
     expect(renderSubtitles([forged], 'txt', [])).toBe('</v>fin & <i>\n');
   });
 
-  it('laisse sans préfixe un segment que la diarisation n\'a pas attribué', () => {
+  it('leaves unprefixed a segment that diarization did not assign', () => {
     const speakers = [Speaker.discovered(0).withName(SpeakerName.of('Marc'))];
 
     expect(renderSubtitles([diarized[0], segments[1]], 'txt', speakers)).toBe(
@@ -137,7 +137,7 @@ describe('renderSubtitles', () => {
     );
   });
 
-  it('retombe sur le nom par défaut quand la liste des locuteurs ne porte pas l\'indice', () => {
-    expect(renderSubtitles([diarized[1]], 'txt', [])).toBe('Locuteur 2 : Et bienvenue.\n');
+  it('falls back on the default name when the speaker list does not carry the index', () => {
+    expect(renderSubtitles([diarized[1]], 'txt', [])).toBe('Speaker 2 : Et bienvenue.\n');
   });
 });

@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Faux binaire `whisper`, utilisable tel quel via `WHISPER_BIN`.
+"""Fake `whisper` binary, usable as is through `WHISPER_BIN`.
 
-Imite la sortie verbose du vrai CLI — lignes de bruit comprises — puis écrit le fichier JSON
-attendu dans `--output_dir` et sort en 0. Permet la vérification de bout en bout sans GPU.
+Mimics the verbose output of the real CLI — noise lines included — then writes the expected
+JSON file into `--output_dir` and exits 0. Allows end-to-end verification without a GPU.
 
-Modes déclenchés par l'environnement :
-  FAKE_WHISPER_FAIL=1            sort en 3 après deux segments (chemin `fail`)
-  FAKE_WHISPER_HANG_SECONDS=N    dort N secondes après deux segments (chemin d'arrêt/SIGTERM)
-  FAKE_WHISPER_SEGMENTS=N        nombre de segments émis (défaut 12)
+Modes triggered by the environment:
+  FAKE_WHISPER_FAIL=1            exits 3 after two segments (`fail` path)
+  FAKE_WHISPER_HANG_SECONDS=N    sleeps N seconds after two segments (shutdown/SIGTERM path)
+  FAKE_WHISPER_SEGMENTS=N        number of emitted segments (default 12)
 """
 
 import argparse
@@ -21,7 +21,7 @@ LINE_DELAY_SECONDS = 0.02
 
 
 def format_timestamp(seconds):
-    """Même règle que `whisper.utils.format_timestamp` : `HH:` seulement si l'heure existe."""
+    """Same rule as `whisper.utils.format_timestamp`: `HH:` only when the hour exists."""
     milliseconds = round(seconds * 1000.0)
     hours, milliseconds = divmod(milliseconds, 3_600_000)
     minutes, milliseconds = divmod(milliseconds, 60_000)
@@ -54,7 +54,7 @@ def main():
     for index in range(total):
         start = index * SEGMENT_SECONDS
         end = start + SEGMENT_SECONDS
-        text = "Segment numero {}.".format(index + 1)
+        text = "Segment number {}.".format(index + 1)
         emit("[{} --> {}] {}".format(format_timestamp(start), format_timestamp(end), text))
         segments.append({"id": index, "start": float(start), "end": float(end), "text": " " + text})
 

@@ -1,18 +1,18 @@
 /**
- * Ce que la plateforme déduit du jeton porteur d'un worker : pour qui il travaille.
+ * What the platform infers from a worker's bearer token: who it works for.
  *
- * - `service` : un worker de la plateforme, qui porte le secret partagé ;
- * - `owner` : une machine déclarée par un utilisateur, qui porte une clé de machine.
+ * - `service`: a platform worker, which carries the shared secret;
+ * - `owner`: a machine declared by a user, which carries a machine key.
  *
- * C'est le seul fait dont la file a besoin. Un worker n'est jamais les deux, et un réclamant
- * ne se voit jamais proposer le travail de l'autre.
+ * This is the only fact the queue needs. A worker is never both, and a claimant is never
+ * offered the other one's work.
  */
 export type Claimant = { kind: 'service' } | { kind: 'owner'; ownerId: string };
 
 /**
- * Résolution du jeton porteur présenté par un worker. `null` signifie « jeton inconnu » —
- * mauvais secret partagé, clé inexistante ou clé révoquée, indistinctement : rien ne doit
- * permettre à un porteur de jeton de deviner laquelle des trois.
+ * Resolution of the bearer token presented by a worker. `null` means "unknown token" —
+ * wrong shared secret, non-existent key or revoked key, indistinguishably: nothing must let a
+ * token bearer guess which of the three.
  */
 export interface WorkerIdentities {
   resolve(bearerToken: string): Promise<Claimant | null>;

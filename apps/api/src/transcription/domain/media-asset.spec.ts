@@ -11,7 +11,7 @@ const valid = {
 };
 
 describe('MediaAsset', () => {
-  it('retient la description du média rangé', () => {
+  it('keeps the description of the stored media', () => {
     const media = MediaAsset.stored(valid);
 
     expect(media.storageKey).toBe(valid.storageKey);
@@ -20,7 +20,7 @@ describe('MediaAsset', () => {
     expect(media.byteSize).toBe(4_096);
   });
 
-  it('ramène le nom d\'origine à son basename', () => {
+  it('reduces the original name to its basename', () => {
     expect(
       MediaAsset.stored({ ...valid, originalName: '../../etc/passwd' }).originalName,
     ).toBe('passwd');
@@ -29,7 +29,7 @@ describe('MediaAsset', () => {
     ).toBe('son.wav');
   });
 
-  it('retire les caractères de contrôle et tronque à 255 caractères', () => {
+  it('strips control characters and truncates at 255 characters', () => {
     const media = MediaAsset.stored({ ...valid, originalName: `a\nb\u0000c${'x'.repeat(300)}.mp3` });
 
     expect(media.originalName.length).toBe(255);
@@ -37,17 +37,17 @@ describe('MediaAsset', () => {
     expect(media.originalName).not.toContain('\n');
   });
 
-  it('normalise de façon idempotente, pour que l\'aller-retour de persistance soit stable', () => {
-    // La troncature tombe pile sur une espace : sans nettoyage après coupe, le second passage
-    // rendrait un nom différent du premier.
-    const once = MediaAsset.stored({ ...valid, originalName: `dossier/${'y'.repeat(254)}  fin.mp3` });
+  it('normalizes idempotently, so that the persistence round trip is stable', () => {
+    // The truncation lands exactly on a space: without a trim after the cut, the second pass
+    // would return a name different from the first.
+    const once = MediaAsset.stored({ ...valid, originalName: `folder/${'y'.repeat(254)}  end.mp3` });
     const twice = MediaAsset.stored({ ...valid, originalName: once.originalName });
 
     expect(once.originalName).toBe('y'.repeat(254));
     expect(twice.originalName).toBe(once.originalName);
   });
 
-  it('refuse un média sans clé, sans type ou de taille absurde', () => {
+  it('rejects a media with no key, no type or an absurd size', () => {
     expect(() => MediaAsset.stored({ ...valid, storageKey: ' ' })).toThrow(InvalidMediaError);
     expect(() => MediaAsset.stored({ ...valid, contentType: '' })).toThrow(InvalidMediaError);
     expect(() => MediaAsset.stored({ ...valid, byteSize: 0 })).toThrow(InvalidMediaError);
@@ -57,8 +57,8 @@ describe('MediaAsset', () => {
     );
   });
 
-  it('refuse un nom vide une fois nettoyé', () => {
-    expect(() => MediaAsset.stored({ ...valid, originalName: 'dossier/' })).toThrow(
+  it('rejects a name that is empty once cleaned up', () => {
+    expect(() => MediaAsset.stored({ ...valid, originalName: 'folder/' })).toThrow(
       InvalidMediaError,
     );
   });

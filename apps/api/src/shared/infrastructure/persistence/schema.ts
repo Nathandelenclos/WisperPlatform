@@ -12,11 +12,11 @@ import {
 } from 'drizzle-orm/pg-core';
 
 /**
- * Tables de better-auth. Les NOMS DE PROPRIÉTÉS (camelCase) sont un contrat :
- * `better-auth/adapters/drizzle` résout ses champs par `schema[model][fieldName]`,
- * où `fieldName` est le nom camelCase du champ better-auth. Les noms de colonnes SQL
- * restent en snake_case, ce qui est la convention par défaut de l'adaptateur.
- * Vérifié dans `@better-auth/core@1.7.1/dist/db/get-tables.mjs`.
+ * better-auth tables. The PROPERTY NAMES (camelCase) are a contract:
+ * `better-auth/adapters/drizzle` resolves its fields through `schema[model][fieldName]`,
+ * where `fieldName` is the camelCase name of the better-auth field. The SQL column names
+ * stay in snake_case, which is the adapter's default convention.
+ * Verified in `@better-auth/core@1.7.1/dist/db/get-tables.mjs`.
  */
 export const user = pgTable(
   'user',
@@ -56,7 +56,8 @@ export const account = pgTable(
   'account',
   {
     id: text('id').primaryKey(),
-    // `issuer` est exigé depuis better-auth 1.7 et participe à l'unicité du compte externe.
+    // `issuer` is required as of better-auth 1.7 and takes part in the external account's
+    // uniqueness.
     issuer: text('issuer').notNull(),
     accountId: text('account_id').notNull(),
     providerId: text('provider_id').notNull(),
@@ -93,8 +94,8 @@ export const verification = pgTable(
 );
 
 /**
- * Aggregate `Transcription`. `reserved_at` / `reserved_by` sont des colonnes purement
- * techniques de file d'attente : l'aggregate ne les connaît pas et ne les écrit jamais.
+ * `Transcription` aggregate. `reserved_at` / `reserved_by` are purely technical queue
+ * columns: the aggregate does not know about them and never writes them.
  */
 export const transcriptions = pgTable(
   'transcriptions',
@@ -105,9 +106,9 @@ export const transcriptions = pgTable(
       .references(() => user.id, { onDelete: 'cascade' }),
     status: text('status').notNull(),
     /**
-     * Où la transcription doit être calculée : `service` (les workers de la plateforme) ou
-     * `owner` (les machines de son propriétaire). Défaut `service`, pour que toute demande
-     * écrite avant cette colonne reste calculée là où elle l'était.
+     * Where the transcription is to be computed: `service` (the platform workers) or `owner`
+     * (its owner's machines). Defaults to `service`, so that every request written before this
+     * column keeps being computed where it already was.
      */
     placement: text('placement').notNull().default('service'),
     model: text('model').notNull(),
@@ -115,9 +116,9 @@ export const transcriptions = pgTable(
     mediaStorageKey: text('media_storage_key').notNull(),
     mediaOriginalName: text('media_original_name').notNull(),
     mediaContentType: text('media_content_type').notNull(),
-    // `mode: 'number'` : sûr jusqu'à Number.MAX_SAFE_INTEGER (9 007 199 254 740 991 octets,
-    // soit ~8 PiO). La borne d'acceptation d'un média est MEDIA_MAX_BYTES (2 GiO par défaut),
-    // six ordres de grandeur en dessous : aucune perte de précision possible.
+    // `mode: 'number'`: safe up to Number.MAX_SAFE_INTEGER (9,007,199,254,740,991 bytes, i.e.
+    // ~8 PiB). The acceptance bound for a media file is MEDIA_MAX_BYTES (2 GiB by default),
+    // six orders of magnitude below: no loss of precision is possible.
     mediaByteSize: bigint('media_byte_size', { mode: 'number' }).notNull(),
     attempts: integer('attempts').notNull().default(0),
     currentRunId: uuid('current_run_id'),
@@ -130,8 +131,9 @@ export const transcriptions = pgTable(
     reservedAt: timestamp('reserved_at', { withTimezone: true }),
     reservedBy: text('reserved_by'),
     /**
-     * Verrou optimiste. Toute écriture d'un aggregate chargé exige la version lue et la
-     * remplace : deux écrivains partis du même état ne peuvent pas s'écraser en silence.
+     * Optimistic lock. Every write of a loaded aggregate requires the version that was read
+     * and replaces it: two writers starting from the same state cannot silently overwrite
+     * each other.
      */
     version: integer('version').notNull().default(1),
   },
@@ -153,7 +155,7 @@ export const transcriptionSegments = pgTable(
     endMs: integer('end_ms').notNull(),
     text: text('text').notNull(),
     corrected: boolean('corrected').notNull().default(false),
-    /** Locuteur attribué par la diarisation ; `null` quand elle n'a pas eu lieu. */
+    /** Speaker assigned by diarization; `null` when diarization did not run. */
     speakerIndex: integer('speaker_index'),
   },
   (table) => [
@@ -165,8 +167,8 @@ export const transcriptionSegments = pgTable(
 );
 
 /**
- * Locuteurs d'une transcription. L'indice vient du clustering de la diarisation, le nom du
- * propriétaire — d'où sa nullité : un locuteur existe avant d'avoir un nom.
+ * Speakers of a transcription. The index comes from the diarization clustering, the name from
+ * the owner — hence its nullability: a speaker exists before it has a name.
  */
 export const transcriptionSpeakers = pgTable(
   'transcription_speakers',
@@ -186,9 +188,9 @@ export const transcriptionSpeakers = pgTable(
 );
 
 /**
- * Clés de machine : le secret qu'un utilisateur colle dans la commande de lancement de son
- * worker. Seule l'empreinte est stockée, jamais le secret. La révocation est une date, pas une
- * suppression : la trace d'une machine reste lisible après un incident.
+ * Machine keys: the secret a user pastes into the launch command of their worker. Only the
+ * fingerprint is stored, never the secret. Revocation is a date, not a deletion: the trace of a
+ * machine stays readable after an incident.
  */
 export const workerKeys = pgTable(
   'worker_keys',
@@ -204,8 +206,8 @@ export const workerKeys = pgTable(
     revokedAt: timestamp('revoked_at', { withTimezone: true }),
   },
   (table) => [
-    // L'empreinte est le chemin d'authentification : l'unicité en fait une clé de recherche
-    // sûre, et interdit qu'un même secret ouvre deux comptes.
+    // The fingerprint is the authentication path: uniqueness makes it a safe lookup key, and
+    // forbids the same secret from opening two accounts.
     unique('worker_keys_secret_fingerprint_unique').on(table.secretFingerprint),
     index('worker_keys_owner_id_created_at_idx').on(table.ownerId, table.createdAt.desc()),
   ],

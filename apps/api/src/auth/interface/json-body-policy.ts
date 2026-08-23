@@ -1,14 +1,14 @@
 import type { IncomingMessage } from 'node:http';
 
-/** Préfixe des routes du fournisseur d'identité, corps compris. */
+/** Prefix of the identity provider routes, bodies included. */
 const AUTH_BASE_PATH = '/api/auth';
 
 /**
- * Décide si le corps d'une requête doit être analysé en JSON par l'application.
+ * Decides whether the body of a request must be parsed as JSON by the application.
  *
- * Les routes d'authentification sont exclues : better-auth lit lui-même le flux de la requête,
- * et un analyseur en amont le consommerait avant lui. Pour toutes les autres, on reproduit la
- * sélection par type de média que fait body-parser lorsqu'on ne lui impose pas de prédicat.
+ * The authentication routes are excluded: better-auth reads the request stream itself, and a
+ * parser upstream would consume it before it does. For every other route, this reproduces the
+ * media type selection body-parser makes when it is given no predicate.
  */
 export function shouldParseJsonBody(request: IncomingMessage): boolean {
   const path = (request.url ?? '').split('?', 1)[0];

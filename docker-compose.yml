@@ -1,21 +1,21 @@
-# Pile WisperPlatform auto-hébergée.
+# Self-hosted WisperPlatform stack.
 #
-# Toutes les valeurs viennent de `.env` (copié depuis `.env.example`, jamais commité) : aucun
-# secret n'est écrit ici.
+# Every value comes from `.env` (copied from `.env.example`, never committed): no secret is
+# written here.
 #
-# Portée des secrets : `web` n'en reçoit aucun, `worker` reçoit son seul jeton porteur — c'est
-# tout le point du jeton média HMAC, un worker qui détiendrait `MEDIA_TOKEN_SECRET` pourrait
-# forger l'accès au média de n'importe quel utilisateur. `migrate` n'a pas `env_file` : une
-# migration SQL n'a besoin que d'une chaîne de connexion, que son bloc `environment` définit.
-# Seul `api` reçoit le fichier entier, parce que lui seul consomme les trois secrets.
+# Scope of the secrets: `web` gets none, `worker` gets its single bearer token — that is the
+# whole point of the HMAC media token, a worker holding `MEDIA_TOKEN_SECRET` could forge access
+# to any user's media. `migrate` has no `env_file`: a SQL migration needs nothing but a
+# connection string, which its `environment` block defines. Only `api` receives the whole file,
+# because it alone consumes the three secrets.
 #
-# Démarrage : `docker compose build && docker compose up -d`.
-# L'image de l'API est construite une seule fois et réutilisée par le service `migrate`.
+# Startup: `docker compose build && docker compose up -d`.
+# The API image is built once and reused by the `migrate` service.
 
 name: wisper
 
-# Durcissement commun aux services applicatifs : racine en lecture seule, aucune capacité,
-# aucune escalade de privilège. Ce qui écrit passe par un tmpfs ou un volume nommé explicite.
+# Hardening shared by the application services: read-only root, no capability, no privilege
+# escalation. Whatever writes goes through a tmpfs or an explicit named volume.
 x-hardened: &hardened
   read_only: true
   cap_drop:
@@ -24,63 +24,63 @@ x-hardened: &hardened
     - no-new-privileges:true
   restart: unless-stopped
 
-# Tout ce que les deux workers — CPU et GPU — ont en commun. Seuls le device, l'identifiant,
-# la liste de modèles et les bornes de ressources les distinguent.
+# Everything both workers — CPU and GPU — have in common. Only the device, the identifier, the
+# model list and the resource bounds tell them apart.
 x-worker-env: &worker-env
   WISPER_API_URL: http://wisper-api:3000
-  # Le secret partagé n'existe que sous un nom, `WORKER_SHARED_TOKEN` : le worker le lit sous le
-  # sien, mais `.env` n'en porte qu'une valeur, donc aucune rotation ne peut n'en mettre qu'une
-  # moitié à jour et laisser le worker boucler sur des 401.
-  WISPER_WORKER_TOKEN: ${WORKER_SHARED_TOKEN:?WORKER_SHARED_TOKEN manquant dans .env}
+  # The shared secret exists under one name only, `WORKER_SHARED_TOKEN`: the worker reads it
+  # under its own, but `.env` carries a single value, so no rotation can update only one half of
+  # it and leave the worker looping on 401s.
+  WISPER_WORKER_TOKEN: ${WORKER_SHARED_TOKEN:?WORKER_SHARED_TOKEN missing from .env}
   WHISPER_BIN: ${WHISPER_BIN:-whisper}
   WHISPER_MODEL_DIR: /home/wisper/.cache/whisper
   POLL_INTERVAL_SECONDS: ${POLL_INTERVAL_SECONDS:-3}
   TMPDIR: /var/tmp/wisper
-  # Diarisation : les poids sont dans l'image, à l'emplacement que `diarization.py` cherche par
-  # défaut — rien à poser pour qu'elle marche. Ce qui reste réglable, c'est le coût et la
-  # sensibilité du regroupement : un seuil plus haut fond deux voix proches en une, un seuil plus
-  # bas coupe une même voix en plusieurs. Une valeur illisible éteint la passe, elle ne tue pas
-  # le worker, et un transcript sort quand même.
+  # Diarization: the weights are in the image, at the location `diarization.py` looks for by
+  # default — nothing to set for it to work. What stays tunable is the cost and the sensitivity
+  # of the clustering: a higher threshold merges two close voices into one, a lower one splits a
+  # single voice into several. An unreadable value switches the pass off, it does not kill the
+  # worker, and a transcript comes out all the same.
   WISPER_DIARIZATION_THREADS: ${WISPER_DIARIZATION_THREADS:-2}
   WISPER_DIARIZATION_CLUSTER_THRESHOLD: ${WISPER_DIARIZATION_CLUSTER_THRESHOLD:-0.5}
 
 x-worker-base: &worker-base
   <<: *hardened
-  # Portée minimale : le worker ne reçoit que son jeton porteur et l'URL de l'API. Il ne monte
-  # jamais le magasin de médias — il télécharge chaque média par jeton HTTP à courte durée.
+  # Minimal scope: the worker receives nothing but its bearer token and the API URL. It never
+  # mounts the media store — it downloads every media file with a short-lived HTTP token.
   user: "10001:10001"
   depends_on:
     wisper-api:
       condition: service_healthy
-  # Le worker traite SIGTERM comme un arrêt propre : on lui laisse le temps de signaler l'échec
-  # du job en cours plutôt que de laisser un bail expirer tout seul.
+  # The worker treats SIGTERM as a clean shutdown: we give it the time to report the failure of
+  # the current job rather than letting a lease expire on its own.
   stop_grace_period: 30s
   volumes:
-    # Tout `XDG_CACHE_HOME` est monté, pas seulement `whisper/` : la racine est en lecture seule,
-    # et une bibliothèque qui résoudrait son cache par XDG échouerait sinon. Les poids sont ainsi
-    # téléchargés une fois et partagés entre les deux workers.
+    # The whole `XDG_CACHE_HOME` is mounted, not just `whisper/`: the root is read-only, and a
+    # library resolving its cache through XDG would otherwise fail. The weights are thus
+    # downloaded once and shared between both workers.
     - whisper-models:/home/wisper/.cache
-    # Média téléchargé et sorties temporaires de whisper : plusieurs Gio, donc sur disque.
+    # Downloaded media and whisper's temporary outputs: several GiB, hence on disk.
     - worker-scratch:/var/tmp/wisper
   tmpfs:
     - /tmp:size=16m,mode=1777
   pids_limit: 512
 
 services:
-  # Nom préfixé, et non `postgres` : sur un hôte qui héberge plusieurs piles, le nom court
-  # existe chez les voisins et le DNS de Docker peut rendre le leur — une application qui se
-  # connecterait à la base d'à côté est un incident silencieux. Le nom du service EST le nom
-  # DNS : le préfixer suffit, là où un alias peut être réécrit par l'orchestrateur.
+  # Prefixed name, not `postgres`: on a host running several stacks, the short name also exists
+  # at the neighbours' and Docker's DNS may return theirs — an application connecting to the
+  # database next door is a silent incident. The service name IS the DNS name: prefixing it is
+  # enough, where an alias can be rewritten by the orchestrator.
   wisper-postgres:
     image: postgres:17-alpine@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73
-    # Seul service hors de l'ancre `x-hardened`, et c'est un plafond assumé. L'entrypoint
-    # officiel démarre en root pour initialiser PGDATA dans un volume neuf appartenant à root,
-    # puis abandonne ses privilèges vers l'utilisateur `postgres` (uid 70) : ni `user:` non
-    # root, ni racine en lecture seule ne tiennent au premier démarrage. Les capacités sont
-    # réduites aux cinq que cette initialisation exige — `DAC_OVERRIDE` comprise, sans quoi un
-    # root sans capacité ne peut pas écrire dans le répertoire du volume.
-    # Une fois le volume initialisé, `user: "70:70"` + `read_only` + tmpfs sur /tmp et
-    # /var/run/postgresql sont la marche suivante.
+    # The only service outside the `x-hardened` anchor, and it is a ceiling we accept. The
+    # official entrypoint starts as root to initialise PGDATA inside a fresh root-owned volume,
+    # then drops its privileges to the `postgres` user (uid 70): neither a non-root `user:` nor
+    # a read-only root survives the first startup. The capabilities are cut down to the five
+    # that initialisation requires — `DAC_OVERRIDE` included, without which a root stripped of
+    # capabilities cannot write into the volume directory.
+    # Once the volume is initialised, `user: "70:70"` + `read_only` + tmpfs on /tmp and
+    # /var/run/postgresql are the next step.
     cap_drop:
       - ALL
     cap_add:
@@ -93,13 +93,13 @@ services:
       - no-new-privileges:true
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER manquant dans .env}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD manquant dans .env}
-      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB manquant dans .env}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER missing from .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD missing from .env}
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB missing from .env}
       PGDATA: /var/lib/postgresql/data/pgdata
     volumes:
       - postgres-data:/var/lib/postgresql/data
-    # Aucun port publié : la base n'est joignable que depuis le réseau du projet.
+    # No published port: the database is only reachable from the project network.
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
       interval: 5s
@@ -110,18 +110,18 @@ services:
     mem_limit: 1g
     pids_limit: 256
 
-  # Migrations versionnées jouées en étape distincte et observable, avant tout démarrage de
-  # l'API : jamais au boot de l'application, sinon N instances migrent en concurrence.
+  # Versioned migrations run as a separate, observable step, before any API startup: never at
+  # application boot, otherwise N instances migrate concurrently.
   migrate:
     <<: *hardened
     restart: "no"
     image: wisper/api:${IMAGE_TAG:-dev}
-    # Image produite par le service `api` : elle n'est ni reconstruite ni tirée d'un registre.
+    # Image produced by the `api` service: it is neither rebuilt nor pulled from a registry.
     pull_policy: never
     command: ["node", "dist/shared/infrastructure/persistence/migrate.js"]
     environment:
-      # Portée réduite au strict nécessaire : pas de `env_file`, donc aucun des trois secrets
-      # applicatifs. Une migration SQL n'a besoin que de ces deux variables.
+      # Scope cut down to the bare minimum: no `env_file`, hence none of the three application
+      # secrets. A SQL migration needs nothing but these two variables.
       NODE_ENV: production
       DATABASE_URL: postgres://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@wisper-postgres:5432/${POSTGRES_DB:?}
     user: "1000:1000"
@@ -134,8 +134,8 @@ services:
     mem_limit: 512m
     pids_limit: 128
 
-  # Même raison : `api` est le nom le plus courant qui existe, et c'est celui que le front
-  # résout pour relayer /api. Un 502 vers le conteneur d'un voisin est le symptôme observé.
+  # Same reason: `api` is the most common name there is, and it is the one the front end
+  # resolves to proxy /api. A 502 towards a neighbour's container is the observed symptom.
   wisper-api:
     <<: *hardened
     image: wisper/api:${IMAGE_TAG:-dev}
@@ -149,23 +149,23 @@ services:
     env_file:
       - .env
     environment:
-      # Même renversement que pour `migrate` : `env_file` écraserait le NODE_ENV de l'image.
+      # Same reversal as for `migrate`: `env_file` would override the image's NODE_ENV.
       NODE_ENV: production
-      # Port d'écoute figé : le mapping de ports et la sonde ci-dessous visent 3000, une valeur
-      # héritée de `.env` désynchroniserait les trois.
+      # Listening port pinned: the port mapping and the healthcheck below both target 3000, a
+      # value inherited from `.env` would desynchronise the three.
       PORT: "3000"
-      # L'API joint Postgres par le nom du service, pas par le `localhost` du `.env` de dev.
+      # The API reaches Postgres by service name, not by the `localhost` of the dev `.env`.
       DATABASE_URL: postgres://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@wisper-postgres:5432/${POSTGRES_DB:?}
-      # Les envois multipart atterrissent dans `<MEDIA_STORE_DIR>/incoming` avant adoption : le
-      # volume doit donc absorber transitoirement deux fois la taille d'un média.
+      # Multipart uploads land in `<MEDIA_STORE_DIR>/incoming` before adoption: the volume must
+      # therefore transiently absorb twice the size of a media file.
       MEDIA_STORE_DIR: /app/media-store
     user: "1000:1000"
     depends_on:
       migrate:
         condition: service_completed_successfully
-    # Publié sur la boucle locale seulement : le front joint l'API par le réseau du projet
-    # (proxy nginx, même origine). Cette publication ne sert qu'au serveur de développement
-    # Vite, dont l'origine est la seule autorisée par le CORS de l'API.
+    # Published on the loopback only: the front end reaches the API through the project network
+    # (nginx proxy, same origin). This publication only serves the Vite development server,
+    # whose origin is the only one allowed by the API CORS.
     ports:
       - "127.0.0.1:${API_PORT:-3000}:3000"
     volumes:
@@ -192,18 +192,18 @@ services:
         workspace: .
       args:
         VCS_REF: ${VCS_REF:-unknown}
-    # Aucune variable : l'image ne contient que des fichiers statiques et nginx, et le front
-    # appelle l'API en chemin relatif sur la même origine.
+    # No variable: the image contains nothing but static files and nginx, and the front end
+    # calls the API on a relative path, same origin.
     user: "101:101"
-    # nginx résout l'amont `api` à l'exécution : il n'a pas besoin que l'API soit saine pour
-    # démarrer, seulement que le service existe dans le projet.
+    # nginx resolves the `api` upstream at runtime: it does not need the API to be healthy to
+    # start, only the service to exist in the project.
     depends_on:
       wisper-api:
         condition: service_started
     ports:
       - "${WEB_PORT:-8080}:8080"
-    # Seul point d'écriture de l'image non privilégiée : le fichier de pid et tous les
-    # `*_temp_path` de sa configuration de base pointent vers /tmp.
+    # The only writable spot of the unprivileged image: the pid file and every `*_temp_path` of
+    # its base configuration point to /tmp.
     tmpfs:
       - /tmp:size=64m,mode=1777,uid=101,gid=101
     healthcheck:
@@ -216,8 +216,8 @@ services:
     mem_limit: 128m
     pids_limit: 64
 
-  # Worker CPU. `WORKER_CPU_REPLICAS=0` l'éteint sans le supprimer : c'est ce qu'on fait sur une
-  # machine qui a une carte, pour ne pas se disputer la RAM avec le worker GPU.
+  # CPU worker. `WORKER_CPU_REPLICAS=0` switches it off without deleting it: that is what we do
+  # on a machine that has a card, so as not to fight the GPU worker over RAM.
   worker:
     <<: *worker-base
     image: wisper/worker:${IMAGE_TAG:-dev}
@@ -226,40 +226,40 @@ services:
       dockerfile: Dockerfile
       args:
         VCS_REF: ${VCS_REF:-unknown}
-        # Image sans les bibliothèques CUDA : trois fois plus légère, et suffisante ici.
+        # Image without the CUDA libraries: three times lighter, and enough here.
         TORCH_VARIANT: cpu
     deploy:
       replicas: ${WORKER_CPU_REPLICAS:-1}
     environment:
       <<: *worker-env
-      # `auto` sonde la carte au démarrage et retombe en CPU si elle est absente ; le worker
-      # annonce ce qu'il a trouvé dans son premier log (`device`, `threads`).
+      # `auto` probes the card at startup and falls back to CPU when it is missing; the worker
+      # announces what it found in its first log line (`device`, `threads`).
       WISPER_DEVICE: ${WISPER_DEVICE:-auto}
       WISPER_WORKER_ID: ${WISPER_WORKER_ID:-compose-worker}
-      # `large` demande ~6 Gio de poids en CPU : élargir la liste et la borne mémoire ensemble,
-      # jamais l'une seule — au-delà de la borne, le noyau tue le processus sans SIGTERM, donc
-      # sans échec signalé à l'API.
+      # `large` asks for ~6 GiB of weights on CPU: widen the list and the memory bound
+      # together, never one alone — past the bound, the kernel kills the process without
+      # SIGTERM, hence without a failure reported to the API.
       WISPER_WORKER_MODELS: ${WISPER_WORKER_MODELS:-tiny,base,small,medium}
     cpus: ${WORKER_CPUS:-4.0}
     mem_limit: ${WORKER_MEM_LIMIT:-8g}
 
-  # Le même worker, sur la carte graphique. Profil séparé, parce qu'une réservation de device
-  # fait échouer `docker compose up` sur une machine sans pilote NVIDIA :
+  # The same worker, on the graphics card. Separate profile, because a device reservation makes
+  # `docker compose up` fail on a machine without the NVIDIA driver:
   #     docker compose --profile gpu up -d
-  # Sur GPU whisper tourne en fp16 : `medium` tient dans 4 Gio de VRAM (une GTX 1050 Ti par
-  # exemple), `large` non. La RAM ne porte plus que le décodage audio et le processus.
+  # On GPU whisper runs in fp16: `medium` fits in 4 GiB of VRAM (a GTX 1050 Ti for instance),
+  # `large` does not. RAM then carries nothing but the audio decoding and the process.
   worker-gpu:
     <<: *worker-base
     profiles: [gpu]
-    # Image distincte : elle embarque le torch CUDA, l'autre non.
+    # Distinct image: this one bundles the CUDA torch, the other does not.
     image: wisper/worker-gpu:${IMAGE_TAG:-dev}
     build:
       context: ./worker
       dockerfile: Dockerfile
       args:
         VCS_REF: ${VCS_REF:-unknown}
-        # CUDA 12.4 : couvre les cartes Pascal (compute 6.1) et le pilote 550 de la machine.
-        # La roue par défaut de PyPI est en CUDA 13, qui ne prend ni l'un ni l'autre.
+        # CUDA 12.4: covers Pascal cards (compute 6.1) and the machine's driver 550.
+        # The default PyPI wheel is CUDA 13, which supports neither.
         TORCH_VARIANT: ${TORCH_VARIANT:-cu124}
     environment:
       <<: *worker-env
@@ -272,10 +272,10 @@ services:
 
 volumes:
   postgres-data:
-  # Médias d'origine, y compris le répertoire `incoming/` où atterrissent les envois multipart :
-  # monté en écriture sur l'API uniquement, jamais sur le worker.
+  # Original media, including the `incoming/` directory where multipart uploads land: mounted
+  # writable on the API only, never on the worker.
   media-store:
-  # Média téléchargé et répertoire de travail de whisper, côté worker.
+  # Downloaded media and whisper working directory, on the worker side.
   worker-scratch:
-  # Cache du worker, dont les poids de modèle whisper.
+  # Worker cache, including the whisper model weights.
   whisper-models:

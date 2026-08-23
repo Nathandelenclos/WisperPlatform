@@ -8,35 +8,35 @@ export type Database = NodePgDatabase<typeof schema>;
 
 export type DatabaseConnection = {
   readonly db: Database;
-  /** Exposé pour la fermeture propre à l'arrêt de l'application. */
+  /** Exposed for a clean close when the application shuts down. */
   readonly pool: Pool;
 };
 
-/** Jetons d'injection de la connexion. */
+/** Injection tokens for the connection. */
 export const DATABASE = Symbol('Database');
 export const DATABASE_POOL = Symbol('DatabasePool');
 
 /**
- * Bornes de temps du seul appel sortant de l'API. Sans elles, une base muette laisse une
- * requête pendante indéfiniment, et deux sauvegardes concurrentes sur la même transcription
- * s'attendent sans limite : le client, lui, reste accroché (le proxy tient une heure).
+ * Time bounds on the only outbound call the API makes. Without them, a mute database leaves a
+ * query pending indefinitely, and two concurrent saves on the same transcription wait for one
+ * another without limit — the client, meanwhile, stays hooked (the proxy holds for an hour).
  */
 const POOL_LIMITS = {
-  /** Attente maximale d'une connexion libre du pool. */
+  /** Longest wait for a free connection from the pool. */
   connectionTimeoutMillis: 5_000,
-  /** Une requête plus longue que ça est un incident, pas une lenteur. */
+  /** A query longer than this is an incident, not slowness. */
   statement_timeout: 30_000,
-  /** Un verrou de ligne qui ne vient pas en 5 s échoue au lieu de faire la queue. */
+  /** A row lock that does not come within 5 s fails instead of queueing up. */
   lock_timeout: 5_000,
-  /** Filet contre une transaction abandonnée qui garderait ses verrous. */
+  /** Safety net against an abandoned transaction that would keep holding its locks. */
   idle_in_transaction_session_timeout: 60_000,
   max: 10,
 } as const;
 
 /**
- * Bornes du migrateur : il attend peu un verrou — une migration coincée derrière une
- * transaction longue doit échouer vite plutôt que geler la base en gardant sa file de verrous
- * ACCESS EXCLUSIVE — mais son propre travail peut être long (création d'index, backfill).
+ * Migrator bounds: it waits little for a lock — a migration stuck behind a long transaction
+ * must fail fast rather than freeze the database by holding its queue of ACCESS EXCLUSIVE
+ * locks — but its own work may legitimately be long (index creation, backfill).
  */
 const MIGRATION_LIMITS = {
   connectionTimeoutMillis: 10_000,
@@ -47,15 +47,15 @@ const MIGRATION_LIMITS = {
 } as const;
 
 /**
- * Seul endroit où une chaîne de connexion est lue : elle vient de `Env`, jamais de
- * `process.env` directement. Les migrations ne sont PAS jouées ici.
+ * The only place where a connection string is read: it comes from `Env`, never from
+ * `process.env` directly. Migrations are NOT run here.
  */
 export function createDatabaseConnection(env: Pick<Env, 'DATABASE_URL'>): DatabaseConnection {
   const pool = new Pool({ connectionString: env.DATABASE_URL, ...POOL_LIMITS });
   return { db: drizzle(pool, { schema }), pool };
 }
 
-/** Connexion dédiée du migrateur : une seule session, bornes propres au travail de schéma. */
+/** Dedicated migrator connection: a single session, bounds specific to schema work. */
 export function createMigrationConnection(
   env: Pick<Env, 'DATABASE_URL'>,
 ): DatabaseConnection {

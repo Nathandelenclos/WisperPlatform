@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { InvalidEnvironmentError, loadEnv } from './env';
 
-/** Le minimum sans lequel la plateforme n'a pas le droit de démarrer. */
+/** The bare minimum without which the platform is not allowed to start. */
 const required = {
   DATABASE_URL: 'postgres://wisper@localhost:5432/wisper',
   WEB_ORIGIN: 'http://localhost:5173',
@@ -11,17 +11,17 @@ const required = {
   WORKER_SHARED_TOKEN: 'c'.repeat(32),
 };
 
-describe('loadEnv — connexion Google', () => {
-  it('traite une option laissée vide comme absente', () => {
-    // `.env.example` livre ces lignes vides pour qu'on sache qu'elles existent : copier
-    // l'exemple tel quel ne doit pas empêcher l'API de démarrer.
+describe('loadEnv — Google sign-in', () => {
+  it('treats an option left empty as absent', () => {
+    // `.env.example` ships those lines empty so that one knows they exist: copying the
+    // example as-is must not stop the API from starting.
     const env = loadEnv({ ...required, GOOGLE_CLIENT_ID: '', GOOGLE_CLIENT_SECRET: '  ' });
 
     expect(env.GOOGLE_CLIENT_ID).toBeUndefined();
     expect(env.GOOGLE_CLIENT_SECRET).toBeUndefined();
   });
 
-  it('retient les deux identifiants quand ils sont posés', () => {
+  it('keeps both credentials when they are set', () => {
     const env = loadEnv({
       ...required,
       GOOGLE_CLIENT_ID: 'client-id',
@@ -32,9 +32,9 @@ describe('loadEnv — connexion Google', () => {
     expect(env.GOOGLE_CLIENT_SECRET).toBe('client-secret');
   });
 
-  it('refuse de démarrer sur une configuration à moitié faite', () => {
-    // Mieux vaut un refus au démarrage qu'un bouton « Continuer avec Google » qui échoue
-    // au clic, chez quelqu'un qui croyait l'avoir configuré.
+  it('refuses to start on a half-done configuration', () => {
+    // A refusal at startup beats a "Continue with Google" button that fails on click, for
+    // someone who believed they had configured it.
     expect(() => loadEnv({ ...required, GOOGLE_CLIENT_ID: 'client-id' })).toThrow(
       InvalidEnvironmentError,
     );
@@ -43,12 +43,12 @@ describe('loadEnv — connexion Google', () => {
     );
   });
 
-  it('ne laisse jamais fuir une valeur dans le message de refus', () => {
+  it('never leaks a value into the refusal message', () => {
     try {
-      loadEnv({ ...required, GOOGLE_CLIENT_ID: 'secret-a-ne-pas-journaliser' });
-      expect.unreachable('la configuration à moitié faite doit être refusée');
+      loadEnv({ ...required, GOOGLE_CLIENT_ID: 'secret-that-must-not-be-logged' });
+      expect.unreachable('the half-done configuration must be refused');
     } catch (error) {
-      expect(String((error as Error).message)).not.toContain('secret-a-ne-pas-journaliser');
+      expect(String((error as Error).message)).not.toContain('secret-that-must-not-be-logged');
       expect(String((error as Error).message)).toContain('GOOGLE_CLIENT_ID');
     }
   });

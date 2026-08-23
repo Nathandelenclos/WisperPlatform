@@ -1,8 +1,8 @@
 import type { Transcription } from '../../domain/transcription';
 
 /**
- * Dépôt de l'aggregate `Transcription`. `save` écrit l'aggregate ENTIER — en-tête et segments —
- * dans une seule transaction : c'est ce qui rend l'application d'un lot idempotente au rejeu.
+ * Repository of the `Transcription` aggregate. `save` writes the WHOLE aggregate — header and
+ * segments — in a single transaction: that is what makes applying a batch idempotent on replay.
  */
 export interface TranscriptionRepository {
   save(transcription: Transcription): Promise<void>;

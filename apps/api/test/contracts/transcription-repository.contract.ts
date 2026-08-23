@@ -16,10 +16,10 @@ import {
 } from '../../src/transcription/domain/transcription-settings';
 
 /**
- * Propriétaires utilisés par la suite. Un adaptateur réel doit garantir leur existence avant de
- * rejouer la suite (contrainte de clé étrangère vers la table des comptes).
+ * Owners used by the suite. A real adapter must guarantee their existence before replaying the
+ * suite (foreign key constraint towards the accounts table).
  */
-// Instant d'arrivée d'un lot de segments, fourni par l'horloge applicative.
+// Arrival instant of a batch of segments, provided by the application clock.
 const APPENDED_AT = new Date('2026-03-01T10:00:30.000Z');
 export const CONTRACT_OWNER_A = '4a1b7d64-0000-4000-8000-0000000000aa';
 export const CONTRACT_OWNER_B = '4a1b7d64-0000-4000-8000-0000000000bb';
@@ -33,13 +33,13 @@ export type TranscriptionRepositoryHarness = {
 
 const REQUESTED_AT = new Date('2026-04-02T08:00:00.000Z');
 const LEASE_UNTIL = new Date('2026-04-02T08:05:00.000Z');
-// LEASE_UNTIL = REQUESTED_AT + LEASE_SECONDS : la durée est ce que l'aggregate accepte.
+// LEASE_UNTIL = REQUESTED_AT + LEASE_SECONDS: the duration is what the aggregate accepts.
 const LEASE_SECONDS = 300;
 
 
-/** Le réclamant d'un worker de la plateforme. */
+/** The claimant of a platform worker. */
 const SERVICE: Claimant = { kind: 'service' };
-/** Le réclamant d'une machine déclarée par le propriétaire A. */
+/** The claimant of a machine declared by owner A. */
 const MACHINE_OF_A: Claimant = { kind: 'owner', ownerId: CONTRACT_OWNER_A };
 
 function uuid(suffix: string): string {
@@ -73,9 +73,9 @@ function aRequest(p: {
 }
 
 /**
- * Suite de contrat du côté persistance du contexte `transcription` : dépôt de l'aggregate,
- * modèle de lecture et file de travail. Elle est rejouée à l'identique sur les doubles en
- * mémoire et sur l'adaptateur Postgres — aucune hypothèse sur la technique en dessous.
+ * Contract suite of the persistence side of the `transcription` context: aggregate repository,
+ * read model and work queue. It is replayed identically on the in-memory doubles and on the
+ * Postgres adapter — no assumption about the technique underneath.
  */
 export function describeTranscriptionRepositoryContract(
   name: string,
@@ -92,8 +92,8 @@ export function describeTranscriptionRepositoryContract(
       await harness.cleanup();
     });
 
-    describe('dépôt de l\'aggregate', () => {
-      it('relit un aggregate entier : segments, correction, bail et séquence de lots', async () => {
+    describe('aggregate repository', () => {
+      it('reads a whole aggregate back: segments, correction, lease, batch sequence', async () => {
         const transcription = aRequest({ id: uuid('1') });
         transcription.startTranscribing({
           runId: uuid('a1'),
@@ -158,7 +158,7 @@ export function describeTranscriptionRepositoryContract(
         ]);
       });
 
-      it('relit un aggregate en attente, sans bail, sans segment ni locuteur', async () => {
+      it('reads back a pending aggregate, no lease, no segment and no speaker', async () => {
         const transcription = aRequest({ id: uuid('2') });
 
         await harness.repository.save(transcription);
@@ -170,7 +170,7 @@ export function describeTranscriptionRepositoryContract(
         expect(reloaded?.state().speakers).toEqual([]);
       });
 
-      it('remplace l\'état précédent au lieu de l\'empiler', async () => {
+      it('replaces the previous state instead of stacking onto it', async () => {
         const transcription = aRequest({ id: uuid('3') });
         transcription.startTranscribing({
           runId: uuid('a3'),
@@ -200,7 +200,7 @@ export function describeTranscriptionRepositoryContract(
         expect(reloaded?.state().segments).toHaveLength(2);
       });
 
-      it('relit les locuteurs et le locuteur porté par chaque segment', async () => {
+      it('reads back the speakers and the speaker carried by each segment', async () => {
         const transcription = aRequest({ id: uuid('4') });
         transcription.startTranscribing({
           runId: uuid('a4'),
@@ -236,7 +236,7 @@ export function describeTranscriptionRepositoryContract(
           { index: 0, name: null },
           { index: 1, name: 'Marc' },
         ]);
-        // Le troisième segment n'est recouvert par aucun tour : il reste sans locuteur.
+        // The third segment is covered by no turn: it stays without a speaker.
         expect(reloaded?.state().segments.map((segment) => segment.speakerIndex)).toEqual([
           0,
           1,
@@ -244,7 +244,7 @@ export function describeTranscriptionRepositoryContract(
         ]);
       });
 
-      it('remplace le jeu de locuteurs au lieu de l\'empiler', async () => {
+      it('replaces the set of speakers instead of stacking onto it', async () => {
         const transcription = aRequest({ id: uuid('5') });
         transcription.startTranscribing({
           runId: uuid('a5'),
@@ -268,7 +268,7 @@ export function describeTranscriptionRepositoryContract(
         });
         await harness.repository.save(transcription);
 
-        // Une seconde passe ne trouve plus qu'une voix : la première ne doit pas survivre.
+        // A second pass finds only one voice: the first one must not survive.
         transcription.assignSpeakers({
           runId: uuid('a5'),
           at: APPENDED_AT,
@@ -281,17 +281,17 @@ export function describeTranscriptionRepositoryContract(
         expect(reloaded?.state().segments[0].speakerIndex).toBe(0);
       });
 
-      it('rend null pour un aggregate inconnu', async () => {
+      it('returns null for an unknown aggregate', async () => {
         expect(await harness.repository.findById(uuid('ff'))).toBeNull();
       });
 
-      it('refuse la seconde de deux écritures parties du même état', async () => {
-        // Cas nominal de la plateforme : l'utilisateur corrige un segment pendant que le
-        // worker publie un lot. Sans refus, la dernière écriture efface l'autre en silence.
+      it('refuses the second of two writes started from the same state', async () => {
+        // Nominal case of the platform: the user corrects a segment while the worker publishes a
+        // batch. Without a refusal, the last write silently erases the other.
         await harness.repository.save(aRequest({ id: uuid('2a') }));
         const first = await harness.repository.findById(uuid('2a'));
         const second = await harness.repository.findById(uuid('2a'));
-        if (first === null || second === null) throw new Error('aggregate introuvable');
+        if (first === null || second === null) throw new Error('aggregate not found');
 
         first.startTranscribing({
           runId: uuid('a2a'),
@@ -311,14 +311,14 @@ export function describeTranscriptionRepositoryContract(
         await expect(harness.repository.save(second)).rejects.toThrow(
           ConcurrentTranscriptionWriteError,
         );
-        // L'état gagnant est bien celui du premier écrivain, intact.
+        // The winning state is indeed the first writer's, intact.
         expect((await harness.repository.findById(uuid('2a')))?.state().claimedBy).toBe('worker-1');
       });
 
-      it('laisse un même aggregate rechargé écrire plusieurs fois de suite', async () => {
+      it('lets one and the same reloaded aggregate write several times in a row', async () => {
         await harness.repository.save(aRequest({ id: uuid('2b') }));
         const transcription = await harness.repository.findById(uuid('2b'));
-        if (transcription === null) throw new Error('aggregate introuvable');
+        if (transcription === null) throw new Error('aggregate not found');
 
         transcription.startTranscribing({
           runId: uuid('a2b'),
@@ -337,8 +337,8 @@ export function describeTranscriptionRepositoryContract(
       });
     });
 
-    describe('file de travail', () => {
-      it('ne remet jamais la même transcription à deux workers en concurrence', async () => {
+    describe('work queue', () => {
+      it('never hands the same transcription to two competing workers', async () => {
         await harness.repository.save(aRequest({ id: uuid('10') }));
 
         const reservations = await Promise.all([
@@ -362,7 +362,7 @@ export function describeTranscriptionRepositoryContract(
         expect(reservations.filter((id) => id === null)).toHaveLength(1);
       });
 
-      it('sert les demandes les plus anciennes d\'abord', async () => {
+      it('serves the oldest requests first', async () => {
         await harness.repository.save(
           aRequest({ id: uuid('11'), requestedAt: new Date('2026-04-02T09:00:00.000Z') }),
         );
@@ -381,7 +381,7 @@ export function describeTranscriptionRepositoryContract(
         expect(first).toBe(uuid('12'));
       });
 
-      it('ne propose que les modèles servis par le worker', async () => {
+      it('only offers the models served by the worker', async () => {
         await harness.repository.save(aRequest({ id: uuid('13'), model: 'large' }));
 
         expect(
@@ -404,7 +404,7 @@ export function describeTranscriptionRepositoryContract(
         ).toBe(uuid('13'));
       });
 
-      it('libère une réservation qu\'aucun worker n\'a honorée', async () => {
+      it('releases a reservation that no worker took up', async () => {
         await harness.repository.save(aRequest({ id: uuid('14') }));
         const reserve = (now: Date): Promise<string | null> =>
           harness.queue.reserveNextPending({
@@ -420,9 +420,9 @@ export function describeTranscriptionRepositoryContract(
         expect(await reserve(new Date(REQUESTED_AT.getTime() + 31_000))).toBe(uuid('14'));
       });
 
-      it('rend une transcription réclamable dès que sa réservation est levée', async () => {
-        // C'est ce qui rend utile la reddition d'une tentative : sans cette levée, la demande
-        // repasse en attente mais reste invisible jusqu'à la fin de la fenêtre de réservation.
+      it('makes a transcription claimable as soon as its reservation is lifted', async () => {
+        // This is what makes surrendering an attempt useful: without this lifting, the request
+        // goes back to pending but stays invisible until the end of the reservation window.
         await harness.repository.save(aRequest({ id: uuid('14b') }));
         const reserve = (now: Date): Promise<string | null> =>
           harness.queue.reserveNextPending({
@@ -441,11 +441,11 @@ export function describeTranscriptionRepositoryContract(
         expect(await reserve(REQUESTED_AT)).toBe(uuid('14b'));
       });
 
-      it('ignore la levée de réservation d\'une transcription inconnue', async () => {
+      it('ignores the reservation lift of an unknown transcription', async () => {
         await expect(harness.queue.clearReservation(uuid('fe'))).resolves.toBeUndefined();
       });
 
-      it('ne propose pas une transcription qui n\'est plus en attente', async () => {
+      it('does not offer a transcription that is no longer pending', async () => {
         const transcription = aRequest({ id: uuid('15') });
         transcription.startTranscribing({
           runId: uuid('a15'),
@@ -466,7 +466,7 @@ export function describeTranscriptionRepositoryContract(
         ).toBeNull();
       });
 
-      it('signale les transcriptions dont le bail est dépassé, les plus anciennes d\'abord', async () => {
+      it('reports the transcriptions whose lease has expired, the oldest first', async () => {
         const abandoned = aRequest({ id: uuid('16') });
         abandoned.startTranscribing({
           runId: uuid('a16'),
@@ -501,7 +501,7 @@ export function describeTranscriptionRepositoryContract(
         expect(stalled).toEqual([uuid('17'), uuid('16')]);
       });
 
-      it('borne le nombre de transcriptions abandonnées rendues', async () => {
+      it('bounds the number of abandoned transcriptions returned', async () => {
         for (const suffix of ['20', '21', '22']) {
           const transcription = aRequest({ id: uuid(suffix) });
           transcription.startTranscribing({
@@ -521,13 +521,13 @@ export function describeTranscriptionRepositoryContract(
         expect(stalled).toHaveLength(2);
       });
 
-      it('ne propose au service que les transcriptions placées sur le service', async () => {
+      it('only offers the service the transcriptions placed on the service', async () => {
         await harness.repository.save(aRequest({ id: uuid('23'), placement: 'owner' }));
 
         expect(
           await harness.queue.reserveNextPending({
             claimant: SERVICE,
-            workerId: 'worker-du-service',
+            workerId: 'service-worker',
             models: ['small'],
             reservationSeconds: 30,
             now: REQUESTED_AT,
@@ -539,7 +539,7 @@ export function describeTranscriptionRepositoryContract(
         expect(
           await harness.queue.reserveNextPending({
             claimant: SERVICE,
-            workerId: 'worker-du-service',
+            workerId: 'service-worker',
             models: ['small'],
             reservationSeconds: 30,
             now: REQUESTED_AT,
@@ -547,11 +547,10 @@ export function describeTranscriptionRepositoryContract(
         ).toBe(uuid('24'));
       });
 
-      it('ne propose à une machine que les transcriptions placées sur les machines de SON propriétaire', async () => {
-        // Placée sur le service : ce n'est pas le travail des machines, même celles du bon
-        // propriétaire.
+      it('only offers a machine transcriptions placed on the machines of ITS owner', async () => {
+        // Placed on the service: this is not the machines' work, even those of the right owner.
         await harness.repository.save(aRequest({ id: uuid('25'), placement: 'service' }));
-        // Placée sur les machines d'un AUTRE propriétaire.
+        // Placed on the machines of ANOTHER owner.
         await harness.repository.save(
           aRequest({ id: uuid('26'), ownerId: CONTRACT_OWNER_B, placement: 'owner' }),
         );
@@ -571,13 +570,13 @@ export function describeTranscriptionRepositoryContract(
         expect(await reserve()).toBe(uuid('27'));
       });
 
-      it('rend réclamable par le service une demande basculée vers lui', async () => {
+      it('makes a request switched over to the service claimable by it', async () => {
         const transcription = aRequest({ id: uuid('28'), placement: 'owner' });
         await harness.repository.save(transcription);
         const reserveForService = (): Promise<string | null> =>
           harness.queue.reserveNextPending({
             claimant: SERVICE,
-            workerId: 'worker-du-service',
+            workerId: 'service-worker',
             models: ['small'],
             reservationSeconds: 30,
             now: REQUESTED_AT,
@@ -586,25 +585,25 @@ export function describeTranscriptionRepositoryContract(
         expect(await reserveForService()).toBeNull();
 
         const reloaded = await harness.repository.findById(uuid('28'));
-        if (reloaded === null) throw new Error('aggregate introuvable');
+        if (reloaded === null) throw new Error('aggregate not found');
         reloaded.changePlacement({ placement: 'service', at: REQUESTED_AT });
         await harness.repository.save(reloaded);
 
         expect(await reserveForService()).toBe(uuid('28'));
       });
 
-      it('relit le placement écrit, service comme machine', async () => {
+      it('reads back the written placement, service as well as machine', async () => {
         await harness.repository.save(aRequest({ id: uuid('29'), placement: 'owner' }));
         await harness.repository.save(aRequest({ id: uuid('29a') }));
 
         expect((await harness.repository.findById(uuid('29')))?.state().placement).toBe('owner');
-        // Sans choix explicite, le service calcule : c'est aussi le défaut de la colonne.
+        // Without an explicit choice, the service computes: that is also the column's default.
         expect((await harness.repository.findById(uuid('29a')))?.state().placement).toBe('service');
       });
     });
 
-    describe('modèle de lecture du propriétaire', () => {
-      it('résume les transcriptions du propriétaire, la plus récente d\'abord', async () => {
+    describe('owner read model', () => {
+      it('summarizes the transcriptions of the owner, most recent first', async () => {
         const older = aRequest({
           id: uuid('30'),
           requestedAt: new Date('2026-04-02T08:00:00.000Z'),
@@ -657,7 +656,7 @@ export function describeTranscriptionRepositoryContract(
         });
       });
 
-      it('résume une transcription échouée sans segment', async () => {
+      it('summarizes a failed transcription with no segment', async () => {
         const transcription = aRequest({ id: uuid('33') });
         transcription.startTranscribing({
           runId: uuid('a33'),
@@ -665,20 +664,20 @@ export function describeTranscriptionRepositoryContract(
           leaseSeconds: LEASE_SECONDS,
           at: REQUESTED_AT,
         });
-        transcription.fail({ runId: uuid('a33'), reason: 'whisper introuvable', at: LEASE_UNTIL });
+        transcription.fail({ runId: uuid('a33'), reason: 'whisper not found', at: LEASE_UNTIL });
         await harness.repository.save(transcription);
 
         const summaries = await harness.catalog.listOwnedBy(CONTRACT_OWNER_A);
 
         expect(summaries).toHaveLength(1);
         expect(summaries[0].status).toBe('failed');
-        expect(summaries[0].failureReason).toBe('whisper introuvable');
+        expect(summaries[0].failureReason).toBe('whisper not found');
         expect(summaries[0].segmentCount).toBe(0);
         expect(summaries[0].durationMs).toBe(0);
         expect(summaries[0].completedAt).toBeNull();
       });
 
-      it('ne rend rien pour un propriétaire sans transcription', async () => {
+      it('returns nothing for an owner with no transcription', async () => {
         await harness.repository.save(aRequest({ id: uuid('34') }));
 
         expect(await harness.catalog.listOwnedBy(CONTRACT_OWNER_B)).toEqual([]);

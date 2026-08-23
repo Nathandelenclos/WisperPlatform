@@ -1,6 +1,6 @@
 /**
- * Journal structuré. Les champs sont des données techniques : jamais d'email, de jeton,
- * ni de nom de fichier utilisateur.
+ * Structured log. The fields are technical data: never an email, never a token, never a
+ * user file name.
  */
 export interface Logger {
   info(message: string, fields?: Record<string, unknown>): void;

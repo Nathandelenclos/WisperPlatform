@@ -7,25 +7,25 @@ import { TimeRange } from './time-range';
 const range = TimeRange.fromMilliseconds(0, 2_000);
 
 describe('Segment', () => {
-  it('naît non corrigé, avec un texte débarrassé de ses espaces', () => {
+  it('is born uncorrected, with a text stripped of its whitespace', () => {
     const segment = Segment.transcribed(1, range, '  bonjour à tous  ');
 
     expect(segment.ordinal).toBe(1);
     expect(segment.text).toBe('bonjour à tous');
     expect(segment.corrected).toBe(false);
-    // La diarisation est une passe distincte : un segment naît sans locuteur.
+    // Diarization is a separate pass: a segment is born without a speaker.
     expect(segment.speakerIndex).toBeNull();
     expect(segment.range.equals(range)).toBe(true);
   });
 
-  it('refuse un texte vide après nettoyage', () => {
+  it('rejects a text that is empty after trimming', () => {
     expect(() => Segment.transcribed(1, range, '   \n ')).toThrow(InvalidSegmentTextError);
     expect(() => Segment.transcribed(1, range, '')).toThrow(
       expect.objectContaining({ code: 'INVALID_SEGMENT_TEXT' }),
     );
   });
 
-  it('produit une nouvelle instance corrigée sans toucher à l\'originale', () => {
+  it('produces a new corrected instance without touching the original', () => {
     const original = Segment.transcribed(3, range, 'bonjour');
 
     const corrected = original.withCorrectedText('  Bonjour !  ');
@@ -38,13 +38,13 @@ describe('Segment', () => {
     expect(original.corrected).toBe(false);
   });
 
-  it('refuse une correction qui vide le texte', () => {
+  it('rejects a correction that empties the text', () => {
     const segment = Segment.transcribed(1, range, 'bonjour');
 
     expect(() => segment.withCorrectedText('  ')).toThrow(InvalidSegmentTextError);
   });
 
-  it('fait l\'aller-retour entre état et instance sans rien perdre', () => {
+  it('round-trips between state and instance without losing anything', () => {
     const state = {
       ordinal: 7,
       startMs: 1_000,
@@ -57,13 +57,13 @@ describe('Segment', () => {
     expect(Segment.restore(state).state()).toEqual(state);
   });
 
-  it('garde le locuteur attribué quand le texte est corrigé', () => {
+  it('keeps the assigned speaker when the text is corrected', () => {
     const segment = Segment.transcribed(1, range, 'bonjur').withSpeaker(1);
 
     expect(segment.withCorrectedText('bonjour').speakerIndex).toBe(1);
   });
 
-  it('produit une nouvelle instance quand le locuteur change, sans toucher à l\'originale', () => {
+  it('produces a new instance when the speaker changes, without touching the original', () => {
     const original = Segment.transcribed(1, range, 'bonjour').withSpeaker(0);
 
     const reassigned = original.withSpeaker(null);
@@ -72,9 +72,9 @@ describe('Segment', () => {
     expect(original.speakerIndex).toBe(0);
   });
 
-  it('refuse un indice de locuteur qui n\'est pas un entier positif ou nul', () => {
-    // Cette porte-là ne gardait rien : un indice invalide traversait le domaine et faisait
-    // lever le rendu d'un export, qui promet pourtant de se rendre en toutes circonstances.
+  it('rejects a speaker index that is not a non-negative integer', () => {
+    // This gate guarded nothing: an invalid index crossed the domain and made the rendering of
+    // an export throw, when that rendering promises to render under all circumstances.
     const segment = Segment.transcribed(1, range, 'bonjour');
 
     expect(() => segment.withSpeaker(-1)).toThrow(InvalidSpeakerError);

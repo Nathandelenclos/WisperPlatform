@@ -8,19 +8,19 @@ import { WorkerKey, type WorkerKeyState } from '../../domain/worker-key';
 type WorkerKeyRow = typeof workerKeys.$inferSelect;
 
 /**
- * Traduction état de l'aggregate ↔ colonnes. Ce mapping vit ici et nulle part ailleurs :
- * le domaine ignore qu'une base existe.
+ * Translation between aggregate state ↔ columns. This mapping lives here and nowhere else:
+ * the domain has no idea a database exists.
  */
 export class DrizzleWorkerKeyRepository implements WorkerKeyRepository {
   constructor(private readonly db: Database) {}
 
   /**
-   * Écriture unique pour la création comme pour la mise à jour : une clé tient dans une ligne.
+   * A single write for creation as for update: a key fits in one row.
    *
-   * ponytail: dernière écriture gagnante, sans verrou optimiste. Les seules écritures
-   * concurrentes possibles portent sur `last_seen_at` (deux workers du même propriétaire) et
-   * sur `revoked_at` (idempotent) : perdre une seconde de fraîcheur sur un horodatage ne coûte
-   * rien. Une colonne `version` serait la sortie si la clé portait un jour un état qui décide.
+   * ponytail: last write wins, with no optimistic lock. The only possible concurrent writes
+   * touch `last_seen_at` (two workers of the same owner) and `revoked_at` (idempotent): losing
+   * one second of freshness on a timestamp costs nothing. A `version` column would be the way
+   * out if the key ever carried state that decides something.
    */
   async save(key: WorkerKey): Promise<void> {
     const state = key.state();

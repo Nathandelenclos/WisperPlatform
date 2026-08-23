@@ -3,20 +3,20 @@ import type { ExecutionContext } from '@nestjs/common';
 
 import type { AuthenticatedUser } from '../application/ports/authentication';
 
-/** Requête enrichie par `SessionGuard`. Le champ n'est présent qu'après passage du guard. */
+/** Request enriched by `SessionGuard`. The field is only present once the guard has run. */
 export type AuthenticatedRequest = { authenticatedUser?: AuthenticatedUser };
 
 /**
- * Expose l'utilisateur de la session courante à un controller.
- * Échoue en 401 plutôt que de renvoyer `undefined` : sans `SessionGuard` en amont,
- * la route n'a aucune raison d'être servie.
+ * Exposes the user of the current session to a controller.
+ * Fails with a 401 rather than returning `undefined`: without `SessionGuard` upstream,
+ * there is no reason for the route to be served at all.
  */
 export const CurrentUser = createParamDecorator(
   (_data: unknown, context: ExecutionContext): AuthenticatedUser => {
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
     const user = request.authenticatedUser;
     if (user === undefined) {
-      throw new UnauthorizedException('Session requise');
+      throw new UnauthorizedException('Session required');
     }
     return user;
   },

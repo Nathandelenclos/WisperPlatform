@@ -9,8 +9,8 @@ const MS_PER_MINUTE = 60_000;
 const MS_PER_SECOND = 1_000;
 
 /**
- * `HH:MM:SS<sep>mmm`. Les heures sont toujours écrites sur deux chiffres ; le séparateur
- * décimal est la virgule en SRT et le point en WebVTT.
+ * `HH:MM:SS<sep>mmm`. Hours are always written on two digits — the decimal separator is the
+ * comma in SRT and the dot in WebVTT.
  */
 function formatTimestamp(totalMs: number, decimalSeparator: ',' | '.'): string {
   const hours = Math.floor(totalMs / MS_PER_HOUR);
@@ -24,11 +24,11 @@ function formatTimestamp(totalMs: number, decimalSeparator: ',' | '.'): string {
 }
 
 /**
- * Nom à écrire devant une réplique, ou `null` quand le segment n'a pas de locuteur — et le
- * document reste alors exactement celui d'une transcription sans diarisation.
+ * Name to write in front of a line of dialogue, or `null` when the segment has no speaker —
+ * and the document is then exactly the one of a transcription without diarization.
  *
- * Un indice absent de la liste retombe sur son nom par défaut : le document se rend, même si
- * la liste des locuteurs et les segments divergeaient.
+ * An index missing from the list falls back on its default name: the document renders, even
+ * if the list of speakers and the segments had diverged.
  */
 function labelOf(segment: Segment, labels: ReadonlyMap<number, string>): string | null {
   if (segment.speakerIndex === null) {
@@ -38,17 +38,16 @@ function labelOf(segment: Segment, labels: ReadonlyMap<number, string>): string 
 }
 
 /**
- * Le VTT porte du balisage — une balise de voix se termine au premier `>` — donc tout ce qui
- * finit sur la ligne de charge utile s'échappe : le nom du locuteur comme le texte du
- * segment. Échapper l'un et pas l'autre laissait un `</v>` frappé dans une correction
- * interagir avec la structure du fichier. SRT et texte brut n'ont pas de balisage : rien à
- * échapper là-bas.
+ * VTT carries markup — a voice tag ends at the first `>` — so everything that lands on the
+ * payload line is escaped: the speaker name as much as the segment text. Escaping one and not
+ * the other let a `</v>` typed into a correction interact with the structure of the file. SRT
+ * and plain text carry no markup: nothing to escape there.
  */
 function escapeVttText(value: string): string {
   return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-/** Rend les segments dans un format de sous-titres téléchargeable. */
+/** Renders the segments into a downloadable subtitle format. */
 export function renderSubtitles(
   segments: readonly Segment[],
   format: SubtitleFormat,
@@ -92,7 +91,7 @@ export function renderSubtitles(
     default:
       throw new DomainError(
         'UNSUPPORTED_SUBTITLE_FORMAT',
-        `format de sous-titres inconnu : ${String(format)}`,
+        `unknown subtitle format: ${String(format)}`,
       );
   }
 }

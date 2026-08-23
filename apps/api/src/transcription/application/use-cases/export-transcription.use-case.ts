@@ -25,7 +25,7 @@ export class ExportTranscriptionUseCase {
       throw new TranscriptionNotFoundError();
     }
 
-    // Le fichier téléchargé reprend le nom du média, extension d'origine remplacée par le format.
+    // The downloaded file reuses the media name, original extension replaced by the format.
     const name = transcription.media.originalName;
     const lastDot = name.lastIndexOf('.');
     const stem = lastDot > 0 ? name.slice(0, lastDot) : name;

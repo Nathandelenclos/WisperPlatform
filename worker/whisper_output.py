@@ -1,13 +1,13 @@
-"""Parsing incrémental de la sortie verbose du CLI whisper.
+"""Incremental parsing of the whisper CLI verbose output.
 
-Format vérifié dans la source installée (`whisper/transcribe.py`) :
+Format checked against the installed source (`whisper/transcribe.py`):
 
     line = f"[{format_timestamp(start)} --> {format_timestamp(end)}] {text}"
 
-et `format_timestamp` (`whisper/utils.py`) rend `MM:SS.mmm`, préfixé de `HH:` uniquement
-lorsque l'heure est non nulle.
+and `format_timestamp` (`whisper/utils.py`) yields `MM:SS.mmm`, prefixed with `HH:` only when
+the hour is non-zero.
 
-Bibliothèque standard uniquement : `whisper` est un binaire externe, jamais un import.
+Standard library only: `whisper` is an external binary, never an import.
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ from __future__ import annotations
 import re
 import time
 
-# Seuils de découpage en lots : un lot part dès 10 segments accumulés ou 5 secondes écoulées.
+# Batching thresholds: a batch leaves as soon as 10 segments have piled up or 5 seconds elapsed.
 BATCH_MAX_SEGMENTS = 10
 BATCH_MAX_SECONDS = 5.0
 
@@ -29,12 +29,12 @@ _SEGMENT_LINE = re.compile(
 
 
 def parse_segment_line(line):
-    """Rend `{'startMs', 'endMs', 'text'}`, ou `None` si la ligne n'est pas un segment.
+    """Returns `{'startMs', 'endMs', 'text'}`, or `None` if the line is not a segment.
 
-    Sont écartées : les lignes de bruit (détection de langue, avertissements, barres de
-    progression), les segments au texte vide et les segments instantanés — whisper les
-    imprime avant de les effacer lui-même (`transcribe.py`, « if a segment is instantaneous
-    or does not contain text, clear it »), et l'API les refuserait comme intervalle invalide.
+    Discarded: noise lines (language detection, warnings, progress bars), segments with empty
+    text, and instantaneous segments — whisper prints those before erasing them itself
+    (`transcribe.py`, "if a segment is instantaneous or does not contain text, clear it"), and
+    the API would reject them as an invalid interval.
     """
     match = _SEGMENT_LINE.match(line)
     if match is None:
@@ -58,9 +58,9 @@ def _to_milliseconds(match, prefix):
 
 
 class SegmentBatcher:
-    """Accumule les segments et rend un lot dès le seuil de taille ou de temps.
+    """Accumulates segments and yields a batch as soon as the size or time threshold is hit.
 
-    L'horloge est injectable pour les tests ; `monotonic` évite tout saut d'horloge murale.
+    The clock is injectable for tests; `monotonic` avoids any wall-clock jump.
     """
 
     def __init__(
@@ -76,7 +76,7 @@ class SegmentBatcher:
         self._opened_at = None
 
     def add(self, segment):
-        """Ajoute un segment ; rend le lot s'il atteint un seuil, sinon `None`."""
+        """Adds a segment; returns the batch if it reaches a threshold, otherwise `None`."""
         if not self._pending:
             self._opened_at = self._monotonic()
         self._pending.append(segment)
@@ -85,17 +85,17 @@ class SegmentBatcher:
         return None
 
     def due(self):
-        """Rend le lot en attente si le seuil de temps est atteint, sinon `None`.
+        """Returns the pending batch if the time threshold is reached, otherwise `None`.
 
-        À appeler quand aucune ligne n'arrive : un silence prolongé ne doit pas retenir
-        indéfiniment des segments déjà transcrits.
+        To be called when no line arrives: a prolonged silence must not hold already
+        transcribed segments back indefinitely.
         """
         if self._pending and self._elapsed() >= self._max_seconds:
             return self.flush()
         return None
 
     def flush(self):
-        """Rend le lot en attente sans condition (fin de flux), ou `None` s'il est vide."""
+        """Returns the pending batch unconditionally (end of stream), or `None` if empty."""
         if not self._pending:
             return None
         batch = self._pending
@@ -104,7 +104,7 @@ class SegmentBatcher:
         return batch
 
     def seconds_until_due(self):
-        """Secondes restantes avant l'échéance du lot courant, ou `None` s'il n'y en a pas."""
+        """Seconds left before the current batch is due, or `None` if there is no batch."""
         if not self._pending:
             return None
         return max(0.0, self._max_seconds - self._elapsed())

@@ -3,9 +3,9 @@ import { Readable } from 'node:stream';
 import type { MediaStorage } from '../../src/transcription/application/ports/media-storage';
 
 /**
- * Magasin de médias en mémoire. `stage` joue le rôle du fichier temporaire déposé par
- * l'upload : `adopt` refuse une clé dont personne n'a déposé le contenu, ce qui attrape
- * les câblages où le fichier reçu n'arrive jamais au magasin.
+ * In-memory media store. `stage` plays the role of the temporary file dropped by the upload:
+ * `adopt` refuses a key whose content nobody staged, which catches the wirings where the
+ * received file never reaches the store.
  */
 export class InMemoryMediaStorage implements MediaStorage {
   private readonly staged = new Map<string, string>();
@@ -18,7 +18,7 @@ export class InMemoryMediaStorage implements MediaStorage {
   async adopt(p: { key: string; tempPath: string }): Promise<void> {
     const content = this.staged.get(p.tempPath);
     if (content === undefined) {
-      throw new Error(`aucun fichier temporaire déposé sous ${p.tempPath}`);
+      throw new Error(`no temporary file staged under ${p.tempPath}`);
     }
     this.staged.delete(p.tempPath);
     this.kept.set(p.key, content);
@@ -27,7 +27,7 @@ export class InMemoryMediaStorage implements MediaStorage {
   async openRead(key: string): Promise<Readable> {
     const content = this.kept.get(key);
     if (content === undefined) {
-      throw new Error('média absent du magasin');
+      throw new Error('media missing from the store');
     }
     return Readable.from([content]);
   }
@@ -36,7 +36,7 @@ export class InMemoryMediaStorage implements MediaStorage {
     this.kept.delete(key);
   }
 
-  /** Ce que le magasin conserve, pour les assertions de test. */
+  /** What the store keeps, for the test assertions. */
   contentOf(key: string): string | null {
     return this.kept.get(key) ?? null;
   }

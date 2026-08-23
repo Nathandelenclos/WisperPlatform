@@ -29,16 +29,16 @@ function aKey(p: {
   return WorkerKey.issue({
     id: p.id,
     ownerId: p.ownerId ?? CONTRACT_OWNER_A,
-    label: WorkerKeyLabel.of(p.label ?? 'Mon portable'),
+    label: WorkerKeyLabel.of(p.label ?? 'My laptop'),
     secretFingerprint: fingerprintOf(p.id.slice(-1)),
     createdAt: p.createdAt ?? CREATED_AT,
   });
 }
 
 /**
- * Suite de contrat du dépôt des clés de machine. Rejouée à l'identique sur le double en
- * mémoire et sur l'adaptateur Postgres : la recherche par empreinte est un chemin
- * d'authentification, elle ne doit pas se comporter différemment selon la technique en dessous.
+ * Contract suite of the machine key repository. Replayed identically on the in-memory double and
+ * on the Postgres adapter: the lookup by fingerprint is an authentication path, it must not
+ * behave differently depending on the technique underneath.
  */
 export function describeWorkerKeyRepositoryContract(
   name: string,
@@ -55,15 +55,15 @@ export function describeWorkerKeyRepositoryContract(
       await harness.cleanup();
     });
 
-    it('relit une clé entière', async () => {
-      const key = aKey({ id: uuid('1'), label: 'Tour du salon' });
+    it('reads back a whole key', async () => {
+      const key = aKey({ id: uuid('1'), label: 'Living room desktop' });
 
       await harness.repository.save(key);
 
       expect((await harness.repository.findById(uuid('1')))?.state()).toEqual(key.state());
     });
 
-    it('retrouve une clé par son empreinte, et rien par une empreinte inconnue', async () => {
+    it('finds a key by its fingerprint, and nothing by an unknown fingerprint', async () => {
       await harness.repository.save(aKey({ id: uuid('2') }));
 
       const found = await harness.repository.findBySecretFingerprint(fingerprintOf('2'));
@@ -72,8 +72,8 @@ export function describeWorkerKeyRepositoryContract(
       expect(await harness.repository.findBySecretFingerprint(fingerprintOf('f'))).toBeNull();
     });
 
-    it('rend une clé révoquée à la recherche par empreinte', async () => {
-      // C'est le domaine qui décide ce qu'une révocation empêche, pas la requête.
+    it('returns a revoked key from the lookup by fingerprint', async () => {
+      // It is the domain that decides what a revocation prevents, not the query.
       const key = aKey({ id: uuid('3') });
       key.revoke(new Date('2026-04-03T08:00:00.000Z'));
       await harness.repository.save(key);
@@ -84,10 +84,10 @@ export function describeWorkerKeyRepositoryContract(
       expect(found?.isActive).toBe(false);
     });
 
-    it('remplace l\'état précédent au lieu de l\'empiler', async () => {
+    it('replaces the previous state instead of stacking onto it', async () => {
       await harness.repository.save(aKey({ id: uuid('4') }));
       const key = await harness.repository.findById(uuid('4'));
-      if (key === null) throw new Error('clé introuvable');
+      if (key === null) throw new Error('key not found');
 
       key.noteSeen(new Date('2026-04-02T09:00:00.000Z'));
       key.revoke(new Date('2026-04-02T10:00:00.000Z'));
@@ -98,16 +98,16 @@ export function describeWorkerKeyRepositoryContract(
       expect(reloaded?.state().lastSeenAt).toEqual(new Date('2026-04-02T09:00:00.000Z'));
     });
 
-    it('liste les clés d\'un propriétaire, la plus récente d\'abord, révoquées comprises', async () => {
+    it('lists the keys of an owner, most recent first, revoked ones included', async () => {
       const revoked = aKey({
         id: uuid('5'),
         createdAt: new Date('2026-04-01T08:00:00.000Z'),
-        label: 'ancienne',
+        label: 'older',
       });
       revoked.revoke(new Date('2026-04-02T08:00:00.000Z'));
       await harness.repository.save(revoked);
       await harness.repository.save(
-        aKey({ id: uuid('6'), createdAt: new Date('2026-04-05T08:00:00.000Z'), label: 'récente' }),
+        aKey({ id: uuid('6'), createdAt: new Date('2026-04-05T08:00:00.000Z'), label: 'newer' }),
       );
       await harness.repository.save(aKey({ id: uuid('7'), ownerId: CONTRACT_OWNER_B }));
 
@@ -117,7 +117,7 @@ export function describeWorkerKeyRepositoryContract(
       expect(keys[1].isActive).toBe(false);
     });
 
-    it('rend null pour une clé inconnue et une liste vide pour un propriétaire sans machine', async () => {
+    it('returns null for an unknown key and an empty list for an owner with no machine', async () => {
       expect(await harness.repository.findById(uuid('f'))).toBeNull();
       expect(await harness.repository.listOwnedBy(CONTRACT_OWNER_B)).toEqual([]);
     });

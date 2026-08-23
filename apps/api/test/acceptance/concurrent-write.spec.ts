@@ -8,8 +8,8 @@ import type { Transcription } from '../../src/transcription/domain/transcription
 import { OWNER, aClaimedTranscription, aPlatform } from './platform';
 
 /**
- * Dépôt qui refuse la première écriture comme le ferait un verrou optimiste perdu, puis se
- * comporte normalement. Il tient le rôle de l'autre écrivain sans avoir à l'ordonnancer.
+ * Repository that refuses the first write the way a lost optimistic lock would, then behaves
+ * normally. It plays the part of the other writer without having to schedule it.
  */
 class ConflictOnFirstSave implements TranscriptionRepository {
   private refusals: number;
@@ -34,8 +34,8 @@ class ConflictOnFirstSave implements TranscriptionRepository {
   }
 }
 
-describe('Scénario : deux écrivains touchent la même transcription', () => {
-  it('rejoue la correction perdue au lieu de l\'abandonner', async () => {
+describe('Scenario: two writers touch the same transcription', () => {
+  it('replays the lost correction instead of dropping it', async () => {
     const platform = aPlatform();
     const { transcriptionId, runId } = await aClaimedTranscription(platform);
     await platform.appendTranscribedSegments.execute({
@@ -58,7 +58,7 @@ describe('Scénario : deux écrivains touchent la même transcription', () => {
     expect(view.segments[0]).toMatchObject({ text: 'bonjour', corrected: true });
   });
 
-  it('abandonne quand la collision se répète', async () => {
+  it('gives up when the collision repeats', async () => {
     const platform = aPlatform();
     const { transcriptionId, runId } = await aClaimedTranscription(platform);
     await platform.appendTranscribedSegments.execute({
@@ -75,7 +75,7 @@ describe('Scénario : deux écrivains touchent la même transcription', () => {
       platform.clock,
     );
 
-    // Un seul nouvel essai : au-delà, l'appelant doit voir le conflit plutôt qu'un silence.
+    // A single retry: beyond that, the caller must see the conflict rather than a silence.
     await expect(
       correctSegment.execute({ transcriptionId, ownerId: OWNER, ordinal: 1, text: 'bonjour' }),
     ).rejects.toThrow(ConcurrentTranscriptionWriteError);

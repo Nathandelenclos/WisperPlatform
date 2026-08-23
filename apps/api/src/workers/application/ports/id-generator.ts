@@ -1,4 +1,4 @@
-/** Fabrique d'identifiants opaques (uuid v4) : identifiants de clé de machine. */
+/** Factory of opaque identifiers (uuid v4): machine key identifiers. */
 export interface IdGenerator {
   next(): string;
 }

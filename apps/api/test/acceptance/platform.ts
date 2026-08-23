@@ -40,9 +40,9 @@ export const MAX_ATTEMPTS = 2;
 export const OWNER = 'alice';
 export const OTHER_OWNER = 'bob';
 export const NOW = new Date('2026-05-01T09:00:00.000Z');
-/** Secret partagé des workers de la plateforme, tel que la configuration le poserait. */
-export const SERVICE_TOKEN = 'jeton-partage-des-workers-du-service-de-test';
-/** Le réclamant d'un worker de la plateforme : ce que la plupart des scénarios présentent. */
+/** Shared secret of the platform's workers, as the configuration would set it. */
+export const SERVICE_TOKEN = 'shared-token-of-the-test-service-workers';
+/** The claimant of a platform worker: what most scenarios present. */
 export const SERVICE_CLAIMANT: Claimant = { kind: 'service' };
 
 export type UploadRequest = {
@@ -54,7 +54,7 @@ export type UploadRequest = {
   placement?: string;
 };
 
-/** Tout ce qu'un scénario d'acceptation peut piloter : les use cases et les doubles témoins. */
+/** Everything an acceptance scenario can drive: the use cases and the observable doubles. */
 export type TranscriptionPlatform = {
   clock: FixedClock;
   mediaStorage: InMemoryMediaStorage;
@@ -82,17 +82,17 @@ export type TranscriptionPlatform = {
   listWorkerKeys: ListWorkerKeysUseCase;
   revokeWorkerKey: RevokeWorkerKeyUseCase;
   /**
-   * L'adaptateur réel : c'est lui qui, à partir du jeton porteur d'un worker, dit s'il parle
-   * pour le service, pour un propriétaire, ou pour personne.
+   * The real adapter: given a worker's bearer token, it is the one that says whether the token
+   * speaks for the service, for an owner, or for nobody.
    */
   workerIdentities: WorkerKeyIdentities;
-  /** Dépose un média puis demande sa transcription, comme le fait l'upload multipart. */
+  /** Stages a media file then requests its transcription, the way the multipart upload does. */
   upload(p?: UploadRequest): Promise<string>;
 };
 
 /**
- * Plateforme montée sur des doubles en mémoire : les scénarios d'acceptation parlent aux use
- * cases comme le feraient les controllers et le worker, sans base ni HTTP.
+ * Platform wired on in-memory doubles: acceptance scenarios talk to the use cases the way the
+ * controllers and the worker would, with no database and no HTTP.
  */
 export function aPlatform(startedAt: Date = NOW): TranscriptionPlatform {
   const store = new InMemoryTranscriptionStore();
@@ -106,8 +106,8 @@ export function aPlatform(startedAt: Date = NOW): TranscriptionPlatform {
   const idGenerator = new SequentialIdGenerator();
   const logger = new SilentLogger();
   const workerKeys = new InMemoryWorkerKeyRepository();
-  // Les vrais secrets : `node:crypto` est déterministe pour ce qui compte ici (une empreinte
-  // stable, un aléa distinct), un double n'apporterait qu'une divergence possible.
+  // The real secrets: `node:crypto` is deterministic in what matters here (a stable fingerprint,
+  // a distinct random value), and a double would only add a possible divergence.
   const workerKeySecrets = new NodeWorkerKeySecrets();
 
   const requestTranscription = new RequestTranscriptionUseCase(
@@ -181,7 +181,7 @@ export function aPlatform(startedAt: Date = NOW): TranscriptionPlatform {
     async upload(p: UploadRequest = {}): Promise<string> {
       uploads += 1;
       const tempPath = `/tmp/upload-${uploads}`;
-      const content = p.content ?? 'des octets audio';
+      const content = p.content ?? 'some audio bytes';
       mediaStorage.stage(tempPath, content);
       const { transcriptionId } = await requestTranscription.execute({
         ownerId: p.ownerId ?? OWNER,
@@ -201,8 +201,8 @@ export function aPlatform(startedAt: Date = NOW): TranscriptionPlatform {
 }
 
 /**
- * Un média déposé puis réclamé par un worker : point de départ de la plupart des scénarios.
- * Les événements déjà publiés sont oubliés, pour que chaque scénario n'observe que les siens.
+ * A media file uploaded then claimed by a worker: the starting point of most scenarios.
+ * Events already published are dropped, so that each scenario only observes its own.
  */
 export async function aClaimedTranscription(
   platform: TranscriptionPlatform,
@@ -215,13 +215,13 @@ export async function aClaimedTranscription(
     models: [upload.model ?? 'small'],
   });
   if (job === null) {
-    throw new Error('la transcription déposée n\'a pas été réclamée');
+    throw new Error('the uploaded transcription was not claimed');
   }
   platform.publisher.clear();
   return { transcriptionId: job.transcriptionId, runId: job.runId };
 }
 
-/** Lit un flux de média jusqu'au bout, comme le ferait le worker qui télécharge. */
+/** Reads a media stream to its end, the way the worker that downloads it would. */
 export async function readAll(stream: AsyncIterable<string | Buffer>): Promise<string> {
   let content = '';
   for await (const chunk of stream) {

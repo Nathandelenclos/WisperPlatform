@@ -1,7 +1,7 @@
-"""Boucle du worker de bout en bout, contre une API factice et un faux binaire whisper.
+"""The worker loop end to end, against a stub API and a fake whisper binary.
 
-Aucun GPU, aucun réseau externe : un serveur HTTP local rejoue le contrat worker et
-`fake_whisper.py` rejoue la sortie verbose du CLI.
+No GPU, no external network: a local HTTP server replays the worker contract and
+`fake_whisper.py` replays the verbose output of the CLI.
 """
 
 import dataclasses
@@ -47,14 +47,14 @@ JOB = {
 
 
 class StubApi:
-    """Enregistre ce que le worker envoie et sert un job unique."""
+    """Records what the worker sends and serves a single job."""
 
     def __init__(self, jobs=(JOB,), lease_seconds=6):
         self.pending_jobs = list(jobs)
         self.lease_seconds = lease_seconds
         self.batches = []
         self.speakers = []
-        # Statut servi par la route des locuteurs : 422 rejoue un run périmé.
+        # Status served by the speakers route: 422 replays a stale run.
         self.speakers_status = 204
         self.completed = []
         self.failed = []
@@ -62,8 +62,8 @@ class StubApi:
         self.heartbeats = 0
         self.media_tokens = []
         self.unauthorized = 0
-        # Ordre d'arrivée des appels : c'est ce qui prouve que la diarisation précède
-        # la conclusion du job.
+        # Arrival order of the calls: this is what proves diarization comes before the job
+        # is concluded.
         self.order = []
         self.settled = threading.Event()
         self._server = None
@@ -120,7 +120,7 @@ def _handler_for(stub):
         protocol_version = "HTTP/1.1"
 
         def log_message(self, *_):
-            pass  # pas de bruit dans la sortie des tests
+            pass  # no noise in the test output
 
         def _authorized(self):
             if self.headers.get("Authorization") == "Bearer " + WORKER_TOKEN:
@@ -211,11 +211,11 @@ class ConfigTest(unittest.TestCase):
         with self.assertRaises(ConfigurationError):
             WorkerConfig.from_environment(dict(base, POLL_INTERVAL_SECONDS="0"))
         with self.assertRaises(ConfigurationError):
-            WorkerConfig.from_environment(dict(base, POLL_INTERVAL_SECONDS="souvent"))
+            WorkerConfig.from_environment(dict(base, POLL_INTERVAL_SECONDS="often"))
 
 
 class StubClaims:
-    """Client réduit à `claim` : rejoue les issues fournies, puis répète la dernière."""
+    """Client cut down to `claim`: replays the given outcomes, then repeats the last one."""
 
     def __init__(self, *outcomes):
         self._outcomes = list(outcomes)
@@ -230,10 +230,10 @@ class StubClaims:
 
 
 class RecordingStop:
-    """Faux `threading.Event` : enregistre les sommeils au lieu de dormir.
+    """Fake `threading.Event`: records the sleeps instead of sleeping.
 
-    La boucle s'arrête après un nombre donné d'attentes, ce qui rend observable la
-    cadence de sondage sans qu'une seule seconde ne s'écoule réellement.
+    The loop stops after a given number of waits, which makes the polling cadence observable
+    without a single second actually elapsing.
     """
 
     def __init__(self, stop_after):
@@ -264,7 +264,7 @@ def unreachable_api():
 
 
 class ClaimDelayTest(unittest.TestCase):
-    """Courbe du disjoncteur, éprouvée sur la fonction pure : aucun sommeil réel."""
+    """Curve of the circuit breaker, exercised on the pure function: no real sleep."""
 
     def test_keeps_the_nominal_interval_below_the_threshold(self):
         delays = [_claim_delay(3.0, failures, jitter=lambda: 1.0) for failures in range(1, 5)]
@@ -277,7 +277,7 @@ class ClaimDelayTest(unittest.TestCase):
         self.assertEqual([6.0, 12.0, 24.0, 48.0, 60.0, 60.0], delays)
 
     def test_never_leaves_the_interval_between_the_nominal_and_the_ceiling(self):
-        # 2000 échecs : une API absente une journée entière ne doit ni déborder ni dépasser.
+        # 2000 failures: an API missing for a whole day must neither overflow nor overshoot.
         for failures in (5, 20, 2000):
             for jitter in (lambda: 0.0, lambda: 0.5, random.random):
                 delay = _claim_delay(3.0, failures, jitter=jitter)
@@ -290,12 +290,12 @@ class ClaimDelayTest(unittest.TestCase):
 
 
 class ClaimCircuitLoopTest(unittest.TestCase):
-    """Le disjoncteur dans la boucle : comptage, ouverture, remise à zéro, arrêt net."""
+    """The circuit breaker inside the loop: counting, opening, reset, clean stop."""
 
     def setUp(self):
         self.logs = io.StringIO()
         wisper_worker.configure_logging(self.logs)
-        # Jitter figé : la cadence observée est reproductible d'une exécution à l'autre.
+        # Frozen jitter: the observed cadence is reproducible from one run to the next.
         random.seed(20260822)
         self.addCleanup(random.seed)
 
@@ -322,7 +322,7 @@ class ClaimCircuitLoopTest(unittest.TestCase):
         self.assertEqual(list(range(1, 21)), [event["consecutiveFailures"] for event in self.failure_events()])
 
     def test_closes_the_circuit_again_on_the_first_successful_claim(self):
-        # Cinq échecs ouvrent le circuit, une file vide (204) prouve que l'API répond.
+        # Five failures open the circuit, an empty queue (204) proves the API answers.
         stop = RecordingStop(stop_after=7)
         claims = StubClaims(*([unreachable_api()] * 5), None, unreachable_api())
 
@@ -354,7 +354,7 @@ class ClaimCircuitLoopTest(unittest.TestCase):
         self.assertEqual([1, 2], [event["consecutiveFailures"] for event in self.failure_events()])
 
     def test_a_stop_request_cuts_an_open_circuit_wait_short(self):
-        # Seuil abaissé à un échec : le premier tour part déjà sur une attente de 30 s ou plus.
+        # Threshold lowered to one failure: the very first round already waits 30 s or more.
         original = wisper_worker.CLAIM_FAILURE_THRESHOLD
         wisper_worker.CLAIM_FAILURE_THRESHOLD = 1
         self.addCleanup(setattr, wisper_worker, "CLAIM_FAILURE_THRESHOLD", original)
@@ -372,16 +372,16 @@ class ClaimCircuitLoopTest(unittest.TestCase):
             target=run_loop, args=(loop_config(30.0), SlowlyFailing(unreachable_api()), stop), daemon=True
         )
         loop.start()
-        self.assertTrue(claimed.wait(5), "la boucle n'a jamais réclamé de job")
+        self.assertTrue(claimed.wait(5), "the loop never claimed a job")
 
         stop.set()
 
         loop.join(timeout=5)
-        self.assertFalse(loop.is_alive(), "l'arrêt a attendu la fin du sommeil du circuit ouvert")
+        self.assertFalse(loop.is_alive(), "the stop waited for the open-circuit sleep to finish")
 
 
 class RecordingHeartbeats:
-    """Client réduit au renouvellement de bail."""
+    """Client cut down to lease renewal."""
 
     def __init__(self):
         self.renewals = []
@@ -391,11 +391,11 @@ class RecordingHeartbeats:
 
 
 class FakeScheduler:
-    """Ordonnanceur de battements piloté par le test : rien ne s'écoule sans `advance`.
+    """Heartbeat scheduler driven by the test: nothing elapses without `advance`.
 
-    Vu du battement, c'est un `threading.Event` (`wait`, `set`) ; vu du test, c'est une
-    fausse horloge. `advance` ne rend la main qu'une fois le battement reparti en attente,
-    donc aucune assertion ne court après un thread.
+    Seen from the heartbeat it is a `threading.Event` (`wait`, `set`); seen from the test it is
+    a fake clock. `advance` only returns once the heartbeat is back in its wait, so no
+    assertion ever races a thread.
     """
 
     def __init__(self):
@@ -415,14 +415,14 @@ class FakeScheduler:
         self._resume.release()
 
     def advance(self):
-        """Franchit un intervalle complet."""
-        self._await_park("le battement n'attendait pas")
+        """Crosses one full interval."""
+        self._await_park("the heartbeat was not waiting")
         self._resume.release()
-        self._await_park("le battement n'est pas reparti en attente")
-        self._parked.release()  # le jeton reste disponible pour le prochain `advance`
+        self._await_park("the heartbeat did not go back to waiting")
+        self._parked.release()  # the token stays available for the next `advance`
 
     def release(self, intervals):
-        """Laisse filer des intervalles sans attendre personne : un survivant se ferait voir."""
+        """Lets intervals slip by without waiting for anyone: a survivor would show itself."""
         for _ in range(intervals):
             self._resume.release()
 
@@ -432,7 +432,7 @@ class FakeScheduler:
 
 
 class HeartbeatTest(unittest.TestCase):
-    """Renouvellement du bail sur horloge injectée : aucun pari sur le temps réel."""
+    """Lease renewal on an injected clock: no bet on real time."""
 
     def setUp(self):
         wisper_worker.configure_logging(io.StringIO())
@@ -450,24 +450,24 @@ class HeartbeatTest(unittest.TestCase):
         self.scheduler.advance()
 
         self.assertEqual([(JOB["runId"], JOB["transcriptionId"])] * 2, self.client.renewals)
-        # Deux intervalles franchis, un troisième en cours : toujours celui du bail.
+        # Two intervals crossed, a third under way: still the one from the lease.
         self.assertEqual([10.0] * 3, self.scheduler.waits)
 
     def test_stops_beating_as_soon_as_the_job_is_settled(self):
         self.beat.start()
         self.scheduler.advance()
 
-        self.beat.stop()  # le job vient d'être conclu
+        self.beat.stop()  # the job has just been concluded
 
-        # `stop` joint le thread : plus personne n'est là pour franchir un intervalle.
+        # `stop` joins the thread: nobody is left to cross an interval.
         self.assertNotIn("wisper-heartbeat", [thread.name for thread in threading.enumerate()])
-        self.scheduler.release(10)  # dix intervalles de plus, bien au-delà du bail
+        self.scheduler.release(10)  # ten more intervals, far beyond the lease
         self.assertEqual(1, len(self.client.renewals))
         self.assertEqual([10.0] * 2, self.scheduler.waits)
 
 
 class WorkerLoopTest(unittest.TestCase):
-    """La boucle tourne dans un thread, contre un vrai serveur HTTP local."""
+    """The loop runs in a thread, against a real local HTTP server."""
 
     def setUp(self):
         self.logs = io.StringIO()
@@ -502,7 +502,7 @@ class WorkerLoopTest(unittest.TestCase):
             target=run_loop, args=(config, client, stop, diarizer), daemon=True
         )
         loop.start()
-        self.assertTrue(self.stub.settled.wait(timeout), "le job ne s'est jamais conclu")
+        self.assertTrue(self.stub.settled.wait(timeout), "the job never concluded")
         stop.set()
         loop.join(timeout=timeout)
         self.assertFalse(loop.is_alive())
@@ -520,7 +520,7 @@ class WorkerLoopTest(unittest.TestCase):
         self.assertEqual([10, 2], [len(batch) for _, batch in self.stub.batches])
         self.assertEqual(12, len(self.stub.segments))
         self.assertEqual(
-            {"startMs": 0, "endMs": 2000, "text": "Segment numero 1."}, self.stub.segments[0]
+            {"startMs": 0, "endMs": 2000, "text": "Segment number 1."}, self.stub.segments[0]
         )
         self.assertEqual(22000, self.stub.segments[-1]["startMs"])
         self.assertEqual(0, self.stub.unauthorized)
@@ -535,13 +535,13 @@ class WorkerLoopTest(unittest.TestCase):
 
         self.assertEqual(["whisper exited with code 3"], self.stub.failed)
         self.assertEqual([], self.stub.completed)
-        # Les segments déjà transcrits ont été publiés avant l'échec.
+        # The already transcribed segments were published before the failure.
         self.assertEqual(2, len(self.stub.segments))
         self.assertEqual([], os.listdir(self.tmp_root))
 
     def test_a_failed_whisper_run_never_gets_diarized(self):
-        # Diariser un run qui part en échec, c'est du calcul jeté et, sur un run déjà remis
-        # en file, une rafale de 422 : la passe doit rester derrière la réussite de whisper.
+        # Diarizing a run that is heading for failure is wasted compute and, on a run already
+        # re-queued, a burst of 422s: the pass must stay behind whisper's success.
         self.run_worker({"FAKE_WHISPER_FAIL": "1"}, diarizer=FakeDiarizer(TURNS))
 
         self.assertEqual(["whisper exited with code 3"], self.stub.failed)
@@ -557,12 +557,12 @@ class WorkerLoopTest(unittest.TestCase):
         )
         self.assertEqual({1, 2}, {event["batchSequence"] for event in events if "batchSequence" in event})
         raw = self.logs.getvalue()
-        for forbidden in (WORKER_TOKEN, MEDIA_TOKEN, "Segment numero", self.tmp_root):
+        for forbidden in (WORKER_TOKEN, MEDIA_TOKEN, "Segment number", self.tmp_root):
             self.assertNotIn(forbidden, raw)
 
     def test_keeps_polling_when_the_queue_is_empty(self):
         self.stub.pending_jobs = []
-        self.stub.settled.set()  # rien à conclure : on arrête après quelques sondages
+        self.stub.settled.set()  # nothing to conclude: we stop after a few polls
 
         self.run_worker()
 
@@ -585,19 +585,19 @@ class WorkerLoopTest(unittest.TestCase):
         self.assertEqual(2, self._event("speakers posted")["turnCount"])
 
     def test_a_broken_diarization_never_costs_the_transcript(self):
-        self.run_worker(diarizer=FakeDiarizer(error=RuntimeError("le moteur a fondu")))
+        self.run_worker(diarizer=FakeDiarizer(error=RuntimeError("the engine melted down")))
 
         self.assertEqual([], self.stub.speakers)
         self.assertEqual([JOB["transcriptionId"]], self.stub.completed)
         self.assertEqual([], self.stub.failed)
         self.assertEqual(12, len(self.stub.segments))
         self.assertEqual("warning", self._event("diarization failed")["level"])
-        # Le détail se réduit au type : le message d'une bibliothèque tierce peut porter
-        # un chemin de média, qui n'a rien à faire dans le journal.
-        self.assertNotIn("fondu", self.logs.getvalue())
+        # The detail is reduced to the type: a third-party library's message may carry a
+        # media path, which has no business being in the log.
+        self.assertNotIn("melted", self.logs.getvalue())
 
     def test_a_rejected_speakers_call_never_costs_the_transcript(self):
-        self.stub.speakers_status = 422  # run périmé côté API
+        self.stub.speakers_status = 422  # run stale on the API side
 
         self.run_worker(diarizer=FakeDiarizer(TURNS))
 
@@ -606,7 +606,7 @@ class WorkerLoopTest(unittest.TestCase):
         self.assertEqual("warning", self._event("diarization failed")["level"])
 
     def test_the_lease_keeps_beating_during_the_diarization_pass(self):
-        # Un battement par seconde : la passe attend d'en voir un pour rendre la main.
+        # One heartbeat per second: the pass waits to see one before handing back control.
         self.stub.lease_seconds = 3
         beaten = threading.Event()
 
@@ -620,14 +620,14 @@ class WorkerLoopTest(unittest.TestCase):
 
         self.run_worker(diarizer=FakeDiarizer(TURNS, before=wait_for_a_beat))
 
-        self.assertTrue(beaten.is_set(), "le bail a cessé de battre pendant la diarisation")
+        self.assertTrue(beaten.is_set(), "the lease stopped beating during diarization")
         self.assertEqual([JOB["transcriptionId"]], self.stub.completed)
 
     def _event(self, message):
         for event in self.log_lines():
             if event["message"] == message:
                 return event
-        self.fail("événement absent du journal : " + message)
+        self.fail("event missing from the log: " + message)
 
 
 TURNS = [
@@ -637,7 +637,7 @@ TURNS = [
 
 
 class FakeDiarizer:
-    """Diariseur piloté par le test : rend des tours, ou casse, sans modèle ni audio."""
+    """Diarizer driven by the test: returns turns, or breaks, without model or audio."""
 
     def __init__(self, turns=(), error=None, before=None):
         self.turns = list(turns)
@@ -655,7 +655,7 @@ class FakeDiarizer:
 
 
 class RecordingSpeakers:
-    """Client réduit à la publication des tours."""
+    """Client cut down to publishing the turns."""
 
     def __init__(self, error=None):
         self.posted = []
@@ -668,7 +668,7 @@ class RecordingSpeakers:
 
 
 class DiarizationPassTest(unittest.TestCase):
-    """La passe est facultative : ce qui compte, c'est quand elle est sautée et à quel prix."""
+    """The pass is optional: what matters is when it is skipped, and at what price."""
 
     def setUp(self):
         self.logs = io.StringIO()
@@ -679,13 +679,13 @@ class DiarizationPassTest(unittest.TestCase):
     def _diarize(self, diarizer):
         wisper_worker._diarize(self.client, diarizer, JOB, "media", "workdir", self.stop, {})
 
-    def test_un_worker_sans_capacite_ne_fait_rien_et_ne_dit_rien(self):
+    def test_a_worker_without_the_capability_does_nothing_and_says_nothing(self):
         self._diarize(None)
 
         self.assertEqual([], self.client.posted)
         self.assertEqual("", self.logs.getvalue())
 
-    def test_l_arret_demande_saute_la_passe(self):
+    def test_a_requested_stop_skips_the_pass(self):
         self.stop.set()
         diarizer = FakeDiarizer(TURNS)
 
@@ -694,14 +694,14 @@ class DiarizationPassTest(unittest.TestCase):
         self.assertEqual([], diarizer.calls)
         self.assertEqual([], self.client.posted)
 
-    def test_une_passe_sans_tour_est_publiee_quand_meme(self):
-        # Rejeu : une attribution posée par une tentative précédente doit disparaître si
-        # cette passe-ci ne trouve plus personne. L'API recalcule sur ce qu'on lui envoie.
+    def test_a_pass_without_any_turn_is_published_all_the_same(self):
+        # Replay: an assignment left by a previous attempt must disappear if this pass no
+        # longer finds anyone. The API recomputes from whatever we send it.
         self._diarize(FakeDiarizer([]))
 
         self.assertEqual([(JOB["runId"], JOB["transcriptionId"], [])], self.client.posted)
 
-    def test_un_echec_de_publication_ne_remonte_pas(self):
+    def test_a_publication_failure_never_surfaces(self):
         self.client.error = ApiError("speakers rejected with HTTP 422", status=422)
 
         self._diarize(FakeDiarizer(TURNS))
@@ -710,7 +710,7 @@ class DiarizationPassTest(unittest.TestCase):
 
 
 class SigtermTest(unittest.TestCase):
-    """Le worker lancé comme un vrai processus doit s'arrêter proprement sur SIGTERM."""
+    """The worker launched as a real process must stop cleanly on SIGTERM."""
 
     def test_stops_the_run_and_removes_its_temporary_directory(self):
         stub = StubApi(lease_seconds=120).start()
@@ -737,13 +737,13 @@ class SigtermTest(unittest.TestCase):
         self.addCleanup(process.kill)
         self.addCleanup(process.stdout.close)
 
-        self._wait_for(lambda: os.listdir(tmp_root), "le répertoire de travail n'a jamais été créé")
+        self._wait_for(lambda: os.listdir(tmp_root), "the working directory was never created")
         process.send_signal(signal.SIGTERM)
 
         self.assertEqual(0, process.wait(timeout=30))
-        self.assertEqual([], os.listdir(tmp_root), "le répertoire temporaire a survécu au SIGTERM")
-        # Un arrêt qui vient de nous n'est pas un échec du média : la tentative est rendue,
-        # ce qui remet la demande en file tout de suite au lieu d'attendre l'expiration du bail.
+        self.assertEqual([], os.listdir(tmp_root), "the temporary directory survived the SIGTERM")
+        # A stop that comes from us is not a media failure: the attempt is released, which
+        # re-queues the request right away instead of waiting for the lease to expire.
         self.assertEqual([], stub.failed)
         self.assertEqual([JOB["transcriptionId"]], stub.released)
         self.assertNotIn(WORKER_TOKEN, process.stdout.read())
@@ -762,29 +762,29 @@ if __name__ == "__main__":
 
 
 class DeviceResolutionTest(unittest.TestCase):
-    """Choix du device et du nombre de threads : la partie qui décide, sans GPU sous la main."""
+    """Device and thread-count choice: the deciding part, with no GPU at hand."""
 
     def _config(self, **overrides):
         base = {
             "WISPER_API_URL": "http://api.test",
-            "WISPER_WORKER_TOKEN": "jeton-de-test",
+            "WISPER_WORKER_TOKEN": "test-token",
         }
         base.update(overrides)
         return wisper_worker.WorkerConfig.from_environment(base)
 
-    def test_auto_prend_la_carte_quand_elle_est_visible(self):
+    def test_auto_takes_the_card_when_it_is_visible(self):
         config = wisper_worker.resolve_runtime(self._config(), probe=lambda _bin: True)
 
         self.assertEqual("cuda", config.resolved_device)
 
-    def test_auto_reste_en_cpu_sans_carte(self):
+    def test_auto_stays_on_cpu_without_a_card(self):
         config = wisper_worker.resolve_runtime(self._config(), probe=lambda _bin: False)
 
         self.assertEqual("cpu", config.resolved_device)
 
-    def test_un_device_explicite_ne_sonde_rien(self):
+    def test_an_explicit_device_probes_nothing(self):
         def refuse(_bin):
-            raise AssertionError("aucune sonde ne doit être lancée")
+            raise AssertionError("no probe must be launched")
 
         for asked in ("cpu", "cuda"):
             config = wisper_worker.resolve_runtime(
@@ -792,41 +792,41 @@ class DeviceResolutionTest(unittest.TestCase):
             )
             self.assertEqual(asked, config.resolved_device)
 
-    def test_un_device_inconnu_est_refuse(self):
+    def test_an_unknown_device_is_refused(self):
         with self.assertRaises(wisper_worker.ConfigurationError):
             self._config(WISPER_DEVICE="metal")
 
-    def test_les_threads_suivent_le_quota_du_conteneur(self):
+    def test_the_threads_follow_the_container_quota(self):
         config = wisper_worker.resolve_runtime(
             self._config(), probe=lambda _bin: False, quota=lambda: 2
         )
 
         self.assertEqual(2, config.resolved_threads)
 
-    def test_un_nombre_de_threads_explicite_gagne_sur_le_quota(self):
+    def test_an_explicit_thread_count_wins_over_the_quota(self):
         config = wisper_worker.resolve_runtime(
             self._config(WISPER_THREADS="3"), probe=lambda _bin: False, quota=lambda: 8
         )
 
         self.assertEqual(3, config.resolved_threads)
 
-    def test_le_quota_cgroup_v2_est_converti_en_coeurs(self):
+    def test_the_cgroup_v2_quota_is_converted_into_cores(self):
         quota = wisper_worker.cpu_quota(read_text=lambda path: "200000 100000")
 
         self.assertEqual(2, quota)
 
-    def test_un_quota_illimite_rend_les_coeurs_de_la_machine(self):
+    def test_an_unlimited_quota_returns_the_machine_cores(self):
         quota = wisper_worker.cpu_quota(read_text=lambda path: "max 100000")
 
         self.assertEqual(os.cpu_count() or 1, quota)
 
-    def test_un_cgroup_illisible_ne_fait_pas_echouer_le_worker(self):
+    def test_an_unreadable_cgroup_does_not_fail_the_worker(self):
         def missing(path):
-            raise OSError("pas de cgroup ici")
+            raise OSError("no cgroup here")
 
         self.assertGreaterEqual(wisper_worker.cpu_quota(read_text=missing), 1)
 
-    def test_la_commande_gpu_active_fp16_et_ne_borne_pas_les_threads(self):
+    def test_the_gpu_command_enables_fp16_and_does_not_bound_the_threads(self):
         command = self._command(device="cuda")
 
         self.assertIn("--device", command)
@@ -834,7 +834,7 @@ class DeviceResolutionTest(unittest.TestCase):
         self.assertEqual("True", command[command.index("--fp16") + 1])
         self.assertNotIn("--threads", command)
 
-    def test_la_commande_cpu_desactive_fp16_et_borne_les_threads(self):
+    def test_the_cpu_command_disables_fp16_and_bounds_the_threads(self):
         command = self._command(device="cpu", threads=2)
 
         self.assertEqual("cpu", command[command.index("--device") + 1])
@@ -842,14 +842,14 @@ class DeviceResolutionTest(unittest.TestCase):
         self.assertEqual("2", command[command.index("--threads") + 1])
 
     def _command(self, device, threads=1):
-        """Capture la ligne de commande sans lancer whisper."""
+        """Captures the command line without launching whisper."""
         captured = {}
 
         class SilentClient:
-            """Aucun segment ne sort de ce faux whisper : le client n'est jamais appelé."""
+            """No segment comes out of this fake whisper: the client is never called."""
 
             def post_segments(self, *args, **kwargs):
-                raise AssertionError("aucun segment attendu")
+                raise AssertionError("no segment expected")
 
 
         class FakePopen:

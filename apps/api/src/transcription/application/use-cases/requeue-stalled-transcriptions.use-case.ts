@@ -6,8 +6,8 @@ import type { TranscriptionQueue } from '../ports/transcription-queue';
 import type { TranscriptionRepository } from '../ports/transcription-repository';
 
 /**
- * Balayeuse des transcriptions abandonnées : un worker qui meurt laisse un bail qui s'éteint,
- * la demande repart en file jusqu'à épuisement des tentatives.
+ * Sweeper of abandoned transcriptions: a worker that dies leaves a lease that expires, and the
+ * request goes back into the queue until its attempts are exhausted.
  */
 export class RequeueStalledTranscriptionsUseCase {
   constructor(
@@ -32,15 +32,15 @@ export class RequeueStalledTranscriptionsUseCase {
       }
       transcription.requeueExpiredLease({ at: now, maxAttempts: this.options.maxAttempts });
       const events = transcription.pullEvents();
-      // Sans événement, le bail avait été renouvelé entre la lecture de la file et celle-ci.
+      // Without an event, the lease had been renewed between the queue read and this one.
       if (events.length === 0) {
         continue;
       }
       try {
         await this.repository.save(transcription);
       } catch (error) {
-        // Le worker que l'on croyait mort vient d'écrire : c'est lui qui a raison, on passe.
-        // Le prochain balayage reverra la transcription si son bail est réellement éteint.
+        // The worker we thought dead has just written: it is the one that is right, we skip.
+        // The next sweep will see the transcription again if its lease really has expired.
         if (error instanceof ConcurrentTranscriptionWriteError) {
           continue;
         }

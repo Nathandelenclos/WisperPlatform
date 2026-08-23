@@ -13,8 +13,8 @@ import { SIGN_IN_OPTIONS, SignInOptionsController } from './interface/sign-in-op
 import type { SignInOptions } from './interface/sign-in-options.controller';
 
 /**
- * Racine de composition de l'authentification. Une seule instance du fournisseur d'identité
- * sert les deux ports ; `SessionGuard` est exporté pour les contextes qui protègent leurs routes.
+ * Composition root of authentication. A single instance of the identity provider serves both
+ * ports — `SessionGuard` is exported for the contexts that protect their own routes.
  */
 @Module({
   controllers: [AuthController, SignInOptionsController],
@@ -28,8 +28,8 @@ import type { SignInOptions } from './interface/sign-in-options.controller';
     { provide: SESSION_READER, useExisting: BetterAuthAuthentication },
     { provide: AUTH_REQUEST_HANDLER, useExisting: BetterAuthAuthentication },
     {
-      // La configuration est lue une fois, ici, et le contrôleur ne connaît que le résultat :
-      // l'interface n'a pas à savoir d'où vient une variable d'environnement.
+      // The configuration is read once, here, and the controller only knows the result: the
+      // interface has no business knowing where an environment variable comes from.
       provide: SIGN_IN_OPTIONS,
       useFactory: (env: Env): SignInOptions => ({
         google: env.GOOGLE_CLIENT_ID !== undefined && env.GOOGLE_CLIENT_SECRET !== undefined,

@@ -1,17 +1,17 @@
 /**
- * Identité minimale extraite d'une session. Volontairement réduite à l'identifiant :
- * rien d'autre (email, nom) ne doit circuler dans l'application ni dans les logs.
+ * Minimal identity extracted from a session. Deliberately reduced to the identifier:
+ * nothing else (email, name) is to travel through the application nor through the logs.
  */
 export type AuthenticatedUser = { readonly id: string };
 
 /**
- * En-têtes d'une requête entrante, décrits structurellement : la couche application exprime
- * son besoin — « les en-têtes portés par l'appelant » — sans importer le transport qui les
- * a produits. `IncomingHttpHeaders` de Node satisfait ce type sans conversion.
+ * Headers of an incoming request, described structurally: the application layer states its
+ * need — "the headers carried by the caller" — without importing the transport that produced
+ * them. Node's `IncomingHttpHeaders` satisfies this type with no conversion.
  */
 export type RequestHeaders = Readonly<Record<string, string | string[] | undefined>>;
 
-/** Lecture de la session portée par une requête entrante. */
+/** Reading of the session carried by an incoming request. */
 export interface SessionReader {
   readSession(headers: RequestHeaders): Promise<AuthenticatedUser | null>;
 }

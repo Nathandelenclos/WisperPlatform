@@ -1,6 +1,6 @@
 import type { TranscriptionEvent } from '../../domain/events';
 
-/** Diffusion des événements de domaine, appelée après un enregistrement réussi. */
+/** Broadcast of domain events, called after a successful save. */
 export interface TranscriptionEventPublisher {
   publish(events: readonly TranscriptionEvent[]): Promise<void>;
 }
@@ -8,9 +8,9 @@ export interface TranscriptionEventPublisher {
 export const TRANSCRIPTION_EVENT_PUBLISHER = Symbol('TranscriptionEventPublisher');
 
 /**
- * Abonnement aux événements d'une transcription, consommé par l'interface (SSE).
- * Le cloisonnement par propriétaire fait partie du contrat : on ne s'abonne qu'à ses propres flux.
- * `subscribe` rend la fonction de désabonnement.
+ * Subscription to a transcription's events, consumed by the interface layer (SSE).
+ * Partitioning by owner is part of the contract: one only subscribes to one's own streams.
+ * `subscribe` returns the unsubscribe function.
  */
 export interface TranscriptionEventStream {
   subscribe(

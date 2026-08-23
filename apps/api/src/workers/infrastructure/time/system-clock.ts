@@ -1,8 +1,8 @@
 import type { Clock } from '../../application/ports/clock';
 
 /**
- * Horloge du système. Propre au contexte, comme son port : c'est ce qui garde le contexte
- * `workers` indépendant de `transcription` à la compilation comme à l'exécution.
+ * System clock. Owned by this context, like its port: that is what keeps the `workers` context
+ * independent from `transcription` at compile time as at run time.
  */
 export class SystemClock implements Clock {
   now(): Date {

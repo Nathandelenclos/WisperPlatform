@@ -1,4 +1,4 @@
-"""Parsing de la sortie verbose de whisper et découpage en lots."""
+"""Parsing of the whisper verbose output and batching."""
 
 import unittest
 
@@ -8,28 +8,28 @@ from whisper_output import SegmentBatcher, parse_segment_line
 
 class ParseSegmentLineTest(unittest.TestCase):
     def test_reads_a_line_without_hours(self):
-        segment = parse_segment_line("[00:00.000 --> 00:02.400] Bonjour et bienvenue.")
+        segment = parse_segment_line("[00:00.000 --> 00:02.400] Hello and welcome.")
 
         self.assertEqual(
-            {"startMs": 0, "endMs": 2400, "text": "Bonjour et bienvenue."}, segment
+            {"startMs": 0, "endMs": 2400, "text": "Hello and welcome."}, segment
         )
 
     def test_reads_a_line_with_hours(self):
-        segment = parse_segment_line("[01:02:03.456 --> 01:02:04.789] Toujours la.")
+        segment = parse_segment_line("[01:02:03.456 --> 01:02:04.789] Still here.")
 
         self.assertEqual(3_723_456, segment["startMs"])
         self.assertEqual(3_724_789, segment["endMs"])
 
     def test_reads_a_line_past_a_hundred_hours(self):
-        segment = parse_segment_line("[100:00:00.000 --> 100:00:01.000] Tres long media.")
+        segment = parse_segment_line("[100:00:00.000 --> 100:00:01.000] Very long media.")
 
         self.assertEqual(360_000_000, segment["startMs"])
         self.assertEqual(360_001_000, segment["endMs"])
 
     def test_strips_the_text_and_keeps_the_inner_spacing(self):
-        segment = parse_segment_line("[00:00.000 --> 00:01.000]   Deux  mots   \n")
+        segment = parse_segment_line("[00:00.000 --> 00:01.000]   Two  words   \n")
 
-        self.assertEqual("Deux  mots", segment["text"])
+        self.assertEqual("Two  words", segment["text"])
 
     def test_ignores_noise_lines(self):
         noise = [
@@ -38,9 +38,9 @@ class ParseSegmentLineTest(unittest.TestCase):
             "Detecting language using up to the first 30 seconds.",
             "Detected language: French",
             "  0%|          | 0/1234 [00:00<?, ?frames/s]",
-            "[00:00.000 --> texte sans borne] rien",
-            "[00:00.00 --> 00:01.000] millisecondes tronquees",
-            "00:00.000 --> 00:01.000 sans crochets",
+            "[00:00.000 --> unbounded text] nothing",
+            "[00:00.00 --> 00:01.000] truncated milliseconds",
+            "00:00.000 --> 00:01.000 without brackets",
         ]
 
         self.assertEqual([], [line for line in noise if parse_segment_line(line) is not None])
@@ -49,9 +49,9 @@ class ParseSegmentLineTest(unittest.TestCase):
         self.assertIsNone(parse_segment_line("[00:00.000 --> 00:01.000]    "))
 
     def test_ignores_an_instantaneous_segment(self):
-        # whisper imprime ces segments puis les efface : l'API les refuserait.
-        self.assertIsNone(parse_segment_line("[00:03.000 --> 00:03.000] Souffle."))
-        self.assertIsNone(parse_segment_line("[00:04.000 --> 00:03.000] Bornes inversees."))
+        # whisper prints these segments then erases them: the API would reject them.
+        self.assertIsNone(parse_segment_line("[00:03.000 --> 00:03.000] Breath."))
+        self.assertIsNone(parse_segment_line("[00:04.000 --> 00:03.000] Reversed bounds."))
 
 
 class FakeClock:
@@ -131,9 +131,9 @@ if __name__ == "__main__":
 
 
 class ExplainFailureTest(unittest.TestCase):
-    """Traduction de la fin de stderr : « code 1 » ne dit rien, ces raisons-là disent quoi faire."""
+    """Translating the stderr tail: "code 1" says nothing, these reasons say what to do."""
 
-    def test_une_saturation_de_memoire_gpu_est_nommee(self):
+    def test_names_a_gpu_memory_exhaustion(self):
         tail = [
             "torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 20.00 MiB.",
             "GPU 0 has a total capacity of 3.94 GiB of which 19.75 MiB is free.",
@@ -141,22 +141,22 @@ class ExplainFailureTest(unittest.TestCase):
 
         self.assertEqual("model too large for this worker", wisper_worker.explain_failure(1, tail))
 
-    def test_une_carte_trop_ancienne_est_nommee(self):
+    def test_names_a_card_that_is_too_old(self):
         tail = ["RuntimeError: CUDA error: no kernel image is available for execution on the device"]
 
         self.assertEqual(
             "model unsupported by this worker's gpu", wisper_worker.explain_failure(1, tail)
         )
 
-    def test_un_media_indecodable_est_nomme(self):
+    def test_names_an_undecodable_media(self):
         tail = ["ffmpeg: Invalid data found when processing input"]
 
         self.assertEqual("media could not be decoded", wisper_worker.explain_failure(1, tail))
 
-    def test_une_cause_inconnue_rend_le_code_brut(self):
+    def test_an_unknown_cause_returns_the_raw_code(self):
         tail = ["Traceback (most recent call last):", "KeyError: 'segments'"]
 
         self.assertEqual("whisper exited with code 3", wisper_worker.explain_failure(3, tail))
 
-    def test_une_sortie_vide_rend_le_code_brut(self):
+    def test_an_empty_output_returns_the_raw_code(self):
         self.assertEqual("whisper exited with code 1", wisper_worker.explain_failure(1, []))

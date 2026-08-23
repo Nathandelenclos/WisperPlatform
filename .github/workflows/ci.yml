@@ -70,6 +70,12 @@ jobs:
             zricethezav/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f \
             git /repo --redact --no-banner --exit-code 1
 
+      # Last in this job, and deliberately: it is a prose gate, not a security one. The sources
+      # are English-only — comments, test names, error messages — so a French word slipping back
+      # in is caught here rather than in review.
+      - name: Check that sources are in English
+        run: bash scripts/check-english.sh
+
   # --- Code checks --------------------------------------------------------------------------
   # Types, the dependency rule, and everything that runs on in-memory doubles. No container,
   # no I/O: this is the job that should answer in a couple of minutes.

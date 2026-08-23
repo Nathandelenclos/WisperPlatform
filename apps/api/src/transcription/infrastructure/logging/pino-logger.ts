@@ -5,12 +5,12 @@ import { correlationStorage } from '../../../shared/infrastructure/logging/corre
 import type { Logger } from '../../application/ports/logger';
 
 /**
- * Champs dont la valeur ne doit jamais atteindre un fichier de log : secrets, jetons, et
- * données personnelles — l'email d'un utilisateur, le nom d'origine de son fichier, le nom
- * qu'il a donné à un locuteur et celui qu'il a donné à sa machine en font partie.
+ * Fields whose value must never reach a log file: secrets, tokens, and personal data — a
+ * user's email, the original name of their file, the name they gave a speaker and the one they
+ * gave their machine are part of it.
  *
- * `secretFingerprint` y figure aussi : une empreinte n'est pas un secret, mais elle identifie
- * la clé d'une machine, et un journal n'a aucune raison de la porter.
+ * `secretFingerprint` is listed too: a fingerprint is not a secret, but it identifies the key
+ * of a machine, and a log has no reason to carry it.
  */
 export const REDACTED_FIELDS: readonly string[] = [
   'password',
@@ -31,11 +31,11 @@ export const REDACTED_FIELDS: readonly string[] = [
 ];
 
 /**
- * Profondeurs couvertes : la racine, un niveau, deux niveaux, et les éléments d'un tableau.
- * Le commentaire précédent promettait « quelle que soit la profondeur » — pino ne sait pas
- * faire, ses chemins ne sont pas récursifs. Mieux vaut une portée dite exactement qu'une
- * garantie à laquelle on se fie à tort : les structures du domaine tiennent dans ces quatre
- * formes, un champ sensible plus profond ne serait PAS caviardé.
+ * Depths covered: the root, one level, two levels, and the elements of an array.
+ * The previous comment promised "whatever the depth" — pino cannot do that, its paths are not
+ * recursive. A scope stated exactly is worth more than a guarantee one wrongly relies on: the
+ * domain structures fit into these four shapes, a sensitive field deeper down would NOT be
+ * redacted.
  */
 const REDACTION_PATHS = REDACTED_FIELDS.flatMap((field) => [
   field,
@@ -45,8 +45,8 @@ const REDACTION_PATHS = REDACTED_FIELDS.flatMap((field) => [
 ]);
 
 /**
- * Adaptateur du port `Logger` : une ligne JSON par message, niveaux respectés,
- * champs sensibles caviardés. Aucun `console.log` dans l'API.
+ * Adapter for the `Logger` port: one JSON line per message, levels honoured,
+ * sensitive fields redacted. No `console.log` anywhere in the API.
  */
 export class PinoLogger implements Logger {
   constructor(private readonly logger: pino.Logger) {}
@@ -69,8 +69,8 @@ export class PinoLogger implements Logger {
 }
 
 /**
- * Instance pino de l'application : JSON sur stdout, caviardage actif.
- * `destination` n'existe que pour permettre à un test d'inspecter les lignes émises.
+ * The application's pino instance: JSON on stdout, redaction active.
+ * `destination` exists only so that a test can inspect the emitted lines.
  */
 export function createPinoLogger(
   env: Pick<Env, 'NODE_ENV'>,
@@ -81,9 +81,9 @@ export function createPinoLogger(
     redact: { paths: REDACTION_PATHS, censor: '[redacted]', remove: false },
     formatters: { level: (label) => ({ level: label }) },
     timestamp: pino.stdTimeFunctions.isoTime,
-    // Chaque ligne applicative porte l'identifiant de la requête qui l'a provoquée, repris
-    // du contexte asynchrone ouvert à l'entrée : le journal d'accès et le journal métier se
-    // recoupent sans qu'aucun appelant n'ait à faire circuler l'identifiant.
+    // Every application line carries the identifier of the request that caused it, taken from
+    // the asynchronous context opened on the way in: the access log and the business log line
+    // up without any caller having to pass the identifier around.
     mixin: () => {
       const correlationId = correlationStorage.getStore();
       return correlationId === undefined ? {} : { correlationId };

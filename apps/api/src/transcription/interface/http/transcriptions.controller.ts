@@ -55,16 +55,16 @@ import type { UploadedMediaFile } from './dto/transcriptions.dto';
 import { parseHttpInput } from './parse-http-input';
 
 /**
- * Routes utilisateur. Le controller ne fait que trois choses : valider l'entrée du transport,
- * appeler un cas d'utilisation, et mettre en forme la réponse. Les dates sont sérialisées en
- * ISO 8601 par `JSON.stringify`, qui est exactement le format attendu par le contrat.
+ * User routes. The controller does exactly three things: validate the transport input, call a
+ * use case, and shape the response. Dates are serialised to ISO 8601 by `JSON.stringify`,
+ * which is exactly the format the contract expects.
  */
 @UseGuards(SessionGuard)
 @Controller('transcriptions')
 export class TranscriptionsController {
   constructor(
-    // Jetons d'injection explicites : le transpileur de développement (tsx/esbuild) n'émet pas
-    // `design:paramtypes`, l'injection par type de constructeur ne peut donc pas être implicite.
+    // Explicit injection tokens: the development transpiler (tsx/esbuild) does not emit
+    // `design:paramtypes`, so constructor injection by type cannot be implicit.
     @Inject(RequestTranscriptionUseCase) private readonly requestTranscription: RequestTranscriptionUseCase,
     @Inject(ListTranscriptionsUseCase) private readonly listTranscriptions: ListTranscriptionsUseCase,
     @Inject(GetTranscriptionUseCase) private readonly getTranscription: GetTranscriptionUseCase,
@@ -86,7 +86,7 @@ export class TranscriptionsController {
     @Body() body: unknown,
   ): Promise<{ id: string }> {
     if (file === undefined) {
-      throw new BadRequestException('La partie multipart « file » est requise');
+      throw new BadRequestException('The "file" multipart part is required');
     }
     try {
       const { model, language, placement } = parseHttpInput(requestTranscriptionBodySchema, body);
@@ -104,7 +104,7 @@ export class TranscriptionsController {
       });
       return { id: transcriptionId };
     } catch (failure) {
-      // Le média n'a pas été adopté par le magasin : le fichier d'arrivée ne doit pas rester.
+      // The media was not adopted by the store: the incoming file must not be left behind.
       await this.discardUpload(file.path);
       throw failure;
     }
@@ -132,7 +132,7 @@ export class TranscriptionsController {
     @Param('id') id: string,
   ): Promise<Observable<MessageEvent>> {
     const transcriptionId = parseHttpInput(transcriptionIdSchema, id);
-    // Refuse le flux avant de l'ouvrir si la transcription n'appartient pas au demandeur.
+    // Refuse the stream before opening it if the transcription does not belong to the caller.
     await this.getTranscription.execute({ transcriptionId, ownerId: user.id });
 
     return new Observable<MessageEvent>((subscriber) =>
@@ -160,8 +160,8 @@ export class TranscriptionsController {
   }
 
   /**
-   * Nommer un locuteur rend la transcription à jour : le renommage touche toutes ses répliques
-   * d'un coup, l'appelant a besoin de la vue entière, pas d'un accusé de réception.
+   * Naming a speaker returns the up-to-date transcription: the rename touches all of its lines
+   * at once, so the caller needs the whole view, not an acknowledgement.
    */
   @Patch(':id/speakers/:index')
   @HttpCode(HttpStatus.OK)
@@ -181,9 +181,9 @@ export class TranscriptionsController {
   }
 
   /**
-   * Le propriétaire choisit où sa demande sera calculée, et c'est ce qui lui permet de rendre
-   * au service une demande que sa machine laisse en attente. Rend la vue entière : la
-   * bibliothèque affiche le nouveau placement sans relire.
+   * The owner chooses where their request will be computed, and that is what lets them hand
+   * back to the service a request their own machine leaves pending. Returns the whole view:
+   * the library displays the new placement without re-reading.
    */
   @Patch(':id/placement')
   @HttpCode(HttpStatus.OK)
@@ -238,7 +238,7 @@ export class TranscriptionsController {
     try {
       await unlink(path);
     } catch (cause) {
-      this.logger.warn('fichier d\u2019arrivée non supprimé', {
+      this.logger.warn('incoming file not deleted', {
         cause: cause instanceof Error ? cause.name : typeof cause,
       });
     }

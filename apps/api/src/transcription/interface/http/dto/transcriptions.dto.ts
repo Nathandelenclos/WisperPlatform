@@ -3,17 +3,18 @@ import { z } from 'zod';
 import type { SubtitleFormat } from '../../../domain/subtitle-document';
 
 /**
- * Schémas de la frontière HTTP côté utilisateur. Ils ne valident que ce qui relève du
- * transport (présence, type, énumération de route). Le modèle, la langue, le texte d'un
- * segment ou l'existence d'un ordinal sont des invariants du domaine : ils restent validés
- * par l'aggregate, qui répond 422, et ne sont pas dupliqués ici.
+ * Schemas of the user-facing HTTP boundary. They validate only what belongs to the transport
+ * (presence, type, route enumeration). The model, the language, a segment's text or the
+ * existence of an ordinal are domain invariants: they stay validated by the aggregate, which
+ * answers 422, and are not duplicated here.
  */
 
 export const transcriptionIdSchema = z.uuid();
 
 /**
- * `placement` reste une chaîne ici : c'est une énumération du domaine, comme le modèle et la
- * langue. L'aggregate la valide et répond 422 ; la frontière ne duplique pas la liste.
+ * `placement` stays a string here: it is a domain enumeration, like the model and the
+ * language. The aggregate validates it and answers 422 — the boundary does not duplicate the
+ * list.
  */
 export const requestTranscriptionBodySchema = z.object({
   model: z.string(),
@@ -50,8 +51,8 @@ export const exportQuerySchema = z.object({
 });
 
 /**
- * Part du fichier multipart écrit sur disque par multer effectivement consommée.
- * Volontairement structurel : la couche interface n'a besoin de rien d'autre.
+ * The part actually consumed of the multipart file multer writes to disk.
+ * Deliberately structural: the interface layer needs nothing else.
  */
 export type UploadedMediaFile = {
   readonly originalname: string;

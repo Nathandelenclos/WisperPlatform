@@ -22,7 +22,7 @@ export class InMemoryTranscriptionCatalog implements TranscriptionCatalog {
         mediaName: state.mediaOriginalName,
         mediaByteSize: state.mediaByteSize,
         segmentCount: state.segments.length,
-        // Même définition que le `coalesce(max(end_ms), 0)` de l'adaptateur réel.
+        // Same definition as the real adapter's `coalesce(max(end_ms), 0)`.
         durationMs: state.segments.reduce((furthest, segment) => Math.max(furthest, segment.endMs), 0),
         requestedAt: state.requestedAt,
         completedAt: state.completedAt,

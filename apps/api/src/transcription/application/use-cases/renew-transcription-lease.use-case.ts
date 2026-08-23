@@ -26,7 +26,7 @@ export class RenewTranscriptionLeaseUseCase {
       });
       const leaseExpiresAt = transcription.leaseExpiry;
       if (leaseExpiresAt === null) {
-        throw new Error('un bail renouvelé porte toujours une échéance');
+        throw new Error('a renewed lease always carries a deadline');
       }
       await this.repository.save(transcription);
 

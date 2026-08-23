@@ -22,15 +22,15 @@ import { registerWorkerKeyBodySchema, workerKeyIdSchema } from './dto/worker-key
 import { parseHttpInput } from './parse-http-input';
 
 /**
- * Routes des clés de machine. La réponse de création est le SEUL endroit où le secret apparaît :
- * l'utilisateur le colle dans la commande de lancement de son worker, la plateforme n'en garde
- * que l'empreinte et ne saura plus le lui montrer.
+ * Machine key routes. The creation response is the ONLY place where the secret appears: the user
+ * pastes it into the launch command of their worker, the platform keeps nothing but its
+ * fingerprint and will never be able to show it to them again.
  */
 @UseGuards(SessionGuard)
 @Controller('worker-keys')
 export class WorkerKeysController {
   constructor(
-    // Voir TranscriptionsController : injection par jeton explicite, pas par métadonnée de type.
+    // See TranscriptionsController: injection by explicit token, not by type metadata.
     @Inject(RegisterWorkerKeyUseCase) private readonly registerWorkerKey: RegisterWorkerKeyUseCase,
     @Inject(ListWorkerKeysUseCase) private readonly listWorkerKeys: ListWorkerKeysUseCase,
     @Inject(RevokeWorkerKeyUseCase) private readonly revokeWorkerKey: RevokeWorkerKeyUseCase,

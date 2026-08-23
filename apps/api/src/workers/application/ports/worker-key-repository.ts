@@ -1,18 +1,18 @@
 import type { WorkerKey } from '../../domain/worker-key';
 
 /**
- * Dépôt de l'aggregate `WorkerKey`. `save` écrit la clé entière : elle tient dans une ligne,
- * il n'y a rien à assembler.
+ * Repository of the `WorkerKey` aggregate. `save` writes the whole key: it fits in one row,
+ * there is nothing to assemble.
  *
- * `findBySecretFingerprint` est le chemin d'authentification d'une machine : il rend la clé
- * même révoquée, parce que c'est le domaine — et lui seul — qui décide ce qu'une révocation
- * empêche.
+ * `findBySecretFingerprint` is the authentication path of a machine: it returns the key even
+ * when revoked, because it is the domain — and it alone — that decides what a revocation
+ * prevents.
  */
 export interface WorkerKeyRepository {
   save(key: WorkerKey): Promise<void>;
   findById(id: string): Promise<WorkerKey | null>;
   findBySecretFingerprint(fingerprint: string): Promise<WorkerKey | null>;
-  /** Les clés d'un propriétaire, de la plus récente à la plus ancienne, révoquées comprises. */
+  /** An owner's keys, from the most recent to the oldest, revoked ones included. */
   listOwnedBy(ownerId: string): Promise<WorkerKey[]>;
 }
 

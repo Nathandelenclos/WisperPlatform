@@ -8,9 +8,9 @@ import { retryOnConcurrentWrite } from '../retry-on-concurrent-write';
 export type ReleaseTranscriptionRunCommand = { transcriptionId: string; runId: string };
 
 /**
- * Un worker qui s'arrête proprement rend sa tentative. Sans ça, la demande attendait
- * l'extinction du bail — deux minutes pendant lesquelles personne ne travaille dessus alors
- * qu'un autre worker est libre.
+ * A worker that shuts down cleanly releases its run. Without this, the request waited for the
+ * lease to expire — two minutes during which nobody works on it while another worker is
+ * free.
  */
 export class ReleaseTranscriptionRunUseCase {
   constructor(
@@ -29,8 +29,8 @@ export class ReleaseTranscriptionRunUseCase {
 
       transcription.releaseRun({ runId: command.runId, at: this.clock.now() });
       await this.repository.save(transcription);
-      // La demande redevient réclamable tout de suite : sans ça elle attendrait la fin de la
-      // fenêtre de réservation, c'est-à-dire exactement ce qu'on cherchait à éviter.
+      // The request becomes claimable again right away: without this it would wait out the
+      // reservation window, that is to say exactly what we were trying to avoid.
       await this.queue.clearReservation(command.transcriptionId);
       await this.publisher.publish(transcription.pullEvents());
     });

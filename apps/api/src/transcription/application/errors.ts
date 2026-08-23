@@ -1,6 +1,6 @@
 /**
- * Erreurs de la couche applicative : elles ne traduisent pas une violation d'invariant métier
- * mais un refus d'accès. Leur `code` est stable, le mapping HTTP s'appuie dessus.
+ * Application-layer errors: they do not express a violated business invariant but a refused
+ * access. Their `code` is stable — the HTTP mapping relies on it.
  */
 export class ApplicationError extends Error {
   readonly code: string;
@@ -13,29 +13,29 @@ export class ApplicationError extends Error {
 }
 
 /**
- * Transcription inconnue — ou appartenant à quelqu'un d'autre : on ne révèle jamais
- * l'existence de la ressource d'autrui. Mappée en 404.
+ * Unknown transcription — or one belonging to someone else: we never reveal the existence of
+ * another user's resource. Mapped to 404.
  */
 export class TranscriptionNotFoundError extends ApplicationError {
-  constructor(message = 'transcription introuvable') {
+  constructor(message = 'transcription not found') {
     super('TRANSCRIPTION_NOT_FOUND', message);
   }
 }
 
-/** Laissez-passer média invalide, expiré, ou dont le run n'est plus celui en cours. Mappée en 403. */
+/** Media pass invalid, expired, or whose run is no longer the current one. Mapped to 403. */
 export class MediaAccessDeniedError extends ApplicationError {
-  constructor(message = 'accès au média refusé') {
+  constructor(message = 'media access denied') {
     super('MEDIA_ACCESS_DENIED', message);
   }
 }
 
 /**
- * Deux écrivains ont modifié la même transcription à partir du même état : le second n'écrit
- * pas. C'est un échec du port de persistance, rejouable — le cas nominal étant une correction
- * de l'utilisateur qui croise un lot de segments du worker. Mappée en 409 si elle remonte.
+ * Two writers modified the same transcription from the same state: the second one does not
+ * write. This is a persistence-port failure, replayable — the nominal case being a user
+ * correction that crosses a batch of segments from the worker. Mapped to 409 if it surfaces.
  */
 export class ConcurrentTranscriptionWriteError extends ApplicationError {
   constructor(transcriptionId: string) {
-    super('CONCURRENT_WRITE', `transcription ${transcriptionId} modifiée entre-temps`);
+    super('CONCURRENT_WRITE', `transcription ${transcriptionId} modified in the meantime`);
   }
 }

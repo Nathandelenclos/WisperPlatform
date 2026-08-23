@@ -1,15 +1,15 @@
-"""Passe de diarisation du worker : qui parle quand.
+"""The worker's diarization pass: who speaks when.
 
-Facultative par construction. Un worker dont l'image ne porte ni `sherpa-onnx` ni les
-modèles ONNX ne déclare rien et transcrit exactement comme avant : `load` rend `None` et
-la passe n'a simplement pas lieu. Aucune exception ne remonte d'ici au démarrage.
+Optional by construction. A worker whose image carries neither `sherpa-onnx` nor the ONNX
+models declares nothing and transcribes exactly as before: `load` returns `None` and the pass
+simply does not happen. No exception ever escapes from here at startup.
 
-Le média est décodé en PCM 16 kHz mono par `ffmpeg` — déjà présent dans l'image pour
-`whisper` — vers un fichier temporaire du répertoire de travail du job, relu par le module
-standard `wave`, puis effacé dans tous les cas. Rien du média ne survit à la passe.
+The media is decoded to 16 kHz mono PCM by `ffmpeg` — already in the image for `whisper` —
+into a temporary file inside the job working directory, read back by the standard `wave`
+module, then erased in every case. Nothing of the media survives the pass.
 
-`sherpa_onnx` et `numpy` sont importés au dernier moment : leur absence est une capacité
-manquante, pas une erreur d'import au chargement du worker.
+`sherpa_onnx` and `numpy` are imported at the last moment: their absence is a missing
+capability, not an import error while loading the worker.
 """
 
 from __future__ import annotations
@@ -22,39 +22,39 @@ import subprocess
 import tempfile
 import wave
 
-# Fréquence attendue par les deux modèles. Ni l'un ni l'autre n'accepte autre chose : c'est
-# une constante du couple de modèles, pas un réglage.
+# Sample rate expected by both models. Neither accepts anything else: it is a constant of
+# the model pair, not a setting.
 SAMPLE_RATE = 16000
 
 DEFAULT_SEGMENTATION_MODEL = "/opt/diarization/segmentation.onnx"
 DEFAULT_EMBEDDING_MODEL = "/opt/diarization/embedding.onnx"
-# Deux fils suffisent : mesuré à 0,060x le temps réel sur cette machine. Au-delà, la passe
-# dispute des cœurs à whisper, qui domine largement le coût du job.
+# Two threads are enough: measured at 0.060x real time on this machine. Beyond that, the pass
+# fights whisper for cores, and whisper dominates the cost of the job by far.
 DEFAULT_THREADS = 2
 DEFAULT_CLUSTER_THRESHOLD = 0.5
-# -1 : le clustering découvre lui-même le nombre de locuteurs.
+# -1: the clustering discovers the speaker count on its own.
 AUTOMATIC_SPEAKERS = -1
 
-# Bornes de la segmentation pyannote, en secondes : en deçà, un tour est du bruit et un
-# silence n'en est pas un. Ce sont les valeurs de référence du modèle.
+# Bounds of the pyannote segmentation, in seconds: below them, a turn is noise and a silence
+# is not one. These are the model's reference values.
 MIN_DURATION_ON = 0.3
 MIN_DURATION_OFF = 0.5
 
 FFMPEG_BIN = "ffmpeg"
-# Décoder n'est pas transcrire : au-delà, ffmpeg est bloqué, pas lent.
+# Decoding is not transcribing: past this, ffmpeg is stuck, not slow.
 DECODE_TIMEOUT_SECONDS = 30 * 60
-# Plafond de durée décodée. La passe matérialise tout le signal en mémoire — environ
-# 10 octets par échantillon au pic, soit ~576 Mio par heure d'audio. Le noyau tue un
-# conteneur qui dépasse sa borne mémoire par SIGKILL, que rien ne rattrape en Python : ni
-# le garde de la passe, ni celui du job. Un transcript déjà produit serait perdu, alors
-# qu'il aboutissait avant cette passe. Le plafond est donc calé sur le plus PETIT worker de
-# la flotte (3 Gio pour le worker GPU), pas sur le plus grand, et un dépassement devient un
-# échec rattrapable : la diarisation est sautée, la transcription se conclut.
+# Ceiling on the decoded duration. The pass materialises the whole signal in memory — about
+# 10 bytes per sample at peak, i.e. ~576 MiB per hour of audio. The kernel kills a container
+# that exceeds its memory bound with SIGKILL, which nothing catches in Python: neither the
+# guard of the pass, nor the one of the job. An already produced transcript would be lost,
+# although it was completing before this pass. The ceiling is therefore set on the SMALLEST
+# worker of the fleet (3 GiB for the GPU worker), not on the largest, and going over becomes a
+# recoverable failure: diarization is skipped, the transcription concludes.
 MAX_DECODED_SECONDS = 4 * 60 * 60
 
 REQUIRED_MODULES = ("sherpa_onnx", "numpy")
 
-# Enfant du journal du worker : même formateur JSON, même flux, aucune configuration en double.
+# Child of the worker logger: same JSON formatter, same stream, no duplicate configuration.
 LOGGER = logging.getLogger("wisper.worker.diarization")
 
 
@@ -63,11 +63,11 @@ def log(level, message, **fields):
 
 
 class Unavailable(Exception):
-    """Raison pour laquelle ce worker ne peut pas diariser. Jamais une panne : une capacité."""
+    """Why this worker cannot diarize. Never an outage: a capability."""
 
 
 class DiarizationError(Exception):
-    """Échec de la passe sur un job. Le transcript, lui, reste bon."""
+    """Failure of the pass on a job. The transcript itself stays good."""
 
 
 @dataclasses.dataclass(frozen=True)
@@ -104,8 +104,8 @@ def _raw(environ, name):
 
 def _path(environ, name, default):
     if name in environ and _raw(environ, name) is None:
-        # Variable posée mais vide : une faute de configuration, pas un choix du défaut.
-        raise Unavailable("{} est vide".format(name))
+        # Variable set but empty: a configuration mistake, not a choice of the default.
+        raise Unavailable("{} is empty".format(name))
     return _raw(environ, name) or default
 
 
@@ -116,18 +116,18 @@ def _positive_int(environ, name, default):
     try:
         value = int(raw)
     except ValueError:
-        raise Unavailable("{} doit être un entier".format(name)) from None
+        raise Unavailable("{} must be an integer".format(name)) from None
     if value < 1:
-        raise Unavailable("{} doit être supérieur ou égal à 1".format(name))
+        raise Unavailable("{} must be greater than or equal to 1".format(name))
     return value
 
 
 def _speaker_count(environ, name, default):
-    """Un nombre de locuteurs : un entier >= 1, ou la sentinelle automatique.
+    """A speaker count: an integer >= 1, or the automatic sentinel.
 
-    `AUTOMATIC_SPEAKERS` est la valeur que ce module désigne comme « laisse le clustering
-    décider » : la refuser éteindrait toute la diarisation chez l'exploitant qui l'écrit
-    précisément pour rendre ce choix explicite, et une ligne info serait le seul indice.
+    `AUTOMATIC_SPEAKERS` is the value this module designates as "let the clustering decide":
+    refusing it would switch off all diarization for the operator who writes it precisely to
+    make that choice explicit, and one info line would be the only clue.
     """
     raw = _raw(environ, name)
     if raw is None:
@@ -135,10 +135,10 @@ def _speaker_count(environ, name, default):
     try:
         value = int(raw)
     except ValueError:
-        raise Unavailable("{} doit être un entier".format(name)) from None
+        raise Unavailable("{} must be an integer".format(name)) from None
     if value != AUTOMATIC_SPEAKERS and value < 1:
         raise Unavailable(
-            "{} doit valoir {} (automatique) ou un entier supérieur ou égal à 1".format(
+            "{} must be {} (automatic) or an integer greater than or equal to 1".format(
                 name, AUTOMATIC_SPEAKERS
             )
         )
@@ -152,17 +152,17 @@ def _positive_float(environ, name, default):
     try:
         value = float(raw)
     except ValueError:
-        raise Unavailable("{} doit être un nombre".format(name)) from None
+        raise Unavailable("{} must be a number".format(name)) from None
     if value <= 0:
-        raise Unavailable("{} doit être strictement positif".format(name))
+        raise Unavailable("{} must be strictly positive".format(name))
     return value
 
 
 def load(environ, exists=os.path.exists, find_module=importlib.util.find_spec):
-    """Rend un `Diarizer` prêt à l'emploi, ou `None` quand la capacité est absente.
+    """Returns a ready-to-use `Diarizer`, or `None` when the capability is missing.
 
-    Appelé une seule fois au démarrage : sonder les modules et les fichiers à chaque job
-    ne dirait jamais rien de neuf, et un worker qui ne diarise pas ne doit rien coûter.
+    Called once at startup: probing the modules and the files on every job would never say
+    anything new, and a worker that does not diarize must cost nothing.
     """
     try:
         config = DiarizationConfig.from_environment(environ)
@@ -188,41 +188,41 @@ def _require_modules(find_module):
         except (ImportError, ValueError):
             found = None
         if found is None:
-            raise Unavailable("le module {} n'est pas installé".format(name))
+            raise Unavailable("module {} is not installed".format(name))
 
 
 def _require_models(config, exists):
     for path in (config.segmentation_model, config.embedding_model):
         if not exists(path):
-            raise Unavailable("le modèle {} est absent".format(path))
+            raise Unavailable("model {} is missing".format(path))
 
 
 class Diarizer:
-    """Le moteur sherpa-onnx et son décodage, montés à la première passe puis réutilisés.
+    """The sherpa-onnx engine and its decoding, set up on the first pass then reused.
 
-    Charger 45 Mio de poids ONNX coûte plusieurs secondes : ce serait du gaspillage à chaque
-    job. Le worker traite un job à la fois, l'objet n'a donc jamais deux appels concurrents.
+    Loading 45 MiB of ONNX weights costs several seconds: doing it on every job would be a
+    waste. The worker handles one job at a time, so the object never sees two concurrent calls.
     """
 
     def __init__(self, config, engine_factory=None, decode=None, to_samples=None):
         self._config = config
         self._engine_factory = engine_factory if engine_factory is not None else build_engine
         self._decode = decode if decode is not None else decode_pcm
-        # Dernière couture : la conversion en flottants est la seule chose ici qui exige
-        # numpy. L'injecter garde le décodage, le ménage et cette boucle éprouvables sur un
-        # Python nu — c'est ce que fait la CI, qui n'installe rien pour le worker.
+        # Last seam: the conversion to floats is the only thing here that requires numpy.
+        # Injecting it keeps the decoding, the cleanup and this loop testable on a bare
+        # Python — which is what CI does, installing nothing for the worker.
         self._to_samples = to_samples if to_samples is not None else _as_float32
         self._engine = None
 
     def run(self, media_path, workdir):
-        """Rend les tours de parole du média, en millisecondes, triés par début."""
+        """Returns the media's speaker turns, in milliseconds, sorted by start."""
         frames, sample_rate = self._decode(media_path, workdir)
         engine = self._engine
         if engine is None:
             engine = self._engine = self._engine_factory(self._config)
         if engine.sample_rate != sample_rate:
             raise DiarizationError(
-                "le moteur attend {} Hz, le média a été décodé à {} Hz".format(
+                "the engine expects {} Hz, the media was decoded at {} Hz".format(
                     engine.sample_rate, sample_rate
                 )
             )
@@ -230,15 +230,14 @@ class Diarizer:
 
 
 def _as_float32(frames):
-    """Convertit des trames PCM 16 bits en flottants normalisés, ce que sherpa attend.
+    """Converts 16-bit PCM frames into normalised floats, which is what sherpa expects.
 
-    numpy vit ici et nulle part ailleurs : c'est une dépendance de sherpa-onnx, donc elle
-    est présente partout où le moteur tourne — et absente des tests, qui n'ont pas de
-    moteur.
+    numpy lives here and nowhere else: it is a dependency of sherpa-onnx, so it is present
+    everywhere the engine runs — and absent from the tests, which have no engine.
 
-    `frombuffer` ne copie pas, `astype` produit l'unique copie, et la normalisation se fait
-    EN PLACE : écrire `astype(...) / 32768.0` allouerait un second tableau flottant pendant
-    que le premier vit encore, soit un pic de 10 octets par échantillon au lieu de 6.
+    `frombuffer` does not copy, `astype` produces the only copy, and the normalisation happens
+    IN PLACE: writing `astype(...) / 32768.0` would allocate a second float array while the
+    first one is still alive, i.e. a peak of 10 bytes per sample instead of 6.
     """
     import numpy
 
@@ -267,16 +266,16 @@ def build_engine(config):
         min_duration_off=MIN_DURATION_OFF,
     )
     if not settings.validate():
-        raise DiarizationError("configuration sherpa-onnx refusée")
+        raise DiarizationError("sherpa-onnx configuration refused")
     return sherpa_onnx.OfflineSpeakerDiarization(settings)
 
 
 def to_turns(segments):
-    """Traduit la sortie du moteur en tours du contrat HTTP.
+    """Translates the engine output into turns of the HTTP contract.
 
-    Millisecondes entières, début borné à zéro, tours vides écartés : le contrat exige
-    `startMs >= 0` et `endMs > startMs`, et un modèle qui déborde de quelques centièmes ne
-    doit pas transformer une passe réussie en 422.
+    Whole milliseconds, start clamped to zero, empty turns discarded: the contract requires
+    `startMs >= 0` and `endMs > startMs`, and a model overshooting by a few hundredths must not
+    turn a successful pass into a 422.
     """
     turns = []
     for segment in segments:
@@ -290,17 +289,17 @@ def to_turns(segments):
 
 
 def decode_pcm(media_path, workdir, run=subprocess.run):
-    """Décode le média en PCM 16 kHz mono et rend `(trames 16 bits, fréquence)`.
+    """Decodes the media to 16 kHz mono PCM and returns `(16-bit frames, sample rate)`.
 
-    Le fichier intermédiaire vit dans le répertoire de travail du job — effacé avec lui —
-    et est retiré dès la lecture faite, réussite ou échec : un WAV décompressé pèse plus
-    lourd que le média d'origine.
+    The intermediate file lives in the job working directory — erased along with it — and is
+    removed as soon as the read is done, success or failure: an uncompressed WAV weighs more
+    than the original media.
     """
     handle, wav_path = tempfile.mkstemp(prefix="diarization-", suffix=".wav", dir=workdir)
     os.close(handle)
     try:
-        # Liste d'arguments, jamais de shell. `-nostdin` : ffmpeg ne doit pas disputer
-        # l'entrée standard au worker. `-y` : le fichier existe déjà, mkstemp l'a créé.
+        # Argument list, never a shell. `-nostdin`: ffmpeg must not fight the worker for
+        # standard input. `-y`: the file already exists, mkstemp created it.
         run(
             [
                 FFMPEG_BIN,
@@ -312,8 +311,8 @@ def decode_pcm(media_path, workdir, run=subprocess.run):
                 "-i",
                 media_path,
                 "-vn",
-                # Ceinture : ffmpeg s'arrête au plafond, le WAV ne peut pas être plus long
-                # que ce que la mémoire du worker tient.
+                # Belt: ffmpeg stops at the ceiling, so the WAV cannot be longer than what
+                # the worker's memory holds.
                 "-t",
                 str(MAX_DECODED_SECONDS),
                 "-ac",
@@ -334,8 +333,8 @@ def decode_pcm(media_path, workdir, run=subprocess.run):
         )
         return read_wav(wav_path)
     finally:
-        # `missing_ok` n'existe pas ici : ffmpeg peut avoir remplacé le fichier, jamais
-        # l'avoir effacé. Un échec de ménage ne doit pas masquer l'échec du décodage.
+        # `missing_ok` does not exist here: ffmpeg may have replaced the file, never erased
+        # it. A cleanup failure must not mask the decoding failure.
         try:
             os.unlink(wav_path)
         except OSError:
@@ -343,23 +342,23 @@ def decode_pcm(media_path, workdir, run=subprocess.run):
 
 
 def read_wav(path):
-    """Rend `(trames PCM 16 bits signées, fréquence)`. Aucune dépendance tierce ici.
+    """Returns `(signed 16-bit PCM frames, sample rate)`. No third-party dependency here.
 
-    La conversion en flottants appartient à `Diarizer.run`, au plus près de sherpa : c'est
-    lui qui impose numpy, et lui seul. Le décodage, la lecture et le ménage restent donc
-    éprouvables sur un Python nu — c'est ce que fait la CI.
+    The conversion to floats belongs to `Diarizer.run`, as close to sherpa as possible: it is
+    sherpa that requires numpy, and it alone. The decoding, the read and the cleanup therefore
+    stay testable on a bare Python — which is what CI does.
     """
     with wave.open(path, "rb") as source:
         if source.getsampwidth() != 2 or source.getnchannels() != 1:
-            raise DiarizationError("le décodage n'a pas produit du PCM 16 bits mono")
+            raise DiarizationError("decoding did not produce 16-bit mono PCM")
         sample_rate = source.getframerate()
         frame_count = source.getnframes()
-        # Bretelles : ffmpeg a peut-être ignoré `-t`, ou le fichier ne vient pas de lui.
-        # Le refus arrive AVANT d'allouer, seul moment où il peut encore être un échec
-        # rattrapable plutôt qu'un SIGKILL du noyau.
+        # Braces: ffmpeg may have ignored `-t`, or the file may not come from it at all.
+        # The refusal happens BEFORE allocating, the only moment where it can still be a
+        # recoverable failure rather than a SIGKILL from the kernel.
         if frame_count > MAX_DECODED_SECONDS * max(1, sample_rate):
             raise DiarizationError(
-                "média trop long pour être diarisé : {} s décodées, plafond {} s".format(
+                "media too long to diarize: {} s decoded, ceiling {} s".format(
                     frame_count // max(1, sample_rate), MAX_DECODED_SECONDS
                 )
             )

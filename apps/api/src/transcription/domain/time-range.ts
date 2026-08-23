@@ -1,8 +1,8 @@
 import { InvalidTimeRangeError } from './errors';
 
 /**
- * Intervalle de temps d'un segment, exprimé en millisecondes entières depuis le début du média.
- * Value object immuable : construction validée, aucune mutation possible.
+ * Time range of a segment, expressed in whole milliseconds since the start of the media.
+ * Immutable value object: validated at construction, no mutation possible.
  */
 export class TimeRange {
   private constructor(
@@ -15,26 +15,26 @@ export class TimeRange {
   static fromMilliseconds(startMs: number, endMs: number): TimeRange {
     if (!Number.isInteger(startMs) || !Number.isInteger(endMs)) {
       throw new InvalidTimeRangeError(
-        'les bornes d\'un intervalle doivent être des millisecondes entières',
+        'the bounds of a time range must be whole milliseconds',
       );
     }
     if (startMs < 0) {
-      throw new InvalidTimeRangeError('un intervalle ne peut pas commencer avant le début du média');
+      throw new InvalidTimeRangeError('a time range cannot begin before the start of the media');
     }
     if (startMs >= endMs) {
-      throw new InvalidTimeRangeError('un intervalle doit se terminer après son début');
+      throw new InvalidTimeRangeError('a time range must end after its start');
     }
     return new TimeRange(startMs, endMs);
   }
 
-  /** Vrai si cet intervalle se termine avant, ou exactement au début de, l'autre. */
+  /** True if this range ends before, or exactly at the start of, the other one. */
   precedesOrTouches(other: TimeRange): boolean {
     return this.endMs <= other.startMs;
   }
 
   /**
-   * Durée commune aux deux intervalles, en millisecondes ; 0 quand ils ne se croisent pas.
-   * C'est la mesure sur laquelle repose l'attribution d'un locuteur à un segment.
+   * Duration common to both ranges, in milliseconds — 0 when they do not cross.
+   * This is the measure the assignment of a speaker to a segment rests on.
    */
   overlapMsWith(other: TimeRange): number {
     return Math.max(0, Math.min(this.endMs, other.endMs) - Math.max(this.startMs, other.startMs));

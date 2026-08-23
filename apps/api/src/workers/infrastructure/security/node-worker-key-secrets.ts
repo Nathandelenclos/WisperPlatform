@@ -3,15 +3,15 @@ import { createHash, randomBytes } from 'node:crypto';
 import type { WorkerKeySecrets } from '../../application/ports/worker-key-secrets';
 
 /**
- * 256 bits d'aléa. C'est ce qui autorise l'empreinte SHA-256 nue côté stockage : un secret de
- * cette entropie n'est ni devinable ni attaquable par dictionnaire, contrairement à un mot de
- * passe choisi par un humain.
+ * 256 bits of randomness. That is what allows the bare SHA-256 fingerprint on the storage side:
+ * a secret with this entropy is neither guessable nor open to a dictionary attack, unlike a
+ * password chosen by a human.
  */
 const SECRET_BYTES = 32;
 
 /**
- * Adaptateur du port `WorkerKeySecrets` sur `node:crypto`. `base64url` pour que le secret
- * traverse sans échappement une ligne de commande, un fichier d'environnement ou un en-tête.
+ * Adapter of the `WorkerKeySecrets` port over `node:crypto`. `base64url` so that the secret
+ * crosses a command line, an environment file or a header without any escaping.
  */
 export class NodeWorkerKeySecrets implements WorkerKeySecrets {
   generate(): string {

@@ -1,12 +1,12 @@
-# Contexte de build de l'image worker (`worker`).
+# Build context of the worker image (`worker`).
 
 __pycache__
 *.pyc
 
-# Les tests tournent en CI, l'image n'embarque ni suite de tests ni stub de whisper.
+# Tests run in CI; the image bundles neither the test suite nor the whisper stub.
 tests
 
-# Fichiers d'environnement : jamais dans une couche.
+# Environment files: never in a layer.
 .env
 .env.*
 

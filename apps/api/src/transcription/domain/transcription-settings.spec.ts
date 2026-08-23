@@ -4,31 +4,31 @@ import { InvalidLanguageError, UnsupportedModelError } from './errors';
 import { TranscriptionSettings, WHISPER_MODELS, isWhisperModel } from './transcription-settings';
 
 describe('TranscriptionSettings', () => {
-  it('accepte chacun des modèles whisper connus', () => {
+  it('accepts each of the known whisper models', () => {
     for (const model of WHISPER_MODELS) {
       expect(TranscriptionSettings.of(model, 'fr').model).toBe(model);
     }
   });
 
-  it('refuse un modèle inconnu', () => {
+  it('rejects an unknown model', () => {
     expect(() => TranscriptionSettings.of('gigantic', 'fr')).toThrow(UnsupportedModelError);
     expect(() => TranscriptionSettings.of('', 'fr')).toThrow(
       expect.objectContaining({ code: 'UNSUPPORTED_MODEL' }),
     );
   });
 
-  it('accepte le code comme le nom complet d\'une langue', () => {
+  it('accepts both the code and the full name of a language', () => {
     expect(TranscriptionSettings.of('small', 'fr').language).toBe('fr');
     expect(TranscriptionSettings.of('small', 'French').language).toBe('French');
   });
 
-  it('refuse toute langue qui n\'est pas une suite de 2 à 32 lettres', () => {
+  it('rejects any language that is not a run of 2 to 32 letters', () => {
     for (const language of ['f', '', 'fr-FR', 'fr ', '--model', 'x'.repeat(33), '../etc']) {
       expect(() => TranscriptionSettings.of('small', language)).toThrow(InvalidLanguageError);
     }
   });
 
-  it('reconnaît un modèle servi par un worker', () => {
+  it('recognizes a model served by a worker', () => {
     expect(isWhisperModel('turbo')).toBe(true);
     expect(isWhisperModel('turbo-xl')).toBe(false);
   });

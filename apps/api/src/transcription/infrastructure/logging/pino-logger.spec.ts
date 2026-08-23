@@ -10,7 +10,7 @@ function captureLines(): { lines: string[]; write: (line: string) => void } {
 }
 
 describe('PinoLogger', () => {
-  it('rattache chaque ligne à la requête qui l\'a provoquée', () => {
+  it('ties every line to the request that caused it', () => {
     const sink = captureLines();
     const logger = createPinoLogger({ NODE_ENV: 'production' }, { write: sink.write });
 
@@ -26,7 +26,7 @@ describe('PinoLogger', () => {
     });
   });
 
-  it('n\'invente pas d\'identifiant hors d\'une requête', () => {
+  it('does not invent an identifier outside a request', () => {
     const sink = captureLines();
     const logger = createPinoLogger({ NODE_ENV: 'production' }, { write: sink.write });
 
@@ -35,11 +35,11 @@ describe('PinoLogger', () => {
     expect(JSON.parse(sink.lines[0])).not.toHaveProperty('correlationId');
   });
 
-  it('caviarde les données personnelles et les secrets, à toute profondeur', () => {
+  it('redacts personal data and secrets, at every depth', () => {
     const sink = captureLines();
     const logger = createPinoLogger({ NODE_ENV: 'production' }, { write: sink.write });
 
-    logger.error('échec', {
+    logger.error('failure', {
       email: 'nathan@example.test',
       mediaToken: 'jeton-secret',
       originalName: 'réunion confidentielle.mov',
@@ -54,25 +54,25 @@ describe('PinoLogger', () => {
     expect(JSON.parse(line).email).toBe('[redacted]');
   });
 
-  it('caviarde le secret d\'une clé de machine, son empreinte et son libellé', () => {
+  it('redacts a machine key secret, its fingerprint and its label', () => {
     const sink = captureLines();
     const logger = createPinoLogger({ NODE_ENV: 'production' }, { write: sink.write });
 
-    logger.info('clé de machine déclarée', {
-      secret: 'aléa-de-256-bits',
+    logger.info('machine key declared', {
+      secret: '256-bit-random',
       secretFingerprint: 'e'.repeat(64),
-      label: 'Portable de Nathan',
-      workerKey: { secret: 'aléa-imbriqué' },
+      label: 'Nathan laptop',
+      workerKey: { secret: 'nested-random' },
     });
 
     const line = sink.lines[0];
-    expect(line).not.toContain('aléa-de-256-bits');
+    expect(line).not.toContain('256-bit-random');
     expect(line).not.toContain('e'.repeat(64));
-    expect(line).not.toContain('Portable de Nathan');
-    expect(line).not.toContain('aléa-imbriqué');
+    expect(line).not.toContain('Nathan laptop');
+    expect(line).not.toContain('nested-random');
   });
 
-  it('tait le diagnostic en production et le laisse passer ailleurs', () => {
+  it('silences diagnostics in production and lets them through elsewhere', () => {
     const production = captureLines();
     createPinoLogger({ NODE_ENV: 'production' }, { write: production.write }).debug('diagnostic');
     const development = captureLines();

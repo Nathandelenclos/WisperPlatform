@@ -4,15 +4,15 @@ import type { AuthenticateWorkerKeyUseCase } from '../../../workers/application/
 import type { Claimant, WorkerIdentities } from '../../application/ports/worker-identities';
 
 /**
- * Adaptateur du port `WorkerIdentities`. Deux populations de workers, un seul jeton porteur :
+ * Adapter for the `WorkerIdentities` port. Two populations of workers, one single bearer token:
  *
- * 1. le secret partagé des workers de la plateforme, comparé en temps constant ;
- * 2. une clé de machine, résolue par le contexte `workers` qui en est l'autorité.
+ * 1. the shared secret of the platform workers, compared in constant time;
+ * 2. a machine key, resolved by the `workers` context, which is the authority on it.
  *
- * La comparaison du secret partagé porte sur les empreintes SHA-256 des deux jetons : elles ont
- * toujours la même longueur, ce qui rend `timingSafeEqual` utilisable quelle que soit la valeur
- * présentée, et aucune fuite par la longueur n'est possible. Le jeton présenté n'est jamais
- * journalisé, et un jeton inconnu rend `null` sans dire pourquoi.
+ * The shared-secret comparison is made on the SHA-256 fingerprints of both tokens: they always
+ * have the same length, which makes `timingSafeEqual` usable whatever the value presented, and
+ * no leak through length is possible. The presented token is never logged, and an unknown token
+ * returns `null` without saying why.
  */
 export class WorkerKeyIdentities implements WorkerIdentities {
   private readonly expectedSharedToken: Buffer;

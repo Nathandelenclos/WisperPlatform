@@ -66,30 +66,30 @@ import { WorkerJobsController } from './interface/http/worker-jobs.controller';
 import { StalledTranscriptionsScheduler } from './interface/scheduling/stalled-transcriptions-scheduler';
 
 /**
- * Durée de la réservation purement technique posée par un worker pendant qu'il charge
- * l'aggregate. Elle empêche deux workers de réclamer la même transcription et n'a rien à voir
- * avec le bail métier : quelques secondes suffisent.
+ * Duration of the purely technical reservation a worker places while it loads the aggregate.
+ * It prevents two workers from claiming the same transcription and has nothing to do with the
+ * business lease: a few seconds are enough.
  */
 const QUEUE_RESERVATION_SECONDS = 30;
 
-/** Nombre maximal de transcriptions traitées par balayage des bails expirés. */
+/** Maximum number of transcriptions handled per sweep of the expired leases. */
 const REQUEUE_BATCH_LIMIT = 50;
 
-/** Répertoire d'arrivée des envois multipart, avant adoption par le magasin de médias. */
+/** Incoming directory for multipart uploads, before adoption by the media store. */
 const INCOMING_SUBDIRECTORY = 'incoming';
 
-/** Un envoi porte `file`, `model` et `language` : une marge suffit, l'illimité non. */
+/** An upload carries `file`, `model` and `language`: some headroom is enough, unbounded is not. */
 const MULTIPART_MAX_FIELDS = 8;
 
 /**
- * Racine de composition du contexte `transcription` : le seul endroit qui connaisse à la fois
- * les ports et leurs adaptateurs. Tout est câblé par fabrique, aucun adaptateur n'est décoré.
+ * Composition root of the `transcription` context: the only place that knows both the ports
+ * and their adapters. Everything is wired by factory, no adapter is decorated.
  */
 @Module({
   imports: [
     AuthModule,
-    // Le contexte `workers` est l'autorité sur les clés de machine : c'est lui qui dit à qui
-    // appartient celle qu'un worker présente.
+    // The `workers` context is the authority on machine keys: it is the one that says who owns
+    // the key a worker presents.
     WorkersModule,
     MulterModule.registerAsync({
       useFactory: (env: Env) => ({
@@ -105,7 +105,7 @@ const MULTIPART_MAX_FIELDS = 8;
   ],
   controllers: [TranscriptionsController, WorkerJobsController],
   providers: [
-    // --- Adaptateurs des ports
+    // --- Port adapters
     {
       provide: TRANSCRIPTION_REPOSITORY,
       useFactory: (database: Database) => new DrizzleTranscriptionRepository(database),
@@ -131,7 +131,7 @@ const MULTIPART_MAX_FIELDS = 8;
       useFactory: (env: Env) => new HmacMediaAccessTokens(env.MEDIA_TOKEN_SECRET),
       inject: [ENV],
     },
-    // Une seule instance sert la publication et l'abonnement : les deux ports pointent dessus.
+    // A single instance serves both publication and subscription: both ports point at it.
     { provide: InMemoryTranscriptionEvents, useFactory: () => new InMemoryTranscriptionEvents() },
     { provide: TRANSCRIPTION_EVENT_PUBLISHER, useExisting: InMemoryTranscriptionEvents },
     { provide: TRANSCRIPTION_EVENT_STREAM, useExisting: InMemoryTranscriptionEvents },
@@ -145,7 +145,7 @@ const MULTIPART_MAX_FIELDS = 8;
       inject: [ENV, AuthenticateWorkerKeyUseCase],
     },
 
-    // --- Cas d'utilisation
+    // --- Use cases
     {
       provide: RequestTranscriptionUseCase,
       useFactory: (
@@ -343,7 +343,7 @@ const MULTIPART_MAX_FIELDS = 8;
       ],
     },
 
-    // --- Frontière HTTP
+    // --- HTTP boundary
     WorkerTokenGuard,
     StalledTranscriptionsScheduler,
     { provide: APP_FILTER, useClass: DomainErrorFilter },

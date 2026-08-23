@@ -1,8 +1,8 @@
 /**
- * Construit un en-tête `Content-Disposition` sûr. Le nom d'origine vient de l'utilisateur :
- * tout ce qui sort de l'ASCII imprimable est remplacé, ce qui neutralise au passage
- * l'injection d'en-tête par retour chariot. La forme RFC 5987 (`filename*`) conserve
- * le nom exact pour les clients qui la comprennent.
+ * Builds a safe `Content-Disposition` header. The original name comes from the user:
+ * everything outside printable ASCII is replaced, which incidentally neutralises header
+ * injection through carriage returns. The RFC 5987 form (`filename*`) preserves the exact
+ * name for the clients that understand it.
  */
 export function contentDisposition(kind: 'inline' | 'attachment', filename: string): string {
   const ascii = filename.replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '_').trim();

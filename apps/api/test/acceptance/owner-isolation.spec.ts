@@ -4,8 +4,8 @@ import { TranscriptionNotFoundError } from '../../src/transcription/application/
 
 import { OTHER_OWNER, OWNER, aClaimedTranscription, aPlatform } from './platform';
 
-describe('Scénario : la transcription d\'autrui est invisible', () => {
-  it('ne la montre pas, ne l\'exporte pas, n\'en donne pas le média et ne la corrige pas', async () => {
+describe('Scenario: a transcription that belongs to someone else is invisible', () => {
+  it('does not show it, export it, hand out its media, or correct it', async () => {
     const platform = aPlatform();
     const { transcriptionId, runId } = await aClaimedTranscription(platform);
     await platform.appendTranscribedSegments.execute({
@@ -16,7 +16,7 @@ describe('Scénario : la transcription d\'autrui est invisible', () => {
     });
     await platform.completeTranscription.execute({ transcriptionId, runId });
 
-    // Le même code d'erreur qu'une ressource inexistante : rien ne fuit de son existence.
+    // The same error code as a resource that does not exist: nothing leaks about its existence.
     await expect(
       platform.getTranscription.execute({ transcriptionId, ownerId: OTHER_OWNER }),
     ).rejects.toThrow(TranscriptionNotFoundError);
@@ -40,7 +40,7 @@ describe('Scénario : la transcription d\'autrui est invisible', () => {
     ).rejects.toThrow(TranscriptionNotFoundError);
   });
 
-  it('n\'apparaît pas dans la liste de l\'autre utilisateur', async () => {
+  it('does not appear in the list of the other user', async () => {
     const platform = aPlatform();
     await platform.upload({ ownerId: OWNER, originalName: 'a-moi.mp3' });
     await platform.upload({ ownerId: OTHER_OWNER, originalName: 'a-lui.mp3' });
@@ -52,7 +52,7 @@ describe('Scénario : la transcription d\'autrui est invisible', () => {
     expect(theirs.map((summary) => summary.mediaName)).toEqual(['a-lui.mp3']);
   });
 
-  it('reste introuvable pour un identifiant qui n\'existe pas', async () => {
+  it('stays not found for an identifier that does not exist', async () => {
     const platform = aPlatform();
 
     await expect(

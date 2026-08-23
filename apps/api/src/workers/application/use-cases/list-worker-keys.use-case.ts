@@ -3,7 +3,7 @@ import { toWorkerKeyView, type WorkerKeyView } from '../views';
 
 export type ListWorkerKeysQuery = { ownerId: string };
 
-/** Les machines déclarées par le propriétaire, révoquées comprises : c'est son historique. */
+/** The machines declared by the owner, revoked ones included: this is their history. */
 export class ListWorkerKeysUseCase {
   constructor(private readonly repository: WorkerKeyRepository) {}
 

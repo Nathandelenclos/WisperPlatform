@@ -12,7 +12,7 @@ import {
   type TranscriptionPlatform,
 } from './platform';
 
-/** Une transcription achevée dont la diarisation a séparé deux voix. */
+/** A completed transcription whose diarization separated two voices. */
 async function aDiarizedTranscription(): Promise<{
   platform: TranscriptionPlatform;
   transcriptionId: string;
@@ -43,8 +43,8 @@ async function aDiarizedTranscription(): Promise<{
   return { platform, transcriptionId };
 }
 
-describe('Scénario : le propriétaire nomme un locuteur', () => {
-  it('renomme le locuteur pour toute la transcription d\'un coup', async () => {
+describe('Scenario: the owner names a speaker', () => {
+  it('renames the speaker across the whole transcription at once', async () => {
     const { platform, transcriptionId } = await aDiarizedTranscription();
 
     const view = await platform.renameSpeaker.execute({
@@ -58,14 +58,14 @@ describe('Scénario : le propriétaire nomme un locuteur', () => {
       { index: 0, name: 'Marc' },
       { index: 1, name: null },
     ]);
-    // Le geste porte sur le locuteur, pas sur un segment : les deux segments suivent.
+    // The gesture applies to the speaker, not to a segment: both of their segments follow.
     const exported = await platform.exportTranscription.execute({
       transcriptionId,
       ownerId: OWNER,
       format: 'txt',
     });
     expect(exported.body).toBe(
-      'Marc : bonjour à tous\nLocuteur 2 : merci de me recevoir\nMarc : commençons\n',
+      'Marc : bonjour à tous\nSpeaker 2 : merci de me recevoir\nMarc : commençons\n',
     );
     expect(platform.publisher.published).toEqual([
       {
@@ -79,7 +79,7 @@ describe('Scénario : le propriétaire nomme un locuteur', () => {
     ]);
   });
 
-  it('refuse un locuteur que la diarisation n\'a pas trouvé', async () => {
+  it('refuses a speaker that diarization did not find', async () => {
     const { platform, transcriptionId } = await aDiarizedTranscription();
 
     await expect(
@@ -87,12 +87,12 @@ describe('Scénario : le propriétaire nomme un locuteur', () => {
         transcriptionId,
         ownerId: OWNER,
         index: 7,
-        name: 'Fantôme',
+        name: 'Ghost',
       }),
     ).rejects.toThrow(SpeakerNotFoundError);
   });
 
-  it('n\'apprend rien à quelqu\'un d\'autre que le propriétaire', async () => {
+  it('teaches nothing to anyone other than the owner', async () => {
     const { platform, transcriptionId } = await aDiarizedTranscription();
 
     await expect(
@@ -105,7 +105,7 @@ describe('Scénario : le propriétaire nomme un locuteur', () => {
     ).rejects.toThrow(TranscriptionNotFoundError);
   });
 
-  it('refuse un nom vide', async () => {
+  it('refuses an empty name', async () => {
     const { platform, transcriptionId } = await aDiarizedTranscription();
 
     await expect(

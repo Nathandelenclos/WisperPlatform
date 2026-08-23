@@ -1,15 +1,15 @@
 /**
- * Fabrique et empreinte des secrets de machine. Le domaine ne tire pas d'aléa lui-même : la
- * source d'entropie est une préoccupation de plateforme.
+ * Minting and fingerprinting of machine secrets. The domain does not draw randomness itself:
+ * the entropy source is a platform concern.
  */
 export interface WorkerKeySecrets {
-  /** Un secret neuf, imprévisible, à montrer une seule fois à son propriétaire. */
+  /** A fresh, unpredictable secret, to be shown to its owner exactly once. */
   generate(): string;
   /**
-   * Empreinte stable du secret, seule forme persistée. Un hachage simple suffit ici, et c'est
-   * délibéré : le secret est un aléa de 256 bits, pas un mot de passe. Aucune attaque par
-   * dictionnaire n'est possible sur une telle entropie, et un KDF lent transformerait chaque
-   * réclamation de travail en calcul coûteux, plusieurs fois par seconde et par machine.
+   * Stable fingerprint of the secret, the only persisted form. A plain hash is enough here, and
+   * that is deliberate: the secret is 256 bits of randomness, not a password. No dictionary
+   * attack is possible against such entropy, and a slow KDF would turn every work claim into an
+   * expensive computation, several times per second and per machine.
    */
   fingerprint(secret: string): string;
 }

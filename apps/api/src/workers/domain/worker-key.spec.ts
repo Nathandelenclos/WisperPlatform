@@ -10,31 +10,31 @@ function aKey(): WorkerKey {
   return WorkerKey.issue({
     id: 'key-1',
     ownerId: 'alice',
-    label: WorkerKeyLabel.of('Mon portable'),
+    label: WorkerKeyLabel.of('My laptop'),
     secretFingerprint: FINGERPRINT,
     createdAt: CREATED_AT,
   });
 }
 
 describe('WorkerKeyLabel', () => {
-  it('accepte un libellé lisible et coupe les espaces qui l\'entourent', () => {
-    expect(WorkerKeyLabel.of('  Mon portable  ').value).toBe('Mon portable');
+  it('accepts a readable label and trims the whitespace around it', () => {
+    expect(WorkerKeyLabel.of('  My laptop  ').value).toBe('My laptop');
   });
 
-  it('refuse un libellé vide, trop long, multiligne ou porteur d\'un caractère de contrôle', () => {
-    for (const label of ['', '   ', 'x'.repeat(61), 'mon\nportable', 'mon\u202Eportable']) {
+  it('refuses a label that is empty, too long, multiline or carrying a control character', () => {
+    for (const label of ['', '   ', 'x'.repeat(61), 'my\nlaptop', 'my\u202Elaptop']) {
       expect(() => WorkerKeyLabel.of(label)).toThrow(InvalidWorkerKeyLabelError);
     }
   });
 
-  it('relit un libellé stocké sans le revalider', () => {
-    // Une clé écrite sous une règle plus large doit rester révocable.
+  it('reads a stored label back without revalidating it', () => {
+    // A key written under a wider rule must stay revocable.
     expect(WorkerKeyLabel.restored('x'.repeat(200)).value).toHaveLength(200);
   });
 });
 
 describe('WorkerKey', () => {
-  it('naît active, sans passage connu', () => {
+  it('is born active, with no known sighting', () => {
     const key = aKey();
 
     expect(key.isActive).toBe(true);
@@ -42,7 +42,7 @@ describe('WorkerKey', () => {
     expect(key.state()).toEqual({
       id: 'key-1',
       ownerId: 'alice',
-      label: 'Mon portable',
+      label: 'My laptop',
       secretFingerprint: FINGERPRINT,
       createdAt: CREATED_AT,
       lastSeenAt: null,
@@ -50,7 +50,7 @@ describe('WorkerKey', () => {
     });
   });
 
-  it('note le passage de la machine', () => {
+  it('records the sighting of the machine', () => {
     const key = aKey();
     const seenAt = new Date('2026-05-01T10:00:00.000Z');
 
@@ -60,7 +60,7 @@ describe('WorkerKey', () => {
     expect(key.isActive).toBe(true);
   });
 
-  it('révoque une fois pour toutes : la seconde révocation ne déplace rien', () => {
+  it('revokes once and for all: the second revocation moves nothing', () => {
     const key = aKey();
     const revokedAt = new Date('2026-05-02T09:00:00.000Z');
 
@@ -71,7 +71,7 @@ describe('WorkerKey', () => {
     expect(key.state().revokedAt).toEqual(revokedAt);
   });
 
-  it('ne laisse aucun appelant reculer une révocation par la Date qu\'il a passée', () => {
+  it('lets no caller move a revocation back through the Date it passed in', () => {
     const key = aKey();
     const revokedAt = new Date('2026-05-02T09:00:00.000Z');
 
@@ -81,7 +81,7 @@ describe('WorkerKey', () => {
     expect(key.state().revokedAt).toEqual(new Date('2026-05-02T09:00:00.000Z'));
   });
 
-  it('se relit à l\'identique depuis son état', () => {
+  it('reads back identically from its state', () => {
     const key = aKey();
     key.noteSeen(new Date('2026-05-01T11:00:00.000Z'));
     key.revoke(new Date('2026-05-02T09:00:00.000Z'));

@@ -1,7 +1,7 @@
 /**
- * Erreurs de la couche applicative du contexte `workers` : elles ne traduisent pas une
- * violation d'invariant métier mais un refus d'accès. Leur `code` est stable, le mapping HTTP
- * s'appuie dessus.
+ * Errors of the application layer of the `workers` context: they do not express a business
+ * invariant violation but an access refusal. Their `code` is stable, the HTTP mapping relies
+ * on it.
  */
 export class WorkerApplicationError extends Error {
   readonly code: string;
@@ -14,11 +14,11 @@ export class WorkerApplicationError extends Error {
 }
 
 /**
- * Clé de machine inconnue — ou appartenant à quelqu'un d'autre : on ne révèle jamais
- * l'existence de la clé d'autrui. Mappée en 404.
+ * Unknown machine key — or one belonging to somebody else: the existence of another user's key
+ * is never revealed. Mapped to a 404.
  */
 export class WorkerKeyNotFoundError extends WorkerApplicationError {
-  constructor(message = 'clé de machine introuvable') {
+  constructor(message = 'machine key not found') {
     super('WORKER_KEY_NOT_FOUND', message);
   }
 }

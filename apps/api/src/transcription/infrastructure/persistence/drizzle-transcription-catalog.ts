@@ -14,8 +14,8 @@ import type { TranscriptionStatus } from '../../domain/transcription';
 import type { WhisperModel } from '../../domain/transcription-settings';
 
 /**
- * Modèle de lecture : projection dédiée à l'affichage d'une liste, calculée par la base.
- * On ne reconstitue aucun aggregate ici — lire une liste ne doit pas charger N jeux de segments.
+ * Read model: a projection dedicated to displaying a list, computed by the database.
+ * No aggregate is restored here — reading a list must not load N sets of segments.
  */
 export class DrizzleTranscriptionCatalog implements TranscriptionCatalog {
   constructor(private readonly db: Database) {}
@@ -34,7 +34,7 @@ export class DrizzleTranscriptionCatalog implements TranscriptionCatalog {
         completedAt: transcriptions.completedAt,
         failureReason: transcriptions.failureReason,
         segmentCount: sql<number>`count(${transcriptionSegments.ordinal})::int`,
-        // Durée du transcrit = fin du dernier segment ; 0 quand il n'y a pas de parole.
+        // Duration of the transcript = end of the last segment; 0 when there is no speech.
         durationMs: sql<number>`coalesce(max(${transcriptionSegments.endMs}), 0)::int`,
       })
       .from(transcriptions)

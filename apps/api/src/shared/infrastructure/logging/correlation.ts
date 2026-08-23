@@ -2,19 +2,19 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomUUID } from 'node:crypto';
 
 /**
- * Identifiant de corrélation de la requête en cours. Il est porté par un contexte asynchrone
- * plutôt que passé de main en main : sans lui, une ligne applicative — un refus d'accès média,
- * par exemple — ne peut pas être rattachée à la requête qui l'a provoquée, ce qui est
- * précisément le diagnostic que ces logs existent pour permettre.
+ * Correlation identifier of the request being served. It is carried by an asynchronous context
+ * rather than passed from hand to hand: without it, an application line — a media access
+ * refusal, for instance — cannot be tied back to the request that caused it, which is exactly
+ * the diagnosis these logs exist to make possible.
  */
 export const correlationStorage = new AsyncLocalStorage<string>();
 
-/** Un en-tête reçu ne devient un identifiant que s'il est court et sans surprise. */
+/** An incoming header only becomes an identifier when it is short and free of surprises. */
 const SAFE_REQUEST_ID = /^[A-Za-z0-9._-]{1,128}$/;
 
 /**
- * Reprend l'identifiant fourni par l'appelant quand il est inoffensif, sinon en génère un.
- * `existing` permet de rester aligné sur un identifiant déjà attribué en amont.
+ * Reuses the identifier supplied by the caller when it is harmless, otherwise generates one.
+ * `existing` allows staying aligned on an identifier already assigned upstream.
  */
 export function resolveCorrelationId(candidate: unknown, existing?: unknown): string {
   for (const value of [existing, candidate]) {

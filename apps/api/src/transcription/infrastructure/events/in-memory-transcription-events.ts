@@ -11,15 +11,15 @@ type Subscription = {
 };
 
 /**
- * Diffusion des événements de domaine vers les abonnés SSE.
+ * Broadcast of domain events to the SSE subscribers.
  *
- * ponytail: plafond assumé — la diffusion est locale au processus. Deux instances d'API
- * derrière un répartiteur ne voient pas les événements l'une de l'autre : un client abonné
- * sur l'instance A ne recevra rien d'un worker servi par l'instance B. Chemin de sortie sans
- * changer les ports : remplacer cette classe par un adaptateur Postgres `LISTEN/NOTIFY`
- * (`publish` → `NOTIFY transcription_events, <payload>`, `subscribe` → client dédié en
- * `LISTEN`), le contrat `TranscriptionEventPublisher`/`TranscriptionEventStream` étant déjà
- * la bonne frontière.
+ * ponytail: accepted ceiling — the broadcast is local to the process. Two API instances behind
+ * a load balancer do not see each other's events: a client subscribed on instance A will
+ * receive nothing from a worker served by instance B. Way out without changing the ports:
+ * replace this class with a Postgres `LISTEN/NOTIFY` adapter (`publish` →
+ * `NOTIFY transcription_events, <payload>`, `subscribe` → dedicated client in `LISTEN`), the
+ * `TranscriptionEventPublisher`/`TranscriptionEventStream` contract being already the right
+ * boundary.
  */
 export class InMemoryTranscriptionEvents implements TranscriptionEventPublisher, TranscriptionEventStream {
   private readonly subscriptions = new Set<Subscription>();
@@ -33,8 +33,8 @@ export class InMemoryTranscriptionEvents implements TranscriptionEventPublisher,
         ) {
           continue;
         }
-        // Un abonné qui jette (socket fermée entre deux écritures) ne doit ni interrompre
-        // la diffusion aux autres, ni faire échouer le use case qui vient de sauvegarder.
+        // A subscriber that throws (socket closed between two writes) must neither interrupt
+        // the broadcast to the others, nor make the use case that has just saved fail.
         try {
           subscription.listener(event);
         } catch {

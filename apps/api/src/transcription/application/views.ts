@@ -5,8 +5,8 @@ import type { TranscriptionState, TranscriptionStatus } from '../domain/transcri
 import type { WhisperModel } from '../domain/transcription-settings';
 
 /**
- * Ce qu'un worker reçoit en réclamant du travail. Aucun nom de fichier, aucun propriétaire :
- * le worker n'apprend rien de l'utilisateur, il ne tient qu'un laissez-passer média.
+ * What a worker receives when it claims work. No file name, no owner: the worker learns
+ * nothing about the user, it only holds a media pass.
  */
 export type ClaimedJobView = {
   transcriptionId: string;
@@ -17,7 +17,7 @@ export type ClaimedJobView = {
   leaseExpiresAt: Date;
 };
 
-/** Ce que le propriétaire voit d'une de ses transcriptions, segments compris. */
+/** What the owner sees of one of their transcriptions, segments included. */
 export type TranscriptionView = {
   id: string;
   status: TranscriptionStatus;
@@ -35,8 +35,8 @@ export type TranscriptionView = {
 };
 
 /**
- * Projection de l'aggregate vers ce que le propriétaire voit. Elle vit ici, en un seul
- * endroit : deux use cases rendent cette vue, et ils doivent rendre exactement la même.
+ * Projection from the aggregate to what the owner sees. It lives here, in a single
+ * place: two use cases return this view, and they must return exactly the same one.
  */
 export function toTranscriptionView(state: TranscriptionState): TranscriptionView {
   return {

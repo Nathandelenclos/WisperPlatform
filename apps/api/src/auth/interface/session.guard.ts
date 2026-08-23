@@ -6,7 +6,7 @@ import { SESSION_READER } from '../application/ports/authentication';
 import type { SessionReader } from '../application/ports/authentication';
 import type { AuthenticatedRequest } from './current-user.decorator';
 
-/** Exige une session valide et attache l'identité résolue à la requête. */
+/** Requires a valid session and attaches the resolved identity to the request. */
 @Injectable()
 export class SessionGuard implements CanActivate {
   constructor(@Inject(SESSION_READER) private readonly sessions: SessionReader) {}
@@ -17,7 +17,7 @@ export class SessionGuard implements CanActivate {
       .getRequest<IncomingMessage & AuthenticatedRequest>();
     const user = await this.sessions.readSession(request.headers);
     if (user === null) {
-      throw new UnauthorizedException('Session absente ou expirée');
+      throw new UnauthorizedException('Session missing or expired');
     }
     request.authenticatedUser = user;
     return true;

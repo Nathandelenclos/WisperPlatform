@@ -14,13 +14,13 @@ import type {
 import type { AuthRequestHandler } from '../interface/auth-request-handler';
 
 /**
- * Fournisseur d'identité better-auth. Une seule instance, créée à la racine de composition,
- * qui sert les deux ports d'authentification (lecture de session et routes `/api/auth/*`).
+ * better-auth identity provider. A single instance, created at the composition root, serving
+ * both authentication ports (session reading and the `/api/auth/*` routes).
  *
- * `basePath` reste celui de better-auth (`/api/auth`) : il coïncide exactement avec le préfixe
- * global `api` de l'application plus la route montée par le controller. `baseURL` n'est pas figé :
- * better-auth le déduit de la requête, ce qui évite une variable d'environnement de plus et
- * fonctionne derrière un proxy.
+ * `basePath` stays the better-auth one (`/api/auth`): it coincides exactly with the application's
+ * global `api` prefix plus the route mounted by the controller. `baseURL` is not pinned:
+ * better-auth derives it from the request, which spares one more environment variable and works
+ * behind a proxy.
  */
 export class BetterAuthAuthentication implements SessionReader, AuthRequestHandler {
   private readonly auth;
@@ -36,9 +36,9 @@ export class BetterAuthAuthentication implements SessionReader, AuthRequestHandl
     this.auth = betterAuth({
       database: drizzleAdapter(p.database, { provider: 'pg', schema }),
       emailAndPassword: { enabled: true },
-      // Google n'est branché que si l'exploitant a fourni ses identifiants : sans eux, la
-      // plateforme s'auto-héberge sans compte tiers, ce qui est le mode par défaut. Un objet
-      // vide ici ferait échouer le clic plutôt que de cacher le bouton, d'où l'absence.
+      // Google is only wired in when the operator has provided credentials: without them, the
+      // platform self-hosts with no third-party account, which is the default mode. An empty
+      // object here would make the click fail instead of hiding the button, hence its absence.
       socialProviders:
         p.env.GOOGLE_CLIENT_ID === undefined || p.env.GOOGLE_CLIENT_SECRET === undefined
           ? {}

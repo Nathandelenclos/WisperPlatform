@@ -4,8 +4,8 @@ import { UnsupportedModelError } from '../../src/transcription/domain/errors';
 
 import { NOW, OWNER, aPlatform, readAll } from './platform';
 
-describe('Scénario : un utilisateur demande la transcription d\'un média', () => {
-  it('met la demande en attente, range le média et annonce la demande', async () => {
+describe('Scenario: a user requests the transcription of a media file', () => {
+  it('puts the request in the pending state, stores the media and announces it', async () => {
     const platform = aPlatform();
 
     const transcriptionId = await platform.upload({
@@ -26,7 +26,7 @@ describe('Scénario : un utilisateur demande la transcription d\'un média', () 
     expect(platform.publisher.names()).toEqual(['transcription.requested']);
   });
 
-  it('ne pose jamais le nom du fichier de l\'utilisateur sur le disque', async () => {
+  it('never puts the name of the user file on disk', async () => {
     const platform = aPlatform();
 
     const transcriptionId = await platform.upload({
@@ -41,7 +41,7 @@ describe('Scénario : un utilisateur demande la transcription d\'un média', () 
     expect(media.contentType).toBe('audio/mpeg');
   });
 
-  it('fait apparaître la demande dans la liste du propriétaire', async () => {
+  it('makes the request appear in the owner list', async () => {
     const platform = aPlatform();
 
     const transcriptionId = await platform.upload();
@@ -57,7 +57,7 @@ describe('Scénario : un utilisateur demande la transcription d\'un média', () 
     });
   });
 
-  it('refuse un modèle inconnu sans rien ranger ni enregistrer', async () => {
+  it('refuses an unknown model without storing or recording anything', async () => {
     const platform = aPlatform();
     platform.mediaStorage.stage('/tmp/refuse', 'octets audio');
 

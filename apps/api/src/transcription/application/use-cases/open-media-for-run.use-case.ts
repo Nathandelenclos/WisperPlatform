@@ -9,7 +9,7 @@ import type { TranscriptionRepository } from '../ports/transcription-repository'
 
 export type OpenMediaForRunCommand = { token: string };
 
-/** Le worker reçoit le flux et sa taille, jamais le nom du fichier ni son propriétaire. */
+/** The worker receives the stream and its size, never the file name nor its owner. */
 export type OpenedRunMedia = { stream: Readable; contentType: string; byteSize: number };
 
 export class OpenMediaForRunUseCase {
@@ -30,8 +30,8 @@ export class OpenMediaForRunUseCase {
     }
 
     const transcription = await this.repository.findById(granted.transcriptionId);
-    // Un laissez-passer ne vaut que pour la tentative en cours : c'est l'aggregate qui le dit,
-    // pour que le contrôle d'accès suive l'invariant s'il se durcit.
+    // A pass is only valid for the current run: it is the aggregate that says so, so that
+    // access control follows the invariant if it gets stricter.
     if (transcription === null || !transcription.grantsMediaAccessTo(granted.runId)) {
       this.logger.warn('media access refused', {
         reason: 'stale-run',

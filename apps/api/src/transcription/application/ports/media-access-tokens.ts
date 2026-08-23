@@ -1,6 +1,6 @@
 /**
- * Laissez-passer à durée de vie courte remis à un worker pour qu'il télécharge un média.
- * Il ne désigne qu'une transcription et un run : le worker n'apprend rien de l'utilisateur.
+ * Short-lived pass handed to a worker so that it can download a media file.
+ * It designates only a transcription and a run: the worker learns nothing about the user.
  */
 export interface MediaAccessTokens {
   issue(p: { transcriptionId: string; runId: string; expiresAt: Date }): string;

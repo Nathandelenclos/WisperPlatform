@@ -1,4 +1,4 @@
-/** Source de temps : injectée pour que les bails et les échéances soient testables. */
+/** Time source: injected so that leases and deadlines are testable. */
 export interface Clock {
   now(): Date;
 }

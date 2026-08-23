@@ -22,17 +22,17 @@ import { SystemClock } from './infrastructure/time/system-clock';
 import { WorkerKeysController } from './interface/http/worker-keys.controller';
 
 /**
- * Racine de composition du contexte `workers` : le seul endroit qui connaisse à la fois les
- * ports et leurs adaptateurs. Tout est câblé par fabrique, aucun adaptateur n'est décoré.
+ * Composition root of the `workers` context: the only place that knows both the ports and their
+ * adapters. Everything is wired by factory, no adapter is decorated.
  *
- * `AuthenticateWorkerKeyUseCase` est exporté : c'est ce que le contexte `transcription`
- * consomme pour savoir à qui appartient la machine qui réclame du travail.
+ * `AuthenticateWorkerKeyUseCase` is exported: it is what the `transcription` context consumes
+ * to know who owns the machine claiming work.
  */
 @Module({
   imports: [AuthModule],
   controllers: [WorkerKeysController],
   providers: [
-    // --- Adaptateurs des ports
+    // --- Port adapters
     {
       provide: WORKER_KEY_REPOSITORY,
       useFactory: (database: Database) => new DrizzleWorkerKeyRepository(database),
@@ -42,7 +42,7 @@ import { WorkerKeysController } from './interface/http/worker-keys.controller';
     { provide: CLOCK, useFactory: () => new SystemClock() },
     { provide: ID_GENERATOR, useFactory: () => new UuidIdGenerator() },
 
-    // --- Cas d'utilisation
+    // --- Use cases
     {
       provide: RegisterWorkerKeyUseCase,
       useFactory: (

@@ -7,21 +7,22 @@ import type { Env } from '../config/env';
 import { createMigrationConnection } from './database';
 
 /**
- * Le migrateur ne consomme qu'une chaîne de connexion : il valide donc ce seul réglage.
- * Valider tout l'environnement obligerait son conteneur à détenir les secrets de session et
- * de jeton média, dont une migration SQL n'a aucun usage.
+ * The migrator consumes nothing but a connection string: it therefore validates that one
+ * setting alone. Validating the whole environment would force its container to hold the
+ * session and media-token secrets, which a SQL migration has no use for.
  */
 const migrationEnvSchema = z.object({ DATABASE_URL: z.string().trim().min(1) });
 
 /**
- * Dossier des migrations versionnées. Le calcul tombe sur `apps/api/` aussi bien depuis
- * `src/shared/infrastructure/persistence` (tsx) que depuis `dist/shared/infrastructure/persistence`.
+ * Folder holding the versioned migrations. The computation lands on `apps/api/` from
+ * `src/shared/infrastructure/persistence` (tsx) as well as from
+ * `dist/shared/infrastructure/persistence`.
  */
 export const MIGRATIONS_FOLDER = join(__dirname, '..', '..', '..', '..', 'drizzle');
 
 /**
- * Joue les migrations puis ferme le pool. Appelé par un script dédié (`pnpm db:migrate`),
- * par la CI et par une étape du compose — JAMAIS au démarrage de l'API.
+ * Runs the migrations, then closes the pool. Called by a dedicated script (`pnpm db:migrate`),
+ * by CI and by a compose step — NEVER at API startup.
  */
 export async function runMigrations(env: Pick<Env, 'DATABASE_URL'>): Promise<void> {
   const { db, pool } = createMigrationConnection(env);

@@ -1,8 +1,8 @@
 import type { Readable } from 'node:stream';
 
-/** Magasin des médias d'origine. La clé est opaque : le nom du fichier reçu n'atteint jamais le disque. */
+/** Store of original media. The key is opaque: the received file name never reaches the disk. */
 export interface MediaStorage {
-  /** Range le fichier fraîchement reçu sous sa clé définitive. */
+  /** Files the freshly received file under its final key. */
   adopt(p: { key: string; tempPath: string }): Promise<void>;
   openRead(key: string): Promise<Readable>;
   remove(key: string): Promise<void>;

@@ -1,4 +1,4 @@
-/** Fabrique d'identifiants opaques (uuid v4) : identifiants d'aggregate, de run, clés de stockage. */
+/** Opaque identifier factory (uuid v4): aggregate ids, run ids, storage keys. */
 export interface IdGenerator {
   next(): string;
 }

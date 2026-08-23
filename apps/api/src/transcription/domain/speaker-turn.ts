@@ -2,11 +2,11 @@ import { assertSpeakerIndex } from './speaker';
 import { TimeRange } from './time-range';
 
 /**
- * Un tour de parole tel que la diarisation le livre : un intervalle de temps et l'indice
- * technique du locuteur qui parle pendant cet intervalle. Value object immuable.
+ * A speaker turn as diarization delivers it: a time range and the technical index of the
+ * speaker talking during that range. Immutable value object.
  *
- * Un tour n'est pas persisté : c'est une entrée de la passe d'attribution, dont seul le
- * résultat — le locuteur porté par chaque segment — appartient à l'aggregate.
+ * A turn is never persisted: it is an input of the assignment pass, and only its result —
+ * the speaker each segment carries — belongs to the aggregate.
  */
 export class SpeakerTurn {
   private constructor(
@@ -23,19 +23,19 @@ export class SpeakerTurn {
 }
 
 /**
- * Locuteur d'un intervalle : celui dont les tours recouvrent la plus grande part de sa durée.
- * Les tours d'un même locuteur s'additionnent — un segment coupé en deux par une interjection
- * revient à celui qui a le plus parlé, pas au dernier arrivé.
+ * Speaker of a time range: the one whose turns cover the largest share of its duration.
+ * The turns of one and the same speaker add up — a segment cut in two by an interjection
+ * goes back to whoever spoke the most, not to the last one in.
  *
- * Deux propriétés voulues : l'ordre des tours en entrée n'a aucune incidence, et une même
- * diarisation rend toujours la même attribution. D'où le départage à égalité de recouvrement
- * par le plus petit indice — arbitraire, mais fixé. Aucun recouvrement : pas de locuteur.
+ * Two intended properties: the order of the turns on input has no bearing, and the same
+ * diarization always yields the same assignment. Hence the tie-break on equal overlap by the
+ * smallest index — arbitrary, but fixed. No overlap at all: no speaker.
  */
 export function dominantSpeaker(turns: readonly SpeakerTurn[], range: TimeRange): number | null {
-  // ponytail: attribution quadratique — chaque segment croise tous les tours. Plafond
-  // connu : 10 000 tours (borne du schéma HTTP) fois le nombre de segments, calculé dans
-  // un seul tick. Tenable aux volumes réels d'une réunion ; au-delà, trier les deux suites
-  // par début et les balayer conjointement rend le même résultat en O(n+m).
+  // ponytail: quadratic assignment — every segment crosses every turn. Known ceiling:
+  // 10,000 turns (the bound of the HTTP schema) times the number of segments, computed in
+  // a single tick. Tenable at the real volumes of a meeting; beyond that, sorting both
+  // sequences by start and sweeping them jointly gives the same result in O(n+m).
   const overlapBySpeaker = new Map<number, number>();
   for (const turn of turns) {
     const overlapMs = turn.range.overlapMsWith(range);
@@ -61,7 +61,7 @@ export function dominantSpeaker(turns: readonly SpeakerTurn[], range: TimeRange)
   return dominant;
 }
 
-/** Les locuteurs que la diarisation a découverts, indices distincts triés par ordre croissant. */
+/** The speakers diarization discovered: distinct indices sorted in ascending order. */
 export function distinctSpeakers(turns: readonly SpeakerTurn[]): number[] {
   return [...new Set(turns.map((turn) => turn.speakerIndex))].sort((a, b) => a - b);
 }

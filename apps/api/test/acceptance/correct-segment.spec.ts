@@ -33,8 +33,8 @@ async function aCompletedTranscription(): Promise<{
   return { platform, transcriptionId };
 }
 
-describe('Scénario : le propriétaire corrige un segment', () => {
-  it('remplace le texte, marque le segment corrigé et l\'annonce', async () => {
+describe('Scenario: the owner corrects a segment', () => {
+  it('replaces the text, marks the segment as corrected and announces it', async () => {
     const { platform, transcriptionId } = await aCompletedTranscription();
 
     await platform.correctSegment.execute({
@@ -65,7 +65,7 @@ describe('Scénario : le propriétaire corrige un segment', () => {
     ]);
   });
 
-  it('refuse un ordinal qui n\'existe pas', async () => {
+  it('refuses an ordinal that does not exist', async () => {
     const { platform, transcriptionId } = await aCompletedTranscription();
 
     await expect(
@@ -78,7 +78,7 @@ describe('Scénario : le propriétaire corrige un segment', () => {
     ).rejects.toThrow(SegmentNotFoundError);
   });
 
-  it('refuse de corriger une transcription encore en cours', async () => {
+  it('refuses to correct a transcription that is still running', async () => {
     const platform = aPlatform();
     const { transcriptionId, runId } = await aClaimedTranscription(platform);
     await platform.appendTranscribedSegments.execute({

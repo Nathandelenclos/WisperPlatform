@@ -1,17 +1,17 @@
 import { z } from 'zod';
 
 /**
- * Schémas de la frontière HTTP des clés de machine. Ils ne valident que ce qui relève du
- * transport (présence, type, forme d'un identifiant de route). Les invariants du libellé
- * appartiennent au domaine : il les valide et répond 422, ils ne sont pas dupliqués ici.
+ * Schemas of the machine keys HTTP boundary. They validate only what belongs to transport
+ * (presence, type, shape of a route identifier). The label invariants belong to the domain: it
+ * validates them and answers 422, they are not duplicated here.
  *
- * Le libellé est tout de même borné en longueur brute : c'est une frontière de confiance, et
- * rien ne justifie de recopier un mégaoctet de texte avant de le refuser.
+ * The label is still bounded in raw length: this is a trust boundary, and nothing justifies
+ * copying a megabyte of text before refusing it.
  */
 
 export const workerKeyIdSchema = z.uuid();
 
-/** Borne de transport, très au-dessus de la borne métier (60 caractères). */
+/** Transport bound, far above the business bound (60 characters). */
 const MAX_RAW_LABEL_LENGTH = 1_000;
 
 export const registerWorkerKeyBodySchema = z.object({

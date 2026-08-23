@@ -20,15 +20,15 @@ export class AppendTranscribedSegmentsUseCase {
   ) {}
 
   async execute(command: AppendTranscribedSegmentsCommand): Promise<void> {
-    // Un lot rejoué est déjà sans effet grâce à `batchSequence` ; ce nouvel essai couvre
-    // l'autre course : la balayeuse des bails expirés qui écrit la même ligne.
+    // A replayed batch is already without effect thanks to `batchSequence` — this retry covers
+    // the other race: the expired-lease sweeper writing the same row.
     await retryOnConcurrentWrite(async () => {
       const transcription = await this.repository.findById(command.transcriptionId);
       if (transcription === null) {
         throw new TranscriptionNotFoundError();
       }
 
-      // whisper produit des segments sans parole : on les écarte plutôt que de refuser le lot.
+      // whisper produces speechless segments: we drop them rather than refuse the batch.
       const segments = command.segments
         .filter((segment) => segment.text.trim().length > 0)
         .map((segment) => ({
@@ -43,7 +43,7 @@ export class AppendTranscribedSegmentsUseCase {
         at: this.clock.now(),
       });
 
-      // Enregistré même sans événement : la séquence de lots appliquée, elle, a pu avancer.
+      // Saved even without an event: the applied batch sequence itself may have moved forward.
       await this.repository.save(transcription);
       const events = transcription.pullEvents();
       if (events.length > 0) {

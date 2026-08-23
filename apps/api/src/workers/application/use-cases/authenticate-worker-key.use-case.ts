@@ -5,16 +5,16 @@ import type { WorkerKeySecrets } from '../ports/worker-key-secrets';
 export type AuthenticateWorkerKeyCommand = { secret: string };
 
 /**
- * Fenêtre en dessous de laquelle un nouveau passage n'est pas réécrit. Une machine réclame du
- * travail et bat du cœur en continu : noter chaque appel ferait une écriture par seconde et par
- * machine, pour une information qui se lit à la minute.
+ * Window below which a new sighting is not written again. A machine claims work and heartbeats
+ * continuously: recording every call would mean one write per second and per machine, for a
+ * piece of information that is read to the minute.
  */
 const SEEN_REFRESH_SECONDS = 60;
 
 /**
- * À qui appartient la machine qui présente ce secret ? Rend `null` pour un secret inconnu
- * comme pour une clé révoquée : l'appelant n'a pas à distinguer les deux, et rien ne doit
- * permettre de deviner qu'une clé a existé.
+ * Who owns the machine presenting this secret? Returns `null` for an unknown secret as for a
+ * revoked key: the caller has no business telling the two apart, and nothing must make it
+ * possible to guess that a key ever existed.
  */
 export class AuthenticateWorkerKeyUseCase {
   constructor(

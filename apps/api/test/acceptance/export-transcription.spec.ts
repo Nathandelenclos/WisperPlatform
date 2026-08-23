@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import { OWNER, aClaimedTranscription, aPlatform } from './platform';
 
-describe('Scénario : le propriétaire exporte ses sous-titres', () => {
-  it('rend un fichier SRT nommé d\'après le média, corrections comprises', async () => {
+describe('Scenario: the owner exports their subtitles', () => {
+  it('renders an SRT file named after the media, corrections included', async () => {
     const platform = aPlatform();
     const { transcriptionId, runId } = await aClaimedTranscription(platform, {
       originalName: 'conference plénière.mp3',
@@ -44,7 +44,7 @@ describe('Scénario : le propriétaire exporte ses sous-titres', () => {
     );
   });
 
-  it('rend aussi le WebVTT et le texte brut du même contenu', async () => {
+  it('also renders WebVTT and plain text of the same content', async () => {
     const platform = aPlatform();
     const { transcriptionId, runId } = await aClaimedTranscription(platform);
     await platform.appendTranscribedSegments.execute({

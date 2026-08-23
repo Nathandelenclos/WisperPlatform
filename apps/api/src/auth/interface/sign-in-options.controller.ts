@@ -1,22 +1,22 @@
 import { Controller, Get, Inject } from '@nestjs/common';
 
-/** Ce que le client a besoin de savoir avant d'afficher un écran de connexion. */
+/** What the client needs to know before displaying a sign-in screen. */
 export type SignInOptions = {
-  /** Vrai quand l'exploitant a fourni des identifiants OAuth Google. */
+  /** True when the operator has provided Google OAuth credentials. */
   google: boolean;
 };
 
 export const SIGN_IN_OPTIONS = Symbol('SignInOptions');
 
 /**
- * Voies de connexion ouvertes sur cette instance. Route publique et volontairement muette :
- * elle ne dit pas quels identifiants sont configurés, seulement si une voie existe.
+ * Sign-in paths open on this instance. A public route, and deliberately mute: it does not say
+ * which credentials are configured, only whether a path exists.
  *
- * Sans elle, le client devrait deviner. Un bouton « Google » affiché sur une instance sans
- * identifiants échoue au clic ; le même bouton caché derrière une variable du build ferait de
- * cette décision deux configurations à tenir d'accord. Le serveur est seul juge.
+ * Without it, the client would have to guess. A "Google" button displayed on an instance with no
+ * credentials fails on click — the same button hidden behind a build variable would turn that
+ * decision into two configurations to keep in agreement. The server alone decides.
  *
- * Hors de `/api/auth`, dont le contrôleur passe TOUT au fournisseur d'identité par joker.
+ * Outside `/api/auth`, whose controller passes EVERYTHING to the identity provider by wildcard.
  */
 @Controller('sign-in-options')
 export class SignInOptionsController {

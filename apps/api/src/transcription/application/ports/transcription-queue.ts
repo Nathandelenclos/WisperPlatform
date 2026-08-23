@@ -3,17 +3,17 @@ import type { Claimant } from './worker-identities';
 
 export interface TranscriptionQueue {
   /**
-   * Réservation atomique d'une transcription en attente dont le modèle est servi par le worker.
-   * Purement technique : elle empêche deux workers de charger le même aggregate et expire seule
-   * au bout de `reservationSeconds`. Renvoie l'identifiant réservé, ou `null` s'il n'y a rien.
+   * Atomic reservation of a pending transcription whose model is served by the worker.
+   * Purely technical: it prevents two workers from loading the same aggregate and expires on
+   * its own after `reservationSeconds`. Returns the reserved id, or `null` if there is nothing.
    *
-   * Le réclamant borne ce qui peut être proposé, et ce cloisonnement est absolu :
-   * - `service` ne voit QUE les transcriptions de placement `service` ;
-   * - `owner` ne voit QUE les transcriptions de placement `owner` dont il est propriétaire.
+   * The claimant bounds what may be offered, and this partitioning is absolute:
+   * - `service` sees ONLY transcriptions with placement `service`;
+   * - `owner` sees ONLY transcriptions with placement `owner` that it owns.
    *
-   * Aucun croisement, dans aucun sens : une demande placée sur la machine de son propriétaire
-   * n'est jamais servie au service, même si elle attend depuis longtemps, et une demande du
-   * service n'est jamais servie à une machine d'utilisateur.
+   * No crossing over, in either direction: a request placed on its owner's machine is never
+   * served to the service, even if it has been waiting for a long time, and a request from the
+   * service is never served to a user machine.
    */
   reserveNextPending(p: {
     claimant: Claimant;
@@ -23,11 +23,11 @@ export interface TranscriptionQueue {
     now: Date;
   }): Promise<string | null>;
 
-  /** Identifiants des transcriptions en cours dont le bail est dépassé. */
+  /** Ids of the in-progress transcriptions whose lease has expired. */
   /**
-   * Lève la réservation technique posée par `reserveNextPending`. Rendre une tentative sans
-   * ça laisse la demande invisible pendant la fenêtre de réservation : elle est bien `pending`,
-   * mais aucun worker ne se la voit proposer, ce qui annule tout l'intérêt de la rendre.
+   * Lifts the technical reservation set by `reserveNextPending`. Releasing a run without this
+   * leaves the request invisible for the whole reservation window: it really is `pending`, but
+   * no worker gets offered it, which cancels the entire point of releasing it.
    */
   clearReservation(transcriptionId: string): Promise<void>;
   findStalled(p: { now: Date; limit: number }): Promise<string[]>;

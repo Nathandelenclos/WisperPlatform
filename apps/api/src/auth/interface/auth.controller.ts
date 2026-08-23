@@ -5,9 +5,9 @@ import { AUTH_REQUEST_HANDLER } from './auth-request-handler';
 import type { AuthRequestHandler } from './auth-request-handler';
 
 /**
- * Monte l'intégralité des routes du fournisseur d'identité sous `/api/auth`.
- * La requête est passée brute (`@Req`/`@Res`) : le corps de ces routes n'est volontairement
- * pas analysé par l'application (voir la configuration du body parser dans `main.ts`).
+ * Mounts every route of the identity provider under `/api/auth`.
+ * The request is passed raw (`@Req`/`@Res`): the body of these routes is deliberately not
+ * parsed by the application (see the body parser configuration in `main.ts`).
  */
 @Controller('auth')
 export class AuthController {

@@ -1,6 +1,6 @@
 import type { Clock } from '../../src/transcription/application/ports/clock';
 
-/** Horloge que le test fait avancer à la main : les bails deviennent déterministes. */
+/** Clock the test advances by hand: leases become deterministic. */
 export class FixedClock implements Clock {
   private current: Date;
 

@@ -2,25 +2,24 @@ import type { MediaAccessTokens } from '../../src/transcription/application/port
 
 const SEPARATOR = '::';
 /**
- * Signature du double : dérivée du contenu, triviale à lire dans une assertion, mais
- * impossible à produire sans connaître la règle. Elle existe pour que le contrat du port
- * — « un laissez-passer que nous n'avons pas émis est refusé » — soit vérifiable ici comme
- * sur l'adaptateur HMAC.
+ * The double's signature: derived from the content, trivial to read in an assertion, but
+ * impossible to produce without knowing the rule. It exists so that the port's contract
+ * — "an access token we did not issue is refused" — is verifiable here just as it is on the
+ * HMAC adapter.
  *
- * ponytail: signature jouet, suffisante pour un double de test ; la vraie défense est
- * l'HMAC de `HmacMediaAccessTokens`, sur lequel la même suite de contrat tourne.
+ * ponytail: toy signature, enough for a test double — the real defence is the HMAC of
+ * `HmacMediaAccessTokens`, on which the same contract suite runs.
  */
 function sign(payload: string): string {
-  // Somme des codes de caractères en base 36 : aucun séparateur possible dans le résultat,
-  // impossible à produire sans connaître la règle, et lisible dans un message d'échec.
+  // Sum of the character codes in base 36: no separator can appear in the result, impossible to
+  // produce without knowing the rule, and readable in a failure message.
   const checksum = [...payload].reduce((total, char) => total + char.charCodeAt(0), 0);
-  return `signe${checksum.toString(36)}`;
+  return `signed${checksum.toString(36)}`;
 }
 
 /**
- * Laissez-passer lisible dans les assertions. L'adaptateur réel signe le même triplet en
- * HMAC ; le comportement observable — même contenu, même expiration, refus d'un jeton forgé —
- * est identique.
+ * Access token readable in the assertions. The real adapter signs the same triplet with HMAC —
+ * the observable behaviour (same content, same expiry, refusal of a forged token) is identical.
  */
 export class FakeMediaAccessTokens implements MediaAccessTokens {
   issue(p: { transcriptionId: string; runId: string; expiresAt: Date }): string {

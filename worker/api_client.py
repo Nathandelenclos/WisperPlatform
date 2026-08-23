@@ -1,14 +1,14 @@
-"""Client HTTP du worker vers l'API WisperPlatform.
+"""HTTP client from the worker to the WisperPlatform API.
 
-Bibliothèque standard uniquement (`urllib`). Trois garanties :
+Standard library only (`urllib`). Three guarantees:
 
-- chaque appel porte un timeout explicite ;
-- les rejeux sont bornés (`MAX_ATTEMPTS`), en backoff exponentiel plafonné avec jitter ;
-- seules les causes transitoires sont rejouées (erreur réseau, 429, 5xx). Une 4xx métier
-  remonte immédiatement : la rejouer ne changerait rien et ferait perdre du temps au bail.
+- every call carries an explicit timeout;
+- retries are bounded (`MAX_ATTEMPTS`), with capped exponential backoff and jitter;
+- only transient causes are retried (network error, 429, 5xx). A business 4xx surfaces
+  immediately: retrying it would change nothing and would waste lease time.
 
-Le jeton porteur ne quitte jamais l'en-tête `Authorization`, et le jeton média ne quitte
-jamais l'URL : aucun message d'erreur ne contient d'URL, donc aucun log ne peut les fuiter.
+The bearer token never leaves the `Authorization` header, and the media token never leaves
+the URL: no error message contains a URL, so no log can leak either of them.
 """
 
 from __future__ import annotations
@@ -22,8 +22,8 @@ import urllib.parse
 import urllib.request
 
 REQUEST_TIMEOUT_SECONDS = 15.0
-# Timeout d'une opération socket pendant le téléchargement, pas de la durée totale :
-# un média de plusieurs Gio est légitimement long, un socket muet 5 minutes ne l'est pas.
+# Timeout of a single socket operation during the download, not of the total duration:
+# a media file of several GiB is legitimately long, a socket silent for 5 minutes is not.
 DOWNLOAD_TIMEOUT_SECONDS = 300.0
 MAX_ATTEMPTS = 3
 BACKOFF_BASE_SECONDS = 0.5
@@ -31,7 +31,7 @@ BACKOFF_MAX_SECONDS = 8.0
 
 
 class ApiError(Exception):
-    """Échec d'un appel à l'API. `retryable` distingue le transitoire du définitif."""
+    """Failure of an API call. `retryable` tells the transient apart from the definitive."""
 
     def __init__(self, message, status=None, retryable=False):
         super().__init__(message)
@@ -57,7 +57,7 @@ class ApiClient:
         self._sleeper = sleeper
 
     def claim(self, worker_id, models):
-        """Réclame un job. Rend la vue du job, ou `None` quand la file est vide (204)."""
+        """Claims a job. Returns the job view, or `None` when the queue is empty (204)."""
         return self._send(
             "claim",
             "POST",
@@ -66,7 +66,7 @@ class ApiClient:
         )
 
     def download_media(self, token, destination):
-        """Écrit le média du run dans `destination` (jamais son nom d'origine)."""
+        """Writes the run's media into `destination` (never under its original name)."""
         path = "/api/worker/media/" + urllib.parse.quote(token, safe="")
         request = self._build_request("GET", path, None)
 
@@ -78,7 +78,7 @@ class ApiClient:
         self._with_retries("media download", perform)
 
     def post_segments(self, run_id, transcription_id, batch_sequence, segments):
-        """Publie un lot. `batch_sequence` rend l'opération idempotente au rejeu."""
+        """Publishes a batch. `batch_sequence` makes the operation idempotent on replay."""
         self._send(
             "segments",
             "POST",
@@ -91,7 +91,7 @@ class ApiClient:
         )
 
     def post_speakers(self, run_id, transcription_id, turns):
-        """Publie les tours de parole du run. Rejouable : l'API recalcule l'attribution."""
+        """Publishes the run's speaker turns. Replayable: the API recomputes the assignment."""
         self._send(
             "speakers",
             "POST",
@@ -124,7 +124,7 @@ class ApiClient:
         )
 
     def release(self, run_id, transcription_id):
-        """Rend la tentative sans la déclarer en échec : la demande repart en file aussitôt."""
+        """Releases the attempt without failing it: the request goes back to the queue at once."""
         self._send(
             "release",
             "POST",
@@ -147,8 +147,8 @@ class ApiClient:
             try:
                 return json.loads(body.decode("utf-8"))
             except (UnicodeDecodeError, ValueError):
-                # Corps hors contrat (page d'erreur d'un proxy, par exemple) : rejouer
-                # n'y changerait rien, et le contenu n'a pas sa place dans un message.
+                # Off-contract body (a proxy error page, for instance): retrying would change
+                # nothing, and the content has no place in a message.
                 raise ApiError("{} returned a malformed body".format(operation), status=response.status) from None
 
         return self._with_retries(operation, perform)
@@ -171,7 +171,7 @@ class ApiClient:
                 return perform()
             except urllib.error.HTTPError as error:
                 if not _is_transient_status(error.code):
-                    # 4xx métier : erreur définitive, jamais rejouée.
+                    # Business 4xx: definitive error, never retried.
                     raise ApiError(
                         "{} rejected with HTTP {}".format(operation, error.code),
                         status=error.code,
@@ -183,8 +183,8 @@ class ApiClient:
                     retryable=True,
                 )
             except OSError as error:
-                # `URLError` et les timeouts socket dérivent tous d'`OSError`.
-                # Seule la cause est reprise : jamais l'URL, qui porte le jeton média.
+                # `URLError` and socket timeouts all derive from `OSError`.
+                # Only the cause is carried over: never the URL, which holds the media token.
                 failure = ApiError(
                     "{} failed: {}".format(operation, _cause_of(error)),
                     retryable=True,
@@ -206,6 +206,6 @@ def _cause_of(error):
 
 
 def _backoff_delay(attempt):
-    """Backoff exponentiel plafonné, avec jitter complet pour désynchroniser les workers."""
+    """Capped exponential backoff, with full jitter to desynchronise the workers."""
     ceiling = min(BACKOFF_BASE_SECONDS * (2 ** (attempt - 1)), BACKOFF_MAX_SECONDS)
     return random.uniform(0.0, ceiling)

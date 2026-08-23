@@ -1,10 +1,10 @@
 /**
- * Erreurs du domaine `workers`.
+ * Errors of the `workers` domain.
  *
- * Base propre au contexte : la règle de dépendance interdit à un domaine d'importer celui d'un
- * autre contexte borné, et il n'existe pas de noyau partagé. Chaque violation d'invariant porte
- * un `code` stable, seul contrat exposé aux couches externes (le mapping HTTP traduit toute
- * erreur de domaine en 422).
+ * A base class owned by this context: the dependency rule forbids a domain from importing that
+ * of another bounded context, and there is no shared kernel. Every invariant violation carries
+ * a stable `code`, the only contract exposed to the outer layers (the HTTP mapping turns any
+ * domain error into a 422).
  */
 export class WorkerDomainError extends Error {
   readonly code: string;
@@ -16,7 +16,7 @@ export class WorkerDomainError extends Error {
   }
 }
 
-/** Le libellé d'une machine ne respecte pas ses invariants (vide, trop long, multiligne). */
+/** A machine label breaks its invariants (empty, too long, multiline). */
 export class InvalidWorkerKeyLabelError extends WorkerDomainError {
   constructor(message: string) {
     super('INVALID_WORKER_KEY_LABEL', message);

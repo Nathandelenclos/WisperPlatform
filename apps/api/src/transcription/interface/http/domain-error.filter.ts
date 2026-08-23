@@ -9,14 +9,14 @@ import { DomainError } from '../../domain/errors';
 import { WorkerKeyNotFoundError } from '../../../workers/application/errors';
 import { WorkerDomainError } from '../../../workers/domain/errors';
 
-/** Réponse d'erreur unique de l'API. */
+/** The API's single error response. */
 type ErrorResponse = { error: { code: string; message: string } };
 
 type MappedFailure = {
   readonly status: number;
   readonly code: string;
   readonly message: string;
-  /** Vrai quand la cause n'est pas un refus attendu : elle est journalisée en `error`. */
+  /** True when the cause is not an expected refusal: it is logged at `error` level. */
   readonly unexpected: boolean;
 };
 
@@ -33,14 +33,14 @@ const HTTP_CODES: Readonly<Record<number, string>> = {
 };
 
 /**
- * Traduit les refus métier en codes HTTP et impose la forme `{ error: { code, message } }`
- * à toutes les réponses d'erreur, y compris celles produites par le framework.
- * Une cause inattendue ne franchit jamais la frontière : elle devient un 500 opaque.
+ * Translates business refusals into HTTP codes and enforces the shape
+ * `{ error: { code, message } }` on every error response, including those produced by the
+ * framework. An unexpected cause never crosses the boundary: it becomes an opaque 500.
  *
- * Enregistré en `APP_FILTER`, il est la frontière d'erreur de TOUTE la plateforme : il connaît
- * donc les bases d'erreur de chaque contexte borné, y compris `workers`. Une base par contexte
- * est le prix de la règle de dépendance — un domaine n'importe pas celui d'un autre — et un
- * second filtre attrape-tout serait pire : deux filtres globaux se disputeraient chaque erreur.
+ * Registered as `APP_FILTER`, it is the error boundary of the WHOLE platform: it therefore
+ * knows the error bases of every bounded context, `workers` included. One base per context is
+ * the price of the dependency rule — one domain does not import another's — and a second
+ * catch-all filter would be worse: two global filters would fight over every error.
  */
 @Catch()
 export class DomainErrorFilter implements ExceptionFilter {
@@ -51,12 +51,12 @@ export class DomainErrorFilter implements ExceptionFilter {
     const fields = { status: failure.status, code: failure.code };
 
     if (failure.unexpected) {
-      this.logger.error('requête rejetée', {
+      this.logger.error('request rejected', {
         ...fields,
         cause: exception instanceof Error ? exception.name : typeof exception,
       });
     } else {
-      this.logger.warn('requête rejetée', fields);
+      this.logger.warn('request rejected', fields);
     }
 
     const response = host.switchToHttp().getResponse<ServerResponse>();
@@ -64,7 +64,7 @@ export class DomainErrorFilter implements ExceptionFilter {
       return;
     }
     if (response.headersSent) {
-      // Flux déjà engagé (SSE, téléchargement) : impossible de remplacer le corps.
+      // Stream already started (SSE, download): the body can no longer be replaced.
       response.end();
       return;
     }
@@ -117,7 +117,7 @@ export class DomainErrorFilter implements ExceptionFilter {
     return {
       status: HttpStatus.INTERNAL_SERVER_ERROR,
       code: 'INTERNAL_ERROR',
-      message: 'Erreur interne',
+      message: 'Internal error',
       unexpected: true,
     };
   }

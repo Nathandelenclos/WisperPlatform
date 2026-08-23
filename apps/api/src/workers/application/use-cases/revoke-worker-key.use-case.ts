@@ -5,9 +5,9 @@ import type { WorkerKeyRepository } from '../ports/worker-key-repository';
 export type RevokeWorkerKeyCommand = { ownerId: string; workerKeyId: string };
 
 /**
- * Le propriétaire retire sa confiance à une machine. La clé n'est pas supprimée : sa trace
- * reste visible dans sa liste, révoquée — savoir qu'une clé a existé fait partie de ce qu'on
- * veut pouvoir lire après un incident.
+ * The owner withdraws trust from a machine. The key is not deleted: its trace stays visible in
+ * their list, revoked — knowing that a key existed is part of what one wants to be able to read
+ * after an incident.
  */
 export class RevokeWorkerKeyUseCase {
   constructor(
@@ -17,7 +17,7 @@ export class RevokeWorkerKeyUseCase {
 
   async execute(command: RevokeWorkerKeyCommand): Promise<void> {
     const key = await this.repository.findById(command.workerKeyId);
-    // Une clé qui n'est pas la sienne est, pour lui, inexistante.
+    // A key that is not theirs does not, as far as they are concerned, exist.
     if (key === null || key.ownerId !== command.ownerId) {
       throw new WorkerKeyNotFoundError();
     }

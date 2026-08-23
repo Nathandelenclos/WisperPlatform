@@ -20,12 +20,12 @@ import { TranscriptionSettings, type WhisperModel } from './transcription-settin
 
 export type TranscriptionStatus = 'pending' | 'transcribing' | 'completed' | 'failed';
 
-/** Forme sérialisable de l'aggregate : le repository écrit et relit exactement ceci. */
+/** Serializable shape of the aggregate: the repository writes and reads back exactly this. */
 export type TranscriptionState = {
   id: string;
   ownerId: string;
   status: TranscriptionStatus;
-  /** Où le calcul doit avoir lieu. Voir `Placement` : défaut `service`. */
+  /** Where the computation must run. See `Placement`: the default is `service`. */
   placement: Placement;
   model: WhisperModel;
   language: string;
@@ -45,13 +45,13 @@ export type TranscriptionState = {
   speakers: SpeakerState[];
 };
 
-/** Raison figée d'un échec provoqué par l'abandon d'un worker. */
+/** Fixed reason for a failure caused by a worker abandoning its run. */
 const LEASE_EXPIRED_REASON = 'lease expired';
 
 /**
- * Aggregate root du contexte `transcription`. Il porte le cycle de vie d'une demande
- * (attente → transcription en cours → achevée ou échouée), la propriété des segments et
- * l'idempotence du flux de segments envoyé par un worker.
+ * Aggregate root of the `transcription` context. It carries the lifecycle of a request
+ * (pending → transcribing → completed or failed), the ownership of the segments and the
+ * idempotence of the segment stream a worker sends.
  */
 export class Transcription {
   private status: TranscriptionStatus;
@@ -65,7 +65,7 @@ export class Transcription {
   private completedAt: Date | null;
   private segmentList: Segment[];
   private speakerList: Speaker[];
-  /** Copie interne : l'instant de la demande n'est jamais la `Date` de l'appelant. */
+  /** Internal copy: the request instant is never the caller's own `Date`. */
   private readonly requestedAtInstant: Date;
   private readonly events: TranscriptionEvent[] = [];
 
@@ -89,8 +89,8 @@ export class Transcription {
       speakers: Speaker[];
     },
   ) {
-    // Instants recopiés à l'entrée comme ils le sont à la sortie : l'appelant qui garde la
-    // `Date` qu'il a passée ne doit pas garder une prise sur l'état de l'aggregate.
+    // Instants are copied on the way in just as they are on the way out: a caller that keeps
+    // the `Date` it passed must not keep a hold on the aggregate's state.
     this.requestedAtInstant = new Date(requestedAt);
     this.status = state.status;
     this.placementChoice = state.placement;
@@ -111,7 +111,7 @@ export class Transcription {
     media: MediaAsset;
     settings: TranscriptionSettings;
     requestedAt: Date;
-    /** Optionnel : sans choix explicite, la plateforme calcule (voir `DEFAULT_PLACEMENT`). */
+    /** Optional: without an explicit choice, the platform computes (see `DEFAULT_PLACEMENT`). */
     placement?: Placement;
   }): Transcription {
     const transcription = new Transcription(
@@ -179,21 +179,21 @@ export class Transcription {
     return this.speakerList;
   }
 
-  /** Échéance du bail en cours, copiée : `null` hors d'une tentative en cours. */
+  /** Expiry of the current lease, copied: `null` outside a run in progress. */
   get leaseExpiry(): Date | null {
     return this.leaseExpiresAt === null ? null : new Date(this.leaseExpiresAt);
   }
 
   /**
-   * Une nouvelle tentative démarre : les segments de la tentative précédente sont abandonnés,
-   * et avec eux les locuteurs qu'une diarisation avait pu découvrir.
-   * L'aggregate dérive lui-même l'échéance du bail — « un bail est une fenêtre bornée qui
-   * commence maintenant » est une règle du contexte, pas un calcul d'appelant.
+   * A new attempt starts: the segments of the previous attempt are dropped, and with them the
+   * speakers a diarization pass may have discovered.
+   * The aggregate derives the lease expiry itself — "a lease is a bounded window that starts
+   * now" is a rule of the context, not a caller's computation.
    */
   startTranscribing(p: { runId: string; workerId: string; leaseSeconds: number; at: Date }): void {
     if (this.status !== 'pending') {
       throw new IllegalTranscriptionStateError(
-        `une transcription au statut ${this.status} ne peut pas démarrer`,
+        `a transcription in status ${this.status} cannot start`,
       );
     }
     this.status = 'transcribing';
@@ -216,8 +216,8 @@ export class Transcription {
   }
 
   /**
-   * Ajoute un lot de segments produit par le run courant. Le rejeu d'un lot déjà appliqué est
-   * ignoré en silence : c'est ce qui rend le POST du worker sûr après un timeout réseau.
+   * Appends a batch of segments produced by the current run. Replaying an already applied batch
+   * is silently ignored: that is what makes the worker's POST safe after a network timeout.
    */
   appendTranscribedSegments(p: {
     runId: string;
@@ -225,13 +225,13 @@ export class Transcription {
     segments: { range: TimeRange; text: string }[];
     at: Date;
   }): void {
-    this.assertRunIsInProgress(p.runId, 'ajouter des segments');
+    this.assertRunIsInProgress(p.runId, 'append segments');
     if (p.batchSequence <= this.lastAppliedBatchSequence) {
       return;
     }
     if (p.batchSequence !== this.lastAppliedBatchSequence + 1) {
       throw new OutOfOrderBatchError(
-        `lot ${p.batchSequence} inattendu : le lot ${this.lastAppliedBatchSequence + 1} manque`,
+        `unexpected batch ${p.batchSequence}: missing batch ${this.lastAppliedBatchSequence + 1}`,
       );
     }
 
@@ -240,7 +240,7 @@ export class Transcription {
     for (const incoming of p.segments) {
       if (previous !== null && !previous.precedesOrTouches(incoming.range)) {
         throw new OverlappingSegmentsError(
-          'les segments d\'un lot doivent être ordonnés et sans chevauchement',
+          'the segments of a batch must be ordered and must not overlap',
         );
       }
       appended.push(
@@ -255,7 +255,8 @@ export class Transcription {
 
     this.lastAppliedBatchSequence = p.batchSequence;
     if (appended.length === 0) {
-      // Lot vidé en amont (segments sans parole) : la séquence avance, il n'y a rien à annoncer.
+      // Batch emptied upstream (segments with no speech): the sequence advances, and there is
+      // nothing to announce.
       return;
     }
     this.segmentList = [...this.segmentList, ...appended];
@@ -268,15 +269,15 @@ export class Transcription {
     });
   }
 
-  /** Le worker donne signe de vie : le bail est repoussé, sans événement métier. */
+  /** The worker signals it is still alive: the lease is pushed back, with no domain event. */
   renewLease(p: { runId: string; leaseSeconds: number; at: Date }): void {
-    this.assertRunIsInProgress(p.runId, 'renouveler le bail');
+    this.assertRunIsInProgress(p.runId, 'renew the lease');
     this.leaseExpiresAt = Transcription.leaseWindow(p.at, p.leaseSeconds);
   }
 
-  /** Une transcription sans aucun segment est légale : le média peut ne contenir aucune parole. */
+  /** A transcription with no segments at all is legal: the media may contain no speech. */
   complete(p: { runId: string; at: Date }): void {
-    this.assertRunIsInProgress(p.runId, 'achever la transcription');
+    this.assertRunIsInProgress(p.runId, 'complete the transcription');
     this.status = 'completed';
     this.completedAt = p.at;
     this.leaseExpiresAt = null;
@@ -290,14 +291,14 @@ export class Transcription {
   }
 
   fail(p: { runId: string; reason: string; at: Date }): void {
-    this.assertRunIsInProgress(p.runId, 'déclarer un échec');
+    this.assertRunIsInProgress(p.runId, 'report a failure');
     this.markFailed(p.reason, p.at);
   }
 
   /**
-   * Le bail d'un worker disparu est arrivé à terme : on remet la demande en file, sauf si
-   * elle a déjà consommé toutes ses tentatives. Sans bail dépassé, l'appel ne fait rien :
-   * la balayeuse peut travailler sur une lecture devenue obsolète.
+   * The lease of a vanished worker has run out: the request is requeued, unless it has already
+   * used up all of its attempts. With no lease past due, the call does nothing — the sweeper
+   * may be working from a read that has since gone stale.
    */
   requeueExpiredLease(p: { at: Date; maxAttempts: number }): void {
     if (this.status !== 'transcribing' || this.leaseExpiresAt === null) {
@@ -323,16 +324,16 @@ export class Transcription {
   }
 
   /**
-   * Le worker rend la main sans avoir échoué : il s'arrête (déploiement, mise à l'échelle,
-   * arrêt de la machine) et la demande repart en file tout de suite, au lieu d'attendre que
-   * son bail s'éteigne. Ce n'est pas un échec : le run est abandonné, pas cassé, et les
-   * segments de la tentative morte sont jetés par le prochain `startTranscribing`.
+   * The worker hands the run back without having failed: it is shutting down (deployment,
+   * scaling, machine stopping) and the request goes back into the queue right away, instead of
+   * waiting for its lease to run out. This is not a failure: the run is abandoned, not broken,
+   * and the segments of the dead attempt are thrown away by the next `startTranscribing`.
    *
-   * La tentative reste comptée : elle a bien eu lieu, et c'est ce qui empêche une machine qui
-   * redémarre en boucle de faire tourner la même transcription indéfiniment.
+   * The attempt stays counted: it did take place, and that is what stops a machine caught in a
+   * restart loop from running the same transcription forever.
    */
   releaseRun(p: { runId: string; at: Date }): void {
-    this.assertRunIsInProgress(p.runId, 'rendre la tentative');
+    this.assertRunIsInProgress(p.runId, 'release the run');
     this.status = 'pending';
     this.currentRunId = null;
     this.claimedBy = null;
@@ -346,12 +347,12 @@ export class Transcription {
   }
 
   /**
-   * Le propriétaire choisit où sa demande sera calculée. Tant qu'aucun worker ne l'a prise,
-   * c'est un simple aiguillage ; une fois démarrée, la déplacer n'a plus de sens — un run vit
-   * sur une machine, pas sur un choix, et le rapatrier voudrait dire jeter son travail.
+   * The owner chooses where their request will be computed. As long as no worker has claimed it,
+   * this is a simple routing switch — once started, moving it no longer makes sense: a run lives
+   * on a machine, not on a choice, and bringing it back would mean throwing away its work.
    *
-   * Demander le placement déjà en vigueur ne fait rien et ne lève pas : il n'y a rien à
-   * changer, donc rien à refuser, même sur une transcription achevée.
+   * Asking for the placement already in force does nothing and does not throw: there is nothing
+   * to change, so nothing to refuse, even on a completed transcription.
    */
   changePlacement(p: { placement: Placement; at: Date }): void {
     if (this.placementChoice === p.placement) {
@@ -359,7 +360,7 @@ export class Transcription {
     }
     if (this.status !== 'pending') {
       throw new IllegalTranscriptionStateError(
-        `une transcription au statut ${this.status} ne change plus de placement`,
+        `a transcription in status ${this.status} no longer changes placement`,
       );
     }
     this.placementChoice = p.placement;
@@ -375,12 +376,12 @@ export class Transcription {
   correctSegment(p: { ordinal: number; text: string; at: Date }): void {
     if (this.status !== 'completed') {
       throw new TranscriptionNotCorrectableError(
-        `une transcription au statut ${this.status} n'est pas corrigeable`,
+        `a transcription in status ${this.status} is not correctable`,
       );
     }
     const index = this.segmentList.findIndex((segment) => segment.ordinal === p.ordinal);
     if (index === -1) {
-      throw new SegmentNotFoundError(`aucun segment ne porte l'ordinal ${p.ordinal}`);
+      throw new SegmentNotFoundError(`no segment carries ordinal ${p.ordinal}`);
     }
     const corrected = [...this.segmentList];
     corrected[index] = this.segmentList[index].withCorrectedText(p.text);
@@ -395,15 +396,15 @@ export class Transcription {
   }
 
   /**
-   * Passe de diarisation du run en cours : chaque segment reçoit le locuteur qui recouvre la
-   * plus grande part de sa durée, et les locuteurs découverts remplacent les précédents.
+   * Diarization pass of the current run: each segment gets the speaker that covers the largest
+   * share of its duration, and the discovered speakers replace the previous ones.
    *
-   * L'attribution est recalculée de zéro à chaque appel : le worker peut rejouer la même
-   * publication sans rien changer (sa livraison est at-least-once). Les noms déjà donnés par
-   * le propriétaire survivent à un indice qui revient — c'est son travail, pas celui du worker.
+   * The assignment is recomputed from scratch on every call: the worker can replay the same
+   * publication without changing anything (its delivery is at-least-once). Names already given
+   * by the owner survive an index that comes back — that is the owner's work, not the worker's.
    */
   assignSpeakers(p: { runId: string; turns: readonly SpeakerTurn[]; at: Date }): void {
-    this.assertRunIsInProgress(p.runId, 'attribuer les locuteurs');
+    this.assertRunIsInProgress(p.runId, 'assign speakers');
 
     const previous = new Map(this.speakerList.map((speaker) => [speaker.index, speaker]));
     this.speakerList = distinctSpeakers(p.turns).map(
@@ -424,13 +425,13 @@ export class Transcription {
   }
 
   /**
-   * Nommer un locuteur porte sur toute la transcription d'un coup : c'est le geste métier —
-   * « ce locuteur-là, c'est Marc » — et non l'édition segment par segment.
+   * Naming a speaker applies to the whole transcription at once: that is the business gesture —
+   * "that speaker there is Marc" — and not segment-by-segment editing.
    */
   renameSpeaker(p: { index: number; name: string; at: Date }): void {
     const position = this.speakerList.findIndex((speaker) => speaker.index === p.index);
     if (position === -1) {
-      throw new SpeakerNotFoundError(`aucun locuteur ne porte l'indice ${p.index}`);
+      throw new SpeakerNotFoundError(`no speaker carries index ${p.index}`);
     }
     const name = SpeakerName.of(p.name);
     const renamed = [...this.speakerList];
@@ -447,9 +448,9 @@ export class Transcription {
   }
 
   /**
-   * Ce laissez-passer ouvre-t-il encore le média ? La question appartient au domaine : la
-   * réponse est le même invariant que celui qui autorise un run à écrire, et le contrôle
-   * d'accès au média doit suivre l'aggregate quand cet invariant se durcit.
+   * Does this pass still open the media? The question belongs to the domain: the answer is the
+   * very invariant that lets a run write, and media access control must follow the aggregate
+   * when that invariant is tightened.
    */
   grantsMediaAccessTo(runId: string): boolean {
     return this.status === 'transcribing' && this.currentRunId === runId;
@@ -459,7 +460,7 @@ export class Transcription {
     return renderSubtitles(this.segmentList, format, this.speakerList);
   }
 
-  /** Vide et rend les événements accumulés : à publier après un enregistrement réussi. */
+  /** Drains and returns the accumulated events: publish them after a successful save. */
   pullEvents(): TranscriptionEvent[] {
     return this.events.splice(0, this.events.length);
   }
@@ -479,8 +480,8 @@ export class Transcription {
       attempts: this.attempts,
       currentRunId: this.currentRunId,
       claimedBy: this.claimedBy,
-      // `Date` est mutable : sans copie, un appelant refermerait un bail sans passer par
-      // une méthode métier. Le constructeur et `restore` copient symétriquement à l'entrée.
+      // `Date` is mutable: without a copy, a caller could close a lease without going through
+      // a domain method. The constructor and `restore` copy symmetrically on the way in.
       leaseExpiresAt: this.leaseExpiresAt === null ? null : new Date(this.leaseExpiresAt),
       lastAppliedBatchSequence: this.lastAppliedBatchSequence,
       failureReason: this.failureReason,
@@ -506,29 +507,30 @@ export class Transcription {
   }
 
   /**
-   * Seul le run en cours pilote la transcription : un run remplacé (bail expiré puis reprise)
-   * n'a plus le droit d'écrire, et rien ne s'écrit hors de l'état `transcribing`.
+   * Only the current run drives the transcription: a run that has been replaced (expired lease,
+   * then picked up again) is no longer allowed to write, and nothing is written outside the
+   * `transcribing` state.
    */
   private assertRunIsInProgress(runId: string, intent: string): void {
     if (this.status !== 'transcribing') {
       throw new IllegalTranscriptionStateError(
-        `impossible de ${intent} : la transcription est au statut ${this.status}`,
+        `cannot ${intent}: the transcription is in status ${this.status}`,
       );
     }
     if (!this.grantsMediaAccessTo(runId)) {
-      throw new StaleRunError(`impossible de ${intent} : cette tentative a été remplacée`);
+      throw new StaleRunError(`cannot ${intent}: this run has been replaced`);
     }
   }
 
   /**
-   * Politique du contexte : un bail est une fenêtre bornée qui commence à l'instant donné.
-   * Une durée nulle ou négative n'est pas un bail — la refuser ici évite qu'un appelant pose
-   * une échéance dans le passé, ou dans dix ans.
+   * Context policy: a lease is a bounded window that starts at the given instant. A duration of
+   * zero or less is not a lease — refusing it here stops a caller from setting an expiry in the
+   * past, or in ten years.
    */
   private static leaseWindow(at: Date, leaseSeconds: number): Date {
     if (!Number.isFinite(leaseSeconds) || leaseSeconds <= 0) {
       throw new InvalidLeaseDurationError(
-        `un bail dure un nombre positif de secondes, reçu ${leaseSeconds}`,
+        `a lease lasts a positive number of seconds, received ${leaseSeconds}`,
       );
     }
     return new Date(at.getTime() + leaseSeconds * 1_000);

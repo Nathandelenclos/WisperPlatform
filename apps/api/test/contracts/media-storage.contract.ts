@@ -3,14 +3,14 @@ import { describe, expect, it, afterEach } from 'vitest';
 import type { MediaStorage } from '../../src/transcription/application/ports/media-storage';
 
 /**
- * Bac d'essai d'un adaptateur de magasin. `stage` joue le dépôt du fichier temporaire par
- * l'upload : c'est la seule opération que le port n'expose pas, puisqu'elle est faite par le
- * transport avant d'appeler `adopt`.
+ * Test harness for a storage adapter. `stage` plays the upload dropping the temporary file:
+ * it is the only operation the port does not expose, since the transport performs it before
+ * calling `adopt`.
  */
 export type MediaStorageHarness = {
   readonly storage: MediaStorage;
   stage(tempPath: string, content: string): Promise<void>;
-  /** Chemin temporaire libre, propre à cet adaptateur. */
+  /** Free temporary path, specific to this adapter. */
   tempPath(name: string): string;
   cleanup(): Promise<void>;
 };
@@ -24,8 +24,8 @@ async function readAll(stream: AsyncIterable<unknown>): Promise<string> {
 }
 
 /**
- * Contrat du port `MediaStorage`, rejoué à l'identique sur le double et sur l'adaptateur réel :
- * c'est ce qui rend les scénarios d'acceptation transposables à la production.
+ * Contract of the `MediaStorage` port, replayed identically on the double and on the real
+ * adapter: this is what makes the acceptance scenarios transposable to production.
  */
 export function describeMediaStorageContract(
   name: string,
@@ -44,30 +44,30 @@ export function describeMediaStorageContract(
       return harness;
     }
 
-    it('rend les octets qu\'on lui a confiés', async () => {
+    it('returns the bytes it was entrusted with', async () => {
       const { storage, stage, tempPath } = await open();
       const source = tempPath('upload-1');
-      await stage(source, 'des octets de média');
+      await stage(source, 'some media bytes');
 
       await storage.adopt({ key: 'media-1', tempPath: source });
 
-      expect(await readAll(await storage.openRead('media-1'))).toBe('des octets de média');
+      expect(await readAll(await storage.openRead('media-1'))).toBe('some media bytes');
     });
 
-    it('échoue à relire un média qu\'il ne détient pas', async () => {
+    it('fails to read back a media it does not hold', async () => {
       const { storage } = await open();
 
-      // La lecture doit échouer, que l'adaptateur refuse à l'ouverture (en mémoire) ou à la
-      // consommation du flux (système de fichiers) : l'appelant, lui, voit un rejet.
+      // The read must fail, whether the adapter refuses on open (in memory) or on consuming the
+      // stream (file system): the caller sees a rejection either way.
       await expect(
         storage.openRead('media-absent').then((stream) => readAll(stream)),
       ).rejects.toThrow();
     });
 
-    it('ne détient plus rien après une suppression', async () => {
+    it('holds nothing any more after a removal', async () => {
       const { storage, stage, tempPath } = await open();
       const source = tempPath('upload-2');
-      await stage(source, 'à jeter');
+      await stage(source, 'to be discarded');
       await storage.adopt({ key: 'media-2', tempPath: source });
 
       await storage.remove('media-2');
@@ -77,29 +77,29 @@ export function describeMediaStorageContract(
       ).rejects.toThrow();
     });
 
-    it('tolère de supprimer deux fois le même média', async () => {
+    it('tolerates removing the same media twice', async () => {
       const { storage, stage, tempPath } = await open();
       const source = tempPath('upload-3');
-      await stage(source, 'à jeter deux fois');
+      await stage(source, 'to be discarded twice');
       await storage.adopt({ key: 'media-3', tempPath: source });
 
       await storage.remove('media-3');
 
-      // Un worker qui rejoue sa fin de job ne doit pas provoquer d'erreur.
+      // A worker replaying the end of its job must not cause an error.
       await expect(storage.remove('media-3')).resolves.toBeUndefined();
     });
 
-    it('remplace le contenu quand la même clé est réadoptée', async () => {
+    it('replaces the content when the same key is re-adopted', async () => {
       const { storage, stage, tempPath } = await open();
       const first = tempPath('upload-4a');
       const second = tempPath('upload-4b');
-      await stage(first, 'première version');
-      await stage(second, 'seconde version');
+      await stage(first, 'first version');
+      await stage(second, 'second version');
       await storage.adopt({ key: 'media-4', tempPath: first });
 
       await storage.adopt({ key: 'media-4', tempPath: second });
 
-      expect(await readAll(await storage.openRead('media-4'))).toBe('seconde version');
+      expect(await readAll(await storage.openRead('media-4'))).toBe('second version');
     });
   });
 }

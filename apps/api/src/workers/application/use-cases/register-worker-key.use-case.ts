@@ -8,8 +8,8 @@ import { toWorkerKeyView, type RegisteredWorkerKeyView } from '../views';
 export type RegisterWorkerKeyCommand = { ownerId: string; label: string };
 
 /**
- * L'utilisateur déclare une machine. Le secret rendu ici est le seul qu'il verra : la
- * plateforme n'en garde que l'empreinte, elle est donc incapable de le lui remontrer.
+ * The user declares a machine. The secret returned here is the only one they will see: the
+ * platform keeps nothing but its fingerprint, so it is unable to ever show it to them again.
  */
 export class RegisterWorkerKeyUseCase {
   constructor(
@@ -20,8 +20,8 @@ export class RegisterWorkerKeyUseCase {
   ) {}
 
   async execute(command: RegisterWorkerKeyCommand): Promise<RegisteredWorkerKeyView> {
-    // On valide le libellé avant de tirer un secret : un aléa n'est produit que pour une
-    // déclaration recevable.
+    // The label is validated before a secret is drawn: randomness is only produced for an
+    // acceptable declaration.
     const label = WorkerKeyLabel.of(command.label);
     const secret = this.secrets.generate();
 

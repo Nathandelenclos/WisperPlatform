@@ -3,14 +3,14 @@ import type { TranscriptionStatus } from '../../domain/transcription';
 import type { WhisperModel } from '../../domain/transcription-settings';
 
 /**
- * Modèle de lecture d'une transcription pour la liste du propriétaire.
- * `durationMs` est la fin du dernier segment connu (0 sans segment) : la durée réelle du média
- * n'est jamais mesurée, seul le contenu transcrit est connu.
+ * Read model of a transcription for the owner's list.
+ * `durationMs` is the end of the last known segment (0 with no segment): the real duration of
+ * the media is never measured, only the transcribed content is known.
  */
 export type TranscriptionSummary = {
   id: string;
   status: TranscriptionStatus;
-  /** La bibliothèque doit pouvoir dire « en attente de votre machine ». */
+  /** The library must be able to say "waiting for your machine". */
   placement: Placement;
   model: WhisperModel;
   language: string;
@@ -23,7 +23,7 @@ export type TranscriptionSummary = {
   failureReason: string | null;
 };
 
-/** Côté lecture : les transcriptions d'un propriétaire, de la plus récente à la plus ancienne. */
+/** Read side: an owner's transcriptions, from the most recent to the oldest. */
 export interface TranscriptionCatalog {
   listOwnedBy(ownerId: string): Promise<TranscriptionSummary[]>;
 }

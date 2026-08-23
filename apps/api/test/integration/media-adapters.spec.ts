@@ -13,13 +13,13 @@ import { HmacMediaAccessTokens } from '../../src/transcription/infrastructure/se
 import { describeMediaAccessTokensContract } from '../contracts/media-access-tokens.contract';
 import { describeMediaStorageContract } from '../contracts/media-storage.contract';
 
-// Secret tiré à chaque exécution : un littéral en forme de secret dans le dépôt est ce
-// que le scan de secrets de la CI est fait pour trouver.
+// Secret drawn on every run: a secret-shaped literal in the repository is exactly what the CI
+// secret scan is built to find.
 const TEST_SECRET = randomBytes(32).toString('hex');
 
-// Les deux adaptateurs porteurs du contrôle d'accès au média rejouent le contrat de leur port :
-// c'est ce qui rend les scénarios d'acceptation, montés sur les doubles, transposables ici.
-describeMediaStorageContract('système de fichiers', async () => {
+// The two adapters that carry media access control replay their port's contract: this is what
+// makes the acceptance scenarios, built on the doubles, transposable here.
+describeMediaStorageContract('file system', async () => {
   const root = await mkdtemp(join(tmpdir(), 'wisper-store-'));
   const incoming = await mkdtemp(join(tmpdir(), 'wisper-incoming-'));
   return {
@@ -35,7 +35,7 @@ describeMediaStorageContract('système de fichiers', async () => {
 
 describeMediaAccessTokensContract('HMAC-SHA256', () => new HmacMediaAccessTokens(TEST_SECRET));
 
-describe('FilesystemMediaStorage — frontière de confiance vers le disque', () => {
+describe('FilesystemMediaStorage — trust boundary towards the disk', () => {
   const hostileKeys = [
     '../escape',
     '..',
@@ -48,14 +48,14 @@ describe('FilesystemMediaStorage — frontière de confiance vers le disque', ()
     'x'.repeat(200),
   ];
 
-  it('refuse toute clé qui pourrait sortir du magasin', async () => {
+  it('refuses any key that could escape the store', async () => {
     const root = await mkdtemp(join(tmpdir(), 'wisper-store-'));
     const storage = new FilesystemMediaStorage(root);
     try {
       for (const key of hostileKeys) {
         await expect(storage.openRead(key)).rejects.toThrow(InvalidStorageKeyError);
         await expect(storage.remove(key)).rejects.toThrow(InvalidStorageKeyError);
-        await expect(storage.adopt({ key, tempPath: join(root, 'peu-importe') })).rejects.toThrow(
+        await expect(storage.adopt({ key, tempPath: join(root, 'whatever') })).rejects.toThrow(
           InvalidStorageKeyError,
         );
       }
@@ -66,11 +66,11 @@ describe('FilesystemMediaStorage — frontière de confiance vers le disque', ()
 });
 
 describe('HmacMediaAccessTokens — signature', () => {
-  const issued = { transcriptionId: 'a-transcription', runId: 'un-run' };
+  const issued = { transcriptionId: 'a-transcription', runId: 'a-run' };
   const expiresAt = new Date('2026-05-04T09:02:00.000Z');
   const now = new Date('2026-05-04T09:00:00.000Z');
 
-  it('refuse un laissez-passer signé avec un autre secret', () => {
+  it('refuses an access token signed with another secret', () => {
     const token = new HmacMediaAccessTokens(randomBytes(32).toString('hex')).issue({
       ...issued,
       expiresAt,
@@ -79,15 +79,15 @@ describe('HmacMediaAccessTokens — signature', () => {
     expect(new HmacMediaAccessTokens(TEST_SECRET).verify({ token, now })).toBeNull();
   });
 
-  it('refuse un laissez-passer dont on a changé la transcription visée', () => {
+  it('refuses an access token whose target transcription was changed', () => {
     const tokens = new HmacMediaAccessTokens(TEST_SECRET);
     const parts = tokens.issue({ ...issued, expiresAt }).split('.');
-    parts[0] = 'une-autre-transcription';
+    parts[0] = 'another-transcription';
 
     expect(tokens.verify({ token: parts.join('.'), now })).toBeNull();
   });
 
-  it('ne laisse jamais fuir le secret dans le jeton', () => {
+  it('never lets the secret leak into the token', () => {
     const token = new HmacMediaAccessTokens(TEST_SECRET).issue({ ...issued, expiresAt });
 
     expect(token).not.toContain(TEST_SECRET);

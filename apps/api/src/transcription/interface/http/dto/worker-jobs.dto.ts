@@ -1,29 +1,29 @@
 import { z } from 'zod';
 
 /**
- * Schémas de la frontière HTTP côté worker. Un worker est une source moins fiable qu'un
- * navigateur authentifié : chaque champ est borné en taille pour que rien d'illimité ne
- * traverse la frontière. Les invariants métier (ordre des lots, run courant, chevauchement
- * des segments) restent l'affaire de l'aggregate.
+ * Schemas of the worker-facing HTTP boundary. A worker is a less trustworthy source than an
+ * authenticated browser: every field is bounded in size so that nothing unbounded crosses the
+ * boundary. The business invariants (batch order, current run, segment overlap) remain the
+ * aggregate's business.
  */
 
 const MAX_SERVED_MODELS = 16;
 const MAX_SEGMENTS_PER_BATCH = 1_000;
 
 /**
- * Un tour de parole par seconde de média pendant plus de deux heures : au-delà, ce n'est plus
- * une diarisation. La borne existe pour que rien d'illimité ne traverse la frontière.
+ * One speaker turn per second of media for more than two hours: past that, it is no longer a
+ * diarization. The bound exists so that nothing unbounded crosses the boundary.
  */
 const MAX_SPEAKER_TURNS = 10_000;
 
 /**
- * Plafond d'horodatage : bien au-delà de tout média que la plateforme accepte (24 h), et en
- * deçà de la précision entière du flottant. Sans lui, `endMs` était le seul champ de la
- * frontière worker sans borne supérieure, ce que le préambule de ce fichier promet pourtant.
+ * Timestamp ceiling: well beyond any media the platform accepts (24 h), and below the integer
+ * precision of a float. Without it, `endMs` was the only field of the worker boundary with no
+ * upper bound — which this file's preamble nonetheless promises.
  */
 const MAX_TIMESTAMP_MS = 24 * 60 * 60 * 1_000;
 
-/** Un segment de parole, pas un roman collé dans un champ de texte. */
+/** A speech segment, not a novel pasted into a text field. */
 const MAX_SEGMENT_TEXT_LENGTH = 10_000;
 
 export const runIdSchema = z.uuid();

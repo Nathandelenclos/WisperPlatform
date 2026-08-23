@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""Worker de transcription WisperPlatform.
+"""WisperPlatform transcription worker.
 
-Boucle : réclamer un job → télécharger le média → lancer le binaire `whisper` → publier les
-segments au fil de l'eau → conclure (`complete` / `fail`) → effacer le répertoire temporaire.
+Loop: claim a job → download the media → run the `whisper` binary → publish segments as they
+come → conclude (`complete` / `fail`) → erase the temporary directory.
 
-Bibliothèque standard uniquement. `whisper` est lancé comme processus, en liste d'arguments,
-jamais via un shell, jamais importé.
+Standard library only. `whisper` runs as a subprocess, from an argument list, never through a
+shell, never imported.
 
-Le worker n'apprend rien de l'utilisateur : il reçoit un jeton média à courte durée de vie,
-écrit le média sous un nom neutre, et ne journalise ni jeton, ni nom de fichier, ni texte
-transcrit — seulement des identifiants techniques et des compteurs.
+The worker learns nothing about the user: it receives a short-lived media token, writes the
+media under a neutral name, and logs neither token, nor filename, nor transcribed text — only
+technical identifiers and counters.
 """
 
 from __future__ import annotations
@@ -35,38 +35,38 @@ import diarization
 from api_client import ApiClient, ApiError
 from whisper_output import SegmentBatcher, parse_segment_line
 
-# Modèles du contrat (`WHISPER_MODELS` côté domaine).
+# Models from the contract (`WHISPER_MODELS` on the domain side).
 WHISPER_MODELS = ("tiny", "base", "small", "medium", "large", "turbo")
 LANGUAGE_PATTERN = re.compile(r"^[A-Za-z]{2,32}$")
 
-# Borne dure d'un job : au-delà, le sous-processus est arrêté et le job déclaré en échec.
+# Hard bound on a job: past it, the subprocess is stopped and the job declared failed.
 WHISPER_TIMEOUT_SECONDS = 6 * 60 * 60
-# Délai laissé à `whisper` pour sortir après `terminate`, avant `kill`.
+# Grace left to `whisper` to exit after `terminate`, before `kill`.
 TERMINATE_GRACE_SECONDS = 10.0
-# Période de réveil de la boucle de lecture : borne la réactivité à un arrêt demandé.
+# Wake-up period of the read loop: bounds how fast a requested shutdown is honoured.
 LOOP_TICK_SECONDS = 0.5
-# Bail inexploitable (absent ou illisible) : repli prudent sur un battement fréquent.
+# Unusable lease (missing or unreadable): cautious fallback to a frequent heartbeat.
 FALLBACK_HEARTBEAT_SECONDS = 20.0
-# Disjoncteur de la boucle de réclamation : au-delà de ce nombre d'échecs consécutifs de
-# `claim`, le circuit s'ouvre et l'intervalle de sondage croît jusqu'à son plafond. Un
-# `claim` abouti — job servi ou file vide — referme le circuit.
+# Circuit breaker of the claim loop: past this number of consecutive `claim` failures the
+# circuit opens and the polling interval grows up to its ceiling. A successful `claim` — job
+# served or empty queue — closes the circuit again.
 CLAIM_FAILURE_THRESHOLD = 5
 CLAIM_BACKOFF_MAX_SECONDS = 60.0
-# Nom neutre du média sur le disque : le nom d'origine ne quitte jamais l'API.
+# Neutral name of the media on disk: the original name never leaves the API.
 MEDIA_FILENAME = "media"
 
-# Nombre de lignes de stderr conservées pour expliquer un échec : assez pour une trace Python,
-# trop peu pour retenir un transcript entier.
+# Number of stderr lines kept to explain a failure: enough for a Python traceback, too few to
+# retain a whole transcript.
 STDERR_TAIL_LINES = 40
 
-# Raison interne : l'arrêt vient du worker lui-même, jamais du média ni de l'API.
+# Internal reason: the shutdown comes from the worker itself, never from the media or the API.
 STOPPED_REASON = "worker stopped"
 
 LOGGER = logging.getLogger("wisper.worker")
 
 
 class ConfigurationError(Exception):
-    """Configuration d'environnement absente ou invalide."""
+    """Missing or invalid environment configuration."""
 
 
 @dataclasses.dataclass(frozen=True)
@@ -80,8 +80,8 @@ class WorkerConfig:
     poll_interval_seconds: float
     device: str
     threads: int
-    # Résolus une fois au démarrage par `resolve_runtime`, jamais à chaque job : sonder la
-    # carte coûte le démarrage d'un interpréteur.
+    # Resolved once at startup by `resolve_runtime`, never per job: probing the card costs
+    # an interpreter startup.
     resolved_device: str = "cpu"
     resolved_threads: int = 1
 
@@ -89,10 +89,10 @@ class WorkerConfig:
     def from_environment(environ):
         api_url = (environ.get("WISPER_API_URL") or "").strip()
         if not api_url:
-            raise ConfigurationError("WISPER_API_URL est requis")
+            raise ConfigurationError("WISPER_API_URL is required")
         worker_token = environ.get("WISPER_WORKER_TOKEN") or ""
         if not worker_token.strip():
-            raise ConfigurationError("WISPER_WORKER_TOKEN est requis")
+            raise ConfigurationError("WISPER_WORKER_TOKEN is required")
         return WorkerConfig(
             api_url=api_url,
             worker_token=worker_token,
@@ -113,7 +113,7 @@ def _parse_models(raw):
     unknown = [model for model in models if model not in WHISPER_MODELS]
     if not models or unknown:
         raise ConfigurationError(
-            "WISPER_WORKER_MODELS n'accepte que : " + ", ".join(WHISPER_MODELS)
+            "WISPER_WORKER_MODELS only accepts: " + ", ".join(WHISPER_MODELS)
         )
     return models
 
@@ -124,28 +124,28 @@ DEVICES = ("auto", "cpu", "cuda")
 def _parse_device(raw):
     device = (raw or "").strip().lower() or "auto"
     if device not in DEVICES:
-        raise ConfigurationError("WISPER_DEVICE n'accepte que : " + ", ".join(DEVICES))
+        raise ConfigurationError("WISPER_DEVICE only accepts: " + ", ".join(DEVICES))
     return device
 
 
 def _parse_threads(raw):
-    """0 = déduire du quota CPU du conteneur."""
+    """0 = infer from the container CPU quota."""
     if raw is None or not raw.strip():
         return 0
     try:
         threads = int(raw)
     except ValueError:
-        raise ConfigurationError("WISPER_THREADS doit être un entier") from None
+        raise ConfigurationError("WISPER_THREADS must be an integer") from None
     if threads < 0:
-        raise ConfigurationError("WISPER_THREADS doit être positif ou nul")
+        raise ConfigurationError("WISPER_THREADS must be zero or positive")
     return threads
 
 
 def cpu_quota(read_text=None):
     """
-    Nombre de cœurs réellement utilisables, lu dans le cgroup plutôt que sur la machine.
-    Sans cette borne, torch ouvre autant de threads que l'hôte a de cœurs alors que le
-    conteneur n'en a que deux : les threads se disputent le quota et l'inférence RALENTIT.
+    Number of actually usable cores, read from the cgroup rather than from the machine.
+    Without that bound, torch opens as many threads as the host has cores while the container
+    only has two: the threads fight over the quota and inference gets SLOWER.
     """
     if read_text is None:
         def read_text(path):
@@ -178,8 +178,8 @@ def _quota_v1(read_text, path):
 
 def resolve_device(config, probe=None):
     """
-    `auto` interroge une fois le torch de whisper : c'est lui qui sait si une carte est
-    visible dans le conteneur. Une carte absente n'est pas une erreur, on reste en CPU.
+    `auto` asks whisper's own torch once: it is the one that knows whether a card is visible
+    inside the container. A missing card is not an error, we stay on CPU.
     """
     if config.device != "auto":
         return config.device
@@ -207,7 +207,7 @@ def _probe_cuda(whisper_bin):
 
 
 def resolve_runtime(config, probe=None, quota=None):
-    """Fixe une fois pour toutes le device et le nombre de threads de ce worker."""
+    """Settles this worker's device and thread count once and for all."""
     device = resolve_device(config, probe)
     threads = config.threads or (quota or cpu_quota)()
     return dataclasses.replace(config, resolved_device=device, resolved_threads=max(1, threads))
@@ -219,14 +219,14 @@ def _parse_poll_interval(raw):
     try:
         interval = float(raw)
     except ValueError:
-        raise ConfigurationError("POLL_INTERVAL_SECONDS doit être un nombre de secondes") from None
+        raise ConfigurationError("POLL_INTERVAL_SECONDS must be a number of seconds") from None
     if interval <= 0:
-        raise ConfigurationError("POLL_INTERVAL_SECONDS doit être strictement positif")
+        raise ConfigurationError("POLL_INTERVAL_SECONDS must be strictly positive")
     return interval
 
 
 class JsonFormatter(logging.Formatter):
-    """Une ligne JSON par événement. Aucun secret, aucune donnée personnelle."""
+    """One JSON line per event. No secrets, no personal data."""
 
     def format(self, record):
         event = {
@@ -257,12 +257,12 @@ def log(level, message, **fields):
 
 
 def run_loop(config, client, stop, diarizer=None):
-    """Réclame et traite des jobs jusqu'à ce que `stop` soit armé.
+    """Claims and processes jobs until `stop` is armed.
 
-    Le disjoncteur vit ici : `failures` compte les `claim` consécutivement perdus et
-    espace les sondages une fois le seuil franchi, pour ne pas marteler une API qui
-    tente de se relever. L'attente passe toujours par `stop.wait`, jamais par `sleep` :
-    un arrêt demandé la tranche net, circuit ouvert ou non.
+    The circuit breaker lives here: `failures` counts consecutively lost `claim` calls and
+    spreads out the polls once the threshold is crossed, so as not to hammer an API that is
+    trying to get back up. Waiting always goes through `stop.wait`, never through `sleep`: a
+    requested shutdown cuts it short, open circuit or not.
     """
     log(
         logging.INFO,
@@ -279,9 +279,9 @@ def run_loop(config, client, stop, diarizer=None):
         except ApiError as error:
             failures += 1
             delay = _claim_delay(config.poll_interval_seconds, failures)
-            # Une 4xx définitive — jeton refusé, worker inconnu — n'est pas une panne
-            # transitoire : elle ne guérira pas seule, l'exploitant doit la distinguer.
-            # `str(error)` ne porte que l'opération et le statut, jamais l'URL ni le jeton.
+            # A definitive 4xx — token refused, unknown worker — is not a transient outage:
+            # it will not heal on its own, the operator has to tell it apart.
+            # `str(error)` carries only the operation and the status, never the URL or the token.
             log(
                 logging.WARNING if error.retryable else logging.ERROR,
                 "claim failed" if error.retryable else "claim rejected",
@@ -294,13 +294,13 @@ def run_loop(config, client, stop, diarizer=None):
             stop.wait(delay)
             continue
         if job is None:
-            # File vide : l'API a répondu, le circuit se referme.
+            # Empty queue: the API answered, the circuit closes again.
             failures = 0
             stop.wait(config.poll_interval_seconds)
             continue
         if not _is_usable_job(job):
-            # Réponse hors contrat : on ne peut ni la traiter, ni la déclarer en échec.
-            # Une API qui ne respecte plus le contrat est en panne : elle ouvre le circuit.
+            # Off-contract response: we can neither process it nor declare it failed.
+            # An API that no longer honours the contract is down: it opens the circuit.
             failures += 1
             delay = _claim_delay(config.poll_interval_seconds, failures)
             log(
@@ -318,23 +318,23 @@ def run_loop(config, client, stop, diarizer=None):
 
 
 def _claim_delay(interval, failures, jitter=random.random):
-    """Intervalle avant le prochain `claim`, selon le nombre d'échecs consécutifs.
+    """Delay before the next `claim`, based on the number of consecutive failures.
 
-    Circuit fermé : l'intervalle nominal. Ouvert : il double à chaque échec supplémentaire
-    jusqu'au plafond, et le jitter répartit entre le nominal et ce plafond des workers
-    redémarrés ensemble, qui sinon retomberaient tous sur l'API à la même seconde.
+    Closed circuit: the nominal interval. Open: it doubles with every extra failure up to the
+    ceiling, and the jitter spreads workers restarted together between the nominal value and
+    that ceiling — otherwise they would all fall back on the API on the very same second.
     """
     if failures < CLAIM_FAILURE_THRESHOLD:
         return interval
-    # L'exposant est borné : une API absente une journée entière ne doit pas faire déborder
-    # le flottant, et le plafond est de toute façon atteint en quelques échecs.
+    # The exponent is bounded: an API missing for a whole day must not overflow the float,
+    # and the ceiling is reached within a few failures anyway.
     doublings = min(failures - CLAIM_FAILURE_THRESHOLD + 1, 32)
     ceiling = max(interval, min(interval * 2**doublings, CLAIM_BACKOFF_MAX_SECONDS))
     return interval + (ceiling - interval) * jitter()
 
 
 def _is_usable_job(job):
-    """Champs sans lesquels aucune action n'est possible, pas même signaler l'échec."""
+    """Fields without which no action is possible, not even reporting the failure."""
     return isinstance(job, dict) and all(
         isinstance(job.get(name), str) and job[name]
         for name in ("transcriptionId", "runId", "mediaToken")
@@ -354,7 +354,7 @@ def process_job(config, client, job, stop, diarizer=None):
     workdir = tempfile.mkdtemp(prefix="wisper-worker-")
     heartbeat = Heartbeat(client, run_id, transcription_id, _heartbeat_interval(job), fields)
     try:
-        # Le bail court dès la réclamation : le battement couvre aussi le téléchargement.
+        # The lease runs from the claim onwards: the heartbeat covers the download too.
         heartbeat.start()
         reason = _reject_unsupported(job)
         if reason is None:
@@ -362,26 +362,26 @@ def process_job(config, client, job, stop, diarizer=None):
             client.download_media(job["mediaToken"], media_path)
             reason = _run_whisper(config, client, job, media_path, workdir, stop, fields)
             if reason is None:
-                # Le média est encore là et le bail bat toujours : c'est le seul moment
-                # où la diarisation coûte moins qu'un second téléchargement.
+                # The media is still there and the lease is still beating: this is the only
+                # moment where diarization costs less than a second download.
                 _diarize(client, diarizer, job, media_path, workdir, stop, fields)
         if reason is None:
             client.complete(run_id, transcription_id)
             log(logging.INFO, "job completed", **fields)
         elif reason == STOPPED_REASON:
-            # L'arrêt vient de nous, pas du média : la tentative est abandonnée, pas cassée.
-            # La rendre remet la demande en file tout de suite, là où un échec la condamnerait
-            # et où attendre l'extinction du bail coûterait deux minutes à l'utilisateur.
+            # The shutdown comes from us, not from the media: the attempt is abandoned, not
+            # broken. Releasing it re-queues the request right away, where a failure would
+            # condemn it and waiting for the lease to expire would cost the user two minutes.
             client.release(run_id, transcription_id)
             log(logging.INFO, "job released", **fields)
         else:
             client.fail(run_id, transcription_id, reason)
             log(logging.WARNING, "job failed", reason=reason, **fields)
     except ApiError as error:
-        # L'API est injoignable ou refuse ce run : le bail expirera et la transcription
-        # sera remise en file côté API. Insister ici ne ferait que retarder cette reprise.
+        # The API is unreachable or refuses this run: the lease will expire and the API will
+        # re-queue the transcription. Insisting here would only delay that recovery.
         log(logging.ERROR, "job abandoned", detail=str(error), status=error.status, **fields)
-    except Exception as error:  # un job cassé ne doit jamais tuer la boucle
+    except Exception as error:  # a broken job must never kill the loop
         log(logging.ERROR, "job crashed", detail=type(error).__name__, **fields)
         _fail_quietly(client, run_id, transcription_id, "worker error", fields)
     finally:
@@ -390,14 +390,14 @@ def process_job(config, client, job, stop, diarizer=None):
 
 
 def _diarize(client, diarizer, job, media_path, workdir, stop, fields):
-    """Attribue les tours de parole. Une passe ratée ne coûte jamais le transcript.
+    """Assigns the speaker turns. A failed pass never costs the transcript.
 
-    Facultative de bout en bout : un worker sans la capacité n'en dit rien, et toute erreur
-    — décodage, moteur, API — se résume à un avertissement. Le job se conclut normalement,
-    transcript compris ; l'utilisateur perd les locuteurs, pas sa transcription.
+    Optional end to end: a worker without the capability says nothing about it, and any error
+    — decoding, engine, API — boils down to a warning. The job concludes normally, transcript
+    included; the user loses the speakers, not their transcription.
 
-    Une liste vide est publiée comme les autres : au rejeu, elle efface l'attribution d'une
-    tentative précédente, que l'API recalcule à partir de ce qu'on lui envoie.
+    An empty list is published like any other: on a replay it erases the assignment from a
+    previous attempt, which the API recomputes from whatever we send it.
     """
     if diarizer is None or stop.is_set():
         return
@@ -405,8 +405,8 @@ def _diarize(client, diarizer, job, media_path, workdir, stop, fields):
         turns = diarizer.run(media_path, workdir)
         client.post_speakers(job["runId"], job["transcriptionId"], turns)
     except Exception as error:
-        # Le type suffit : le message d'une bibliothèque tierce peut porter un chemin de
-        # média, qui n'a pas sa place dans le journal.
+        # The type is enough: a third-party library's message may carry a media path, which
+        # has no place in the log.
         log(logging.WARNING, "diarization failed", detail=type(error).__name__, **fields)
         return
     log(
@@ -419,7 +419,7 @@ def _diarize(client, diarizer, job, media_path, workdir, stop, fields):
 
 
 def _reject_unsupported(job):
-    """Frontière de confiance : model et language finissent en arguments de processus."""
+    """Trust boundary: model and language end up as process arguments."""
     if job.get("model") not in WHISPER_MODELS:
         return "unsupported model"
     if not LANGUAGE_PATTERN.match(str(job.get("language", ""))):
@@ -435,12 +435,12 @@ def _fail_quietly(client, run_id, transcription_id, reason, fields):
 
 
 class Heartbeat:
-    """Renouvelle le bail dans un thread, et s'arrête proprement sur demande.
+    """Renews the lease in a thread, and stops cleanly on demand.
 
-    L'ordonnanceur est injectable, comme l'horloge de `SegmentBatcher` : tout objet qui
-    répond à `wait(timeout) -> bool` (vrai quand l'arrêt est demandé) et à `set()` fait
-    l'affaire. En production c'est un `threading.Event` ; un test le remplace par une
-    fausse horloge pour éprouver les battements sans dormir.
+    The scheduler is injectable, like `SegmentBatcher`'s clock: any object answering
+    `wait(timeout) -> bool` (true when the shutdown is requested) and `set()` will do. In
+    production it is a `threading.Event`; a test swaps in a fake clock to exercise the
+    heartbeats without sleeping.
     """
 
     def __init__(self, client, run_id, transcription_id, interval, fields, scheduler=None):
@@ -469,11 +469,11 @@ class Heartbeat:
             except ApiError as error:
                 log(logging.WARNING, "heartbeat failed", status=error.status, **self._fields)
                 if not error.retryable:
-                    return  # run périmé côté API : ce bail n'est plus renouvelable
+                    return  # run stale on the API side: this lease can no longer be renewed
 
 
 def _heartbeat_interval(job):
-    """Un tiers du bail restant : deux battements peuvent être perdus sans perdre le job."""
+    """A third of the remaining lease: two heartbeats can be lost without losing the job."""
     expires_at = _parse_iso8601(job.get("leaseExpiresAt"))
     if expires_at is None:
         return FALLBACK_HEARTBEAT_SECONDS
@@ -485,7 +485,7 @@ def _parse_iso8601(value):
     if not isinstance(value, str) or not value:
         return None
     try:
-        # `datetime.fromisoformat` n'accepte pas le suffixe « Z » avant Python 3.11.
+        # `datetime.fromisoformat` does not accept the "Z" suffix before Python 3.11.
         parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError:
         return None
@@ -493,7 +493,7 @@ def _parse_iso8601(value):
 
 
 def _run_whisper(config, client, job, media_path, workdir, stop, fields):
-    """Lance whisper et publie ses segments. Rend `None` en succès, une raison courte sinon."""
+    """Runs whisper and publishes its segments. Returns `None` on success, a short reason otherwise."""
     command = [
         config.whisper_bin,
         media_path,
@@ -507,25 +507,25 @@ def _run_whisper(config, client, job, media_path, workdir, stop, fields):
         workdir,
         "--verbose",
         "True",
-        # Device explicite : whisper le déduirait, mais on veut le voir dans le journal et
-        # pouvoir forcer le CPU sur une machine dont la carte est trop juste.
+        # Explicit device: whisper would infer it, but we want to see it in the log and to be
+        # able to force CPU on a machine whose card is too tight.
         "--device",
         config.resolved_device,
     ]
     if config.resolved_device == "cuda":
-        # Sur GPU, fp16 divise par deux la mémoire de la carte — c'est ce qui fait tenir
-        # `medium` dans 4 Gio de VRAM. Sur CPU, fp16 n'est pas supporté : le dire évite
-        # l'avertissement et la conversion inutile.
+        # On GPU, fp16 halves the card memory — that is what fits `medium` into 4 GiB of
+        # VRAM. On CPU, fp16 is not supported: saying so avoids the warning and the pointless
+        # conversion.
         command += ["--fp16", "True"]
     else:
         command += ["--fp16", "False", "--threads", str(config.resolved_threads)]
     if config.model_dir:
         command += ["--model_dir", config.model_dir]
-    # Sans PYTHONUNBUFFERED, stdout est bufferisé par blocs et le streaming n'a pas lieu.
+    # Without PYTHONUNBUFFERED, stdout is block-buffered and no streaming happens.
     environment = dict(os.environ, PYTHONUNBUFFERED="1")
-    # Liste d'arguments, jamais de shell : ni le modèle ni la langue ne peuvent s'échapper.
-    # stderr est capturé ET réémis : le flux du conteneur garde la trace complète, et la fin de
-    # cette trace sert à expliquer un échec autrement que par « code 1 ».
+    # Argument list, never a shell: neither the model nor the language can escape.
+    # stderr is captured AND re-emitted: the container stream keeps the full trace, and the tail
+    # of that trace serves to explain a failure with something other than "code 1".
     process = subprocess.Popen(
         command,
         cwd=workdir,
@@ -550,7 +550,7 @@ def _run_whisper(config, client, job, media_path, workdir, stop, fields):
         interrupted = _stream_segments(lines, client, job, stop, fields)
         if interrupted is not None:
             return interrupted
-        # stdout est fermé : la sortie du processus est imminente.
+        # stdout is closed: the process exit is imminent.
         code = process.wait(timeout=TERMINATE_GRACE_SECONDS)
         if code == 0:
             return None
@@ -566,7 +566,7 @@ def _run_whisper(config, client, job, media_path, workdir, stop, fields):
 
 
 def _pump_stderr(stderr, tail):
-    """Réémet les diagnostics de whisper et garde leur fin pour expliquer un échec."""
+    """Re-emits whisper's diagnostics and keeps their tail to explain a failure."""
     try:
         for line in stderr:
             tail.append(line.rstrip("\n"))
@@ -575,8 +575,8 @@ def _pump_stderr(stderr, tail):
         pass
 
 
-# Signatures reconnues dans la fin de stderr. Un « code 1 » ne dit rien à l'utilisateur ; ces
-# raisons-là disent quoi changer. L'ordre compte : la première qui correspond gagne.
+# Signatures recognised in the stderr tail. A "code 1" tells the user nothing; these reasons
+# say what to change. Order matters: the first match wins.
 FAILURE_SIGNATURES = (
     ("out of memory", "model too large for this worker"),
     ("no kernel image is available", "model unsupported by this worker's gpu"),
@@ -587,7 +587,7 @@ FAILURE_SIGNATURES = (
 
 
 def explain_failure(code, diagnostics):
-    """Traduit la fin de stderr en une raison courte, ou rend le code brut à défaut."""
+    """Turns the stderr tail into a short reason, or falls back to the raw exit code."""
     haystack = " ".join(diagnostics).lower()
     for signature, reason in FAILURE_SIGNATURES:
         if signature in haystack:
@@ -596,18 +596,18 @@ def explain_failure(code, diagnostics):
 
 
 def _pump(stdout, lines):
-    """Déverse stdout dans une file : la boucle principale garde la main sur le temps."""
+    """Pours stdout into a queue: the main loop keeps control over timing."""
     try:
         for line in stdout:
             lines.put(line)
     except (ValueError, OSError):
-        pass  # tube fermé sous le thread : la sentinelle suffit
+        pass  # pipe closed under the thread: the sentinel is enough
     finally:
         lines.put(None)
 
 
 def _stream_segments(lines, client, job, stop, fields):
-    """Consomme les lignes et publie les lots. Rend `None` à la fin normale du flux."""
+    """Consumes the lines and publishes the batches. Returns `None` at the normal end of stream."""
     batcher = SegmentBatcher()
     sequence = 0
     deadline = time.monotonic() + WHISPER_TIMEOUT_SECONDS
@@ -664,8 +664,8 @@ def main():
     for received in (signal.SIGTERM, signal.SIGINT):
         signal.signal(received, lambda *_: stop.set())
     client = ApiClient(config.api_url, config.worker_token)
-    # Une fois pour toutes : la capacité ne change pas d'un job à l'autre, et un worker qui
-    # ne diarise pas ne doit rien payer pour cette passe.
+    # Once and for all: the capability does not change from one job to the next, and a worker
+    # that does not diarize must pay nothing for that pass.
     run_loop(config, client, stop, diarization.load(os.environ))
     return 0
 

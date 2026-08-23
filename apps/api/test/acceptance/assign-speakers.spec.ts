@@ -13,8 +13,8 @@ import {
 } from './platform';
 
 /**
- * Trois segments transcrits, prêts à recevoir une passe de diarisation. Le run reste ouvert :
- * le worker publie les tours de parole avant d'achever la transcription.
+ * Three transcribed segments, ready for a diarization pass. The run stays open: the worker
+ * publishes the speaker turns before completing the transcription.
  */
 async function aTranscribedTranscription(): Promise<{
   platform: TranscriptionPlatform;
@@ -37,8 +37,8 @@ async function aTranscribedTranscription(): Promise<{
   return { platform, transcriptionId, runId };
 }
 
-describe('Scénario : le worker publie les tours de parole', () => {
-  it('attribue à chaque segment le locuteur qui le recouvre le plus, et annonce les locuteurs découverts', async () => {
+describe('Scenario: the worker publishes the speaker turns', () => {
+  it('assigns each segment the speaker that overlaps it most, and announces the speakers found', async () => {
     const { platform, transcriptionId, runId } = await aTranscribedTranscription();
 
     await platform.assignSpeakers.execute({
@@ -72,7 +72,7 @@ describe('Scénario : le worker publie les tours de parole', () => {
     ]);
   });
 
-  it('laisse sans locuteur un segment qu\'aucun tour ne recouvre', async () => {
+  it('leaves a segment with no speaker when no turn overlaps it', async () => {
     const { platform, transcriptionId, runId } = await aTranscribedTranscription();
 
     await platform.assignSpeakers.execute({
@@ -86,7 +86,7 @@ describe('Scénario : le worker publie les tours de parole', () => {
     expect(view.speakers).toEqual([{ index: 0, name: null }]);
   });
 
-  it('ne change rien quand le worker rejoue la même publication', async () => {
+  it('changes nothing when the worker replays the same publication', async () => {
     const { platform, transcriptionId, runId } = await aTranscribedTranscription();
     const turns = [
       { startMs: 0, endMs: 1_200, speaker: 1 },
@@ -101,10 +101,10 @@ describe('Scénario : le worker publie les tours de parole', () => {
 
     const second = await platform.getTranscription.execute({ transcriptionId, ownerId: OWNER });
     expect(second).toEqual(first);
-    // Le rejeu republie : ce qui rend l'opération sûre n'est pas le silence, c'est que
-    // l'événement porte l'état complet et non un delta. Un abonné qui l'applique deux fois
-    // obtient donc la même vue. C'est ce contrat-là qui est épinglé — un événement qui
-    // deviendrait incrémental casserait le client à chaque nouvelle tentative du worker.
+    // The replay does republish: what makes the operation safe is not silence, it is that the
+    // event carries the complete state and not a delta. A subscriber that applies it twice
+    // therefore gets the same view. That is the contract pinned here — an event that became
+    // incremental would break the client on every new attempt by the worker.
     const republished = platform.publisher.published.filter(
       (event) => event.name === 'transcription.speakers-assigned',
     );
@@ -118,10 +118,10 @@ describe('Scénario : le worker publie les tours de parole', () => {
     });
   });
 
-  it('refuse une publication qui vient d\'une tentative remplacée', async () => {
+  it('refuses a publication that comes from a superseded attempt', async () => {
     const { platform, transcriptionId, runId } = await aTranscribedTranscription();
-    // Le bail du premier worker s'éteint, un second reprend la transcription : le run initial
-    // n'a plus le droit d'écrire.
+    // The first worker's lease expires and a second takes the transcription over: the initial
+    // run is no longer allowed to write.
     platform.clock.advanceSeconds(LEASE_SECONDS + 1);
     await platform.requeueStalledTranscriptions.execute();
     const second = await platform.claimNextTranscription.execute({
@@ -129,7 +129,7 @@ describe('Scénario : le worker publie les tours de parole', () => {
       workerId: 'worker-2',
       models: ['small'],
     });
-    if (second === null) throw new Error('la transcription remise en file n\'a pas été réclamée');
+    if (second === null) throw new Error('the requeued transcription was not claimed');
 
     await expect(
       platform.assignSpeakers.execute({
@@ -140,7 +140,7 @@ describe('Scénario : le worker publie les tours de parole', () => {
     ).rejects.toThrow(StaleRunError);
   });
 
-  it('efface l\'attribution quand la diarisation ne trouve aucun tour', async () => {
+  it('clears the assignment when diarization finds no turn at all', async () => {
     const { platform, transcriptionId, runId } = await aTranscribedTranscription();
     await platform.assignSpeakers.execute({
       transcriptionId,
