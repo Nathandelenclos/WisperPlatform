@@ -73,6 +73,15 @@ To apply them by hand against a running stack:
 docker compose run --rm migrate
 ```
 
+## Language
+
+The interface ships in English and French. It picks one from the browser on the first visit, and a
+selector in the top bar — and on the sign-in card, for someone who cannot read the current one —
+overrides it. The choice is remembered per browser; there is nothing to configure server-side.
+
+Error messages that come from the API are English only for now: they are the same strings the
+worker protocol and the logs use.
+
 ## Backups
 
 Two volumes hold everything that matters:

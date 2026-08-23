@@ -1,8 +1,9 @@
 # Diarisation
 
 Diarisation answers "who speaks when": it cuts the audio into turns and groups the ones that come
-from the same voice. Speakers show up as `Locuteur 1`, `Locuteur 2`… until someone renames them, and
-the name then follows into SRT, VTT and plain text.
+from the same voice. Speakers show up as `Speaker 1`, `Speaker 2`… until someone renames them, and the name then
+follows into SRT, VTT and plain text. The interface writes them in its own language — a
+French reader sees `Locuteur 1` — while the exports follow the API, which is English.
 
 ## What it runs on
 
