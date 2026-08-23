@@ -51,12 +51,21 @@ export async function revokeWorkerKey(p: { id: string }): Promise<void> {
 /**
  * Commande de lancement prête à coller. L'origine est celle de la page : le worker doit
  * joindre la même API que le navigateur, et la deviner serait une source d'erreur de plus.
+ *
+ * L'image se construit depuis le dépôt, elle n'est pas publiée sur un registre : afficher
+ * `ghcr.io/…` donnait une commande qui échoue sur `not found`, ce qui est pire que rien.
+ * Le `build` ne coûte qu'une fois — ensuite le `run` seul suffit.
  */
 export function workerRunCommand(p: { origin: string; secret: string }): string {
   return [
-    'docker run --rm',
-    `-e WISPER_API_URL=${p.origin}`,
-    `-e WISPER_WORKER_TOKEN=${p.secret}`,
-    'ghcr.io/nathandelenclos/wisper-worker:latest',
-  ].join(' ');
+    'git clone https://github.com/Nathandelenclos/WisperPlatform.git',
+    'cd WisperPlatform',
+    'docker build -t wisper-worker ./worker',
+    [
+      'docker run --rm',
+      `-e WISPER_API_URL=${p.origin}`,
+      `-e WISPER_WORKER_TOKEN=${p.secret}`,
+      'wisper-worker',
+    ].join(' '),
+  ].join(' \\\n  && ');
 }
