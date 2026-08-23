@@ -26,7 +26,8 @@ import { TranscriptionEditor } from './components/TranscriptionEditor';
 import { TranscriptionList } from './components/TranscriptionList';
 import { UploadPanel } from './components/UploadPanel';
 import { formatByteSize } from './format';
-import { useAuthCommand, useSignOut } from './hooks/use-auth';
+import { useAuthCommand, useGoogleSignIn, useSignOut } from './hooks/use-auth';
+import { useSignInOptions } from './hooks/use-sign-in-options';
 import { useTranscriptionEvents, type StreamState } from './hooks/use-transcription-events';
 import {
   useCorrectSegment,
@@ -303,7 +304,9 @@ function Workspace({
 export function App() {
   const session = useSession();
   const authCommand = useAuthCommand();
+  const googleSignIn = useGoogleSignIn();
   const signOutCommand = useSignOut();
+  const signInOptions = useSignInOptions();
 
   if (session.isPending) {
     return (
@@ -319,8 +322,12 @@ export function App() {
       <SignInPanel
         onSubmit={(command) => authCommand.mutate(command)}
         submitting={authCommand.isPending}
-        errorMessage={describeFailure(authCommand.error)}
+        // Les deux voies écrivent dans la même région : on ne montre jamais deux refus.
+        errorMessage={describeFailure(authCommand.error ?? googleSignIn.error)}
         minPasswordLength={MIN_PASSWORD_LENGTH}
+        googleAvailable={signInOptions.data?.google === true}
+        onGoogle={() => googleSignIn.mutate()}
+        googleSubmitting={googleSignIn.isPending}
       />
     );
   }

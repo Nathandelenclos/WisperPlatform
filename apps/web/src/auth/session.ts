@@ -53,3 +53,18 @@ export async function signOut(): Promise<void> {
   const result = await authClient.signOut();
   if (result.error) throw toAuthError(result.error, 'sign-in');
 }
+
+/**
+ * Connexion par Google. Le succès n'est pas un retour de fonction : better-auth redirige le
+ * navigateur vers Google, qui revient sur `/api/auth/callback/google`. Il n'y a donc rien à
+ * faire après, sauf si l'appel échoue avant même de partir — instance sans identifiants,
+ * serveur injoignable.
+ */
+export async function signInWithGoogle(): Promise<void> {
+  const result = await authClient.signIn.social({
+    provider: 'google',
+    // On revient là où l'on était : l'atelier, pas une page d'accueil générique.
+    callbackURL: window.location.origin,
+  });
+  if (result.error) throw toAuthError(result.error, 'sign-in');
+}

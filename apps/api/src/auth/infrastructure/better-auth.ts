@@ -26,10 +26,28 @@ export class BetterAuthAuthentication implements SessionReader, AuthRequestHandl
   private readonly auth;
   private readonly nodeHandler;
 
-  constructor(p: { database: Database; env: Pick<Env, 'BETTER_AUTH_SECRET' | 'WEB_ORIGIN'> }) {
+  constructor(p: {
+    database: Database;
+    env: Pick<
+      Env,
+      'BETTER_AUTH_SECRET' | 'WEB_ORIGIN' | 'GOOGLE_CLIENT_ID' | 'GOOGLE_CLIENT_SECRET'
+    >;
+  }) {
     this.auth = betterAuth({
       database: drizzleAdapter(p.database, { provider: 'pg', schema }),
       emailAndPassword: { enabled: true },
+      // Google n'est branché que si l'exploitant a fourni ses identifiants : sans eux, la
+      // plateforme s'auto-héberge sans compte tiers, ce qui est le mode par défaut. Un objet
+      // vide ici ferait échouer le clic plutôt que de cacher le bouton, d'où l'absence.
+      socialProviders:
+        p.env.GOOGLE_CLIENT_ID === undefined || p.env.GOOGLE_CLIENT_SECRET === undefined
+          ? {}
+          : {
+              google: {
+                clientId: p.env.GOOGLE_CLIENT_ID,
+                clientSecret: p.env.GOOGLE_CLIENT_SECRET,
+              },
+            },
       secret: p.env.BETTER_AUTH_SECRET,
       trustedOrigins: [p.env.WEB_ORIGIN],
     });

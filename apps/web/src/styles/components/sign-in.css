@@ -65,6 +65,48 @@
   display: none;
 }
 
+/* --- Voie alternative ------------------------------------------------------------------- */
+
+.signin__alternative {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/*
+ * Le mot « ou » sur la ligne, pas au-dessus : deux traits partent de part et d'autre par des
+ * pseudo-éléments, ce qui évite un fond opaque pour masquer un trait qui passerait derrière.
+ */
+.signin__separator {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.signin__separator::before,
+.signin__separator::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+/*
+ * La marque du fournisseur suit la couleur du texte du bouton, comme les autres icônes.
+ * L'écart est posé ici et pas par le `gap` du bouton : la primitive enveloppe son contenu
+ * dans un seul nœud, donc son `gap` ne sépare rien à l'intérieur.
+ */
+.signin__provider-mark {
+  width: 1.125rem;
+  height: 1.125rem;
+  margin-inline-end: var(--space-2);
+  flex-shrink: 0;
+  fill: currentColor;
+  vertical-align: text-bottom;
+}
+
 /*
  * Bascule connexion/inscription : détachée du formulaire par un filet, pour qu'on ne la
  * prenne pas pour une étape de plus.
